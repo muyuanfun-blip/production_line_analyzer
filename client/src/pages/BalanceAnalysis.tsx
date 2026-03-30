@@ -1,18 +1,22 @@
-import { trpc } from "@/lib/trpc";
 import { useState, useMemo } from "react";
 import { useLocation, useParams } from "wouter";
 import {
   ArrowLeft, ChevronRight, BarChart3, TrendingUp, AlertTriangle,
   CheckCircle, XCircle, Clock, Users, Target, Download, Activity,
-  Info, Zap
+  Info, Zap, Camera, History
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, Cell, LabelList
 } from "recharts";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 
 // ─── Color Tokens ──────────────────────────────────────────────────────────────
 const COLORS = {
@@ -116,9 +120,54 @@ export default function BalanceAnalysis() {
   const params = useParams<{ id: string }>();
   const lineId = parseInt(params.id ?? "0");
   const [, setLocation] = useLocation();
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [snapName, setSnapName] = useState("");
+  const [snapNote, setSnapNote] = useState("");
 
   const { data: line } = trpc.productionLine.getById.useQuery({ id: lineId });
   const { data: workstations, isLoading } = trpc.workstation.listByLine.useQuery({ productionLineId: lineId });
+
+  const saveSnapshotMutation = trpc.snapshot.create.useMutation({
+    onSuccess: () => {
+      toast.success("快照已儲存！可在「歷史快照」頁面查看");
+      setShowSaveDialog(false);
+      setSnapName("");
+      setSnapNote("");
+    },
+    onError: () => toast.error("快照儲存失敗，請稍後再試"),
+  });
+
+  const handleSaveSnapshot = () => {
+    if (!analysis || !workstations || !snapName.trim()) {
+      toast.error("請輸入快照名稱");
+      return;
+    }
+    saveSnapshotMutation.mutate({
+      productionLineId: lineId,
+      name: snapName.trim(),
+      note: snapNote.trim() || undefined,
+      balanceRate: analysis.balanceRate,
+      balanceLoss: analysis.balanceLoss,
+      totalTime: analysis.totalTime,
+      maxTime: analysis.maxTime,
+      minTime: analysis.minTime,
+      avgTime: analysis.avgTime,
+      workstationCount: analysis.workstationCount,
+      totalManpower: analysis.totalManpower,
+      taktTime: taktTime,
+      taktPassRate: analysis.taktStats?.passRate,
+      taktPassCount: analysis.taktStats?.passCount,
+      workstationsData: workstations.map(w => ({
+        id: w.id,
+        name: w.name,
+        cycleTime: parseFloat(w.cycleTime.toString()),
+        manpower: w.manpower,
+        sequenceOrder: w.sequenceOrder,
+        description: w.description ?? undefined,
+      })),
+      bottleneckName: analysis.bottleneck?.name,
+    });
+  };
 
   const taktTime = line?.targetCycleTime ? parseFloat(line.targetCycleTime.toString()) : undefined;
 
@@ -235,8 +284,97 @@ export default function BalanceAnalysis() {
             <Download className="h-4 w-4 mr-2" />
             導出報告
           </Button>
+          <Button
+            variant="outline" size="sm"
+            onClick={() => setLocation(`/lines/${lineId}/snapshots`)}
+            className="border-cyan-400/40 text-cyan-400 hover:bg-cyan-400/10"
+          >
+            <History className="h-4 w-4 mr-2" />
+            歷史快照
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              if (!analysis) { toast.error("尚無分析資料"); return; }
+              setSnapName(`${line?.name ?? "產線"}_${new Date().toLocaleDateString("zh-TW")}`);
+              setShowSaveDialog(true);
+            }}
+            className="bg-violet-600 hover:bg-violet-700 text-white"
+          >
+            <Camera className="h-4 w-4 mr-2" />
+            儲存快照
+          </Button>
         </div>
       </div>
+
+      {/* 儲存快照 Dialog */}
+      <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Camera className="w-5 h-5 text-violet-400" />
+              儲存分析快照
+            </DialogTitle>
+            <DialogDescription>
+              快照會記錄目前產線的平衡率、Takt Time 達標率與工站時間明細。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>快照名稱 <span className="text-red-400">*</span></Label>
+              <Input
+                value={snapName}
+                onChange={e => setSnapName(e.target.value)}
+                placeholder="例：改善前基準、第一次改善後、Q2 平衡分析"
+                className="bg-background border-border"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>備註說明（選填）</Label>
+              <Textarea
+                value={snapNote}
+                onChange={e => setSnapNote(e.target.value)}
+                placeholder="記錄本次分析的背景、改善措施或備註…"
+                className="bg-background border-border resize-none"
+                rows={3}
+              />
+            </div>
+            {analysis && (
+              <div className="rounded-lg bg-background/50 border border-border p-3 text-sm space-y-1">
+                <div className="text-muted-foreground text-xs mb-2">快照內容預覽</div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">平衡率</span>
+                  <span className="font-medium text-cyan-400">{analysis.balanceRate.toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">瓶頸工站</span>
+                  <span className="font-medium">{analysis.bottleneck?.name} ({analysis.maxTime.toFixed(1)}s)</span>
+                </div>
+                {taktTime && analysis.taktStats && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Takt Time 達標率</span>
+                    <span className="font-medium text-violet-400">{analysis.taktStats.passRate.toFixed(1)}%</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">工站數 / 人員</span>
+                  <span className="font-medium">{analysis.workstationCount} 站 / {analysis.totalManpower} 人</span>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSaveDialog(false)}>取消</Button>
+            <Button
+              onClick={handleSaveSnapshot}
+              disabled={!snapName.trim() || saveSnapshotMutation.isPending}
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+            >
+              {saveSnapshotMutation.isPending ? "儲存中…" : "確認儲存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Takt Time Banner */}
       {taktTime && (

@@ -74,3 +74,31 @@ export const actionSteps = mysqlTable("action_steps", {
 
 export type ActionStep = typeof actionSteps.$inferSelect;
 export type InsertActionStep = typeof actionSteps.$inferInsert;
+
+// 分析快照資料表
+export const analysisSnapshots = mysqlTable("analysis_snapshots", {
+  id: int("id").autoincrement().primaryKey(),
+  productionLineId: int("productionLineId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),           // 快照名稱
+  note: text("note"),                                          // 備註
+  // 平衡指標
+  balanceRate: decimal("balanceRate", { precision: 6, scale: 2 }).notNull(),
+  balanceLoss: decimal("balanceLoss", { precision: 6, scale: 2 }).notNull(),
+  totalTime: decimal("totalTime", { precision: 10, scale: 2 }).notNull(),
+  maxTime: decimal("maxTime", { precision: 10, scale: 2 }).notNull(),
+  minTime: decimal("minTime", { precision: 10, scale: 2 }).notNull(),
+  avgTime: decimal("avgTime", { precision: 10, scale: 2 }).notNull(),
+  workstationCount: int("workstationCount").notNull(),
+  totalManpower: int("totalManpower").notNull(),
+  // Takt Time 相關
+  taktTime: decimal("taktTime", { precision: 10, scale: 2 }),
+  taktPassRate: decimal("taktPassRate", { precision: 6, scale: 2 }),
+  taktPassCount: int("taktPassCount"),
+  // 工站快照（JSON）
+  workstationsData: json("workstationsData").notNull(),
+  bottleneckName: varchar("bottleneckName", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AnalysisSnapshot = typeof analysisSnapshots.$inferSelect;
+export type InsertAnalysisSnapshot = typeof analysisSnapshots.$inferInsert;

@@ -11,6 +11,8 @@ import WorkstationManager from "./pages/WorkstationManager";
 import BalanceAnalysis from "./pages/BalanceAnalysis";
 import ActionAnalysis from "./pages/ActionAnalysis";
 import AISuggestions from "./pages/AISuggestions";
+import SnapshotHistory from "./pages/SnapshotHistory";
+import SnapshotCompare from "./pages/SnapshotCompare";
 
 function Router() {
   return (
@@ -21,6 +23,8 @@ function Router() {
       <Route path={"/lines/:id/balance"} component={BalanceAnalysis} />
       <Route path={"/lines/:id/actions"} component={ActionAnalysis} />
       <Route path={"/lines/:id/ai"} component={AISuggestions} />
+      <Route path={"/lines/:id/snapshots/compare"} component={SnapshotCompare} />
+      <Route path={"/lines/:id/snapshots"} component={SnapshotHistory} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

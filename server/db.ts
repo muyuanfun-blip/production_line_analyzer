@@ -5,6 +5,7 @@ import {
   productionLines, InsertProductionLine,
   workstations, InsertWorkstation,
   actionSteps, InsertActionStep,
+  analysisSnapshots, InsertAnalysisSnapshot,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -174,4 +175,34 @@ export async function bulkCreateActionSteps(data: InsertActionStep[]) {
   if (!db) throw new Error("Database not available");
   if (data.length === 0) return;
   return db.insert(actionSteps).values(data);
+}
+
+// ─── Analysis Snapshot Queries ──────────────────────────────────────────────────────
+export async function getSnapshotsByLine(productionLineId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db
+    .select()
+    .from(analysisSnapshots)
+    .where(eq(analysisSnapshots.productionLineId, productionLineId))
+    .orderBy(desc(analysisSnapshots.createdAt));
+}
+
+export async function getSnapshotById(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(analysisSnapshots).where(eq(analysisSnapshots.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createSnapshot(data: InsertAnalysisSnapshot) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(analysisSnapshots).values(data);
+}
+
+export async function deleteSnapshot(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(analysisSnapshots).where(eq(analysisSnapshots.id, id));
 }

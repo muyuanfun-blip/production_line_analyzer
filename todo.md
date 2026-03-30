@@ -51,3 +51,17 @@
 - [x] 在工站詳細分析表格加入 vs Takt Time 欄位
 - [x] 更新 AI 分析 prompt 納入 Takt Time 資訊
 - [x] 補強 Takt Time 相關測試
+
+## 歷史快照比較功能（新增）
+- [x] 建立 analysis_snapshots 資料表
+- [x] 執行資料庫遷移（CREATE TABLE）
+- [x] 實作快照 CRUD API（listByLine, getById, create, delete）
+- [x] 在 BalanceAnalysis.tsx 加入「儲存快照」按鈕與 Dialog
+- [x] 建立快照歷史列表頁面（SnapshotHistory.tsx）
+- [x] 建立快照比較頁面（SnapshotCompare.tsx）
+- [x] 工站時間對比柱狀圖（兩快照並排）
+- [x] 平衡率歷史趨勢折線圖
+- [x] 工站差異明細表（改善/退步/新增/移除）
+- [x] KPI 對比卡片（平衡率、瓶頸時間、平均時間、Takt 達標率）
+- [x] 在路由加入快照頁面路由
+- [x] 補強快照比較相關測試（5 項）

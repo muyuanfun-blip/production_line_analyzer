@@ -10,6 +10,7 @@ import {
   updateWorkstation, deleteWorkstation, bulkCreateWorkstations,
   getActionStepsByWorkstation, createActionStep, updateActionStep,
   deleteActionStep, bulkCreateActionSteps,
+  getSnapshotsByLine, getSnapshotById, createSnapshot, deleteSnapshot,
 } from "./db";
 import { invokeLLM } from "./_core/llm";
 
@@ -336,10 +337,102 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
           ],
         });
 
-        const content = response.choices?.[0]?.message?.content ?? "無法生成建議，請稍後再試。";
+         const content = response.choices?.[0]?.message?.content ?? "無法生成建議，請稍後再試。";
         return { suggestion: content };
       }),
   }),
-});
 
+  // ─── Snapshot Router ──────────────────────────────────────────────────────
+  snapshot: router({
+    listByLine: publicProcedure
+      .input(z.object({ productionLineId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const rows = await getSnapshotsByLine(input.productionLineId);
+        return rows.map(r => ({
+          ...r,
+          balanceRate: Number(r.balanceRate),
+          balanceLoss: Number(r.balanceLoss),
+          totalTime: Number(r.totalTime),
+          maxTime: Number(r.maxTime),
+          minTime: Number(r.minTime),
+          avgTime: Number(r.avgTime),
+          taktTime: r.taktTime ? Number(r.taktTime) : null,
+          taktPassRate: r.taktPassRate ? Number(r.taktPassRate) : null,
+        }));
+      }),
+
+    getById: publicProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const row = await getSnapshotById(input.id);
+        if (!row) throw new Error("Snapshot not found");
+        return {
+          ...row,
+          balanceRate: Number(row.balanceRate),
+          balanceLoss: Number(row.balanceLoss),
+          totalTime: Number(row.totalTime),
+          maxTime: Number(row.maxTime),
+          minTime: Number(row.minTime),
+          avgTime: Number(row.avgTime),
+          taktTime: row.taktTime ? Number(row.taktTime) : null,
+          taktPassRate: row.taktPassRate ? Number(row.taktPassRate) : null,
+        };
+      }),
+
+    create: publicProcedure
+      .input(z.object({
+        productionLineId: z.number().int().positive(),
+        name: z.string().min(1).max(255),
+        note: z.string().optional(),
+        balanceRate: z.number(),
+        balanceLoss: z.number(),
+        totalTime: z.number(),
+        maxTime: z.number(),
+        minTime: z.number(),
+        avgTime: z.number(),
+        workstationCount: z.number().int(),
+        totalManpower: z.number().int(),
+        taktTime: z.number().optional(),
+        taktPassRate: z.number().optional(),
+        taktPassCount: z.number().int().optional(),
+        workstationsData: z.array(z.object({
+          id: z.number(),
+          name: z.string(),
+          cycleTime: z.number(),
+          manpower: z.number(),
+          sequenceOrder: z.number(),
+          description: z.string().optional(),
+        })),
+        bottleneckName: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await createSnapshot({
+          productionLineId: input.productionLineId,
+          name: input.name,
+          note: input.note ?? null,
+          balanceRate: String(input.balanceRate),
+          balanceLoss: String(input.balanceLoss),
+          totalTime: String(input.totalTime),
+          maxTime: String(input.maxTime),
+          minTime: String(input.minTime),
+          avgTime: String(input.avgTime),
+          workstationCount: input.workstationCount,
+          totalManpower: input.totalManpower,
+          taktTime: input.taktTime != null ? String(input.taktTime) : null,
+          taktPassRate: input.taktPassRate != null ? String(input.taktPassRate) : null,
+          taktPassCount: input.taktPassCount ?? null,
+          workstationsData: input.workstationsData,
+          bottleneckName: input.bottleneckName ?? null,
+        });
+        return { success: true };
+      }),
+
+    delete: publicProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteSnapshot(input.id);
+        return { success: true };
+      }),
+  }),
+});
 export type AppRouter = typeof appRouter;

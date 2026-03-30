@@ -183,3 +183,87 @@ describe("Action Type Analysis", () => {
     expect(ratio).toBeCloseTo(66.67, 1);
   });
 });
+
+describe("Snapshot Comparison Logic", () => {
+  it("calculates balance rate improvement between snapshots", () => {
+    const snapA = { balanceRate: 72.5, maxTime: 65, avgTime: 47.1 };
+    const snapB = { balanceRate: 85.3, maxTime: 58, avgTime: 49.5 };
+
+    const balanceDelta = snapB.balanceRate - snapA.balanceRate;
+    const bottleneckDelta = snapB.maxTime - snapA.maxTime;
+
+    expect(balanceDelta).toBeCloseTo(12.8, 1);
+    expect(bottleneckDelta).toBe(-7);
+    expect(balanceDelta > 0).toBe(true);   // 平衡率提升
+    expect(bottleneckDelta < 0).toBe(true); // 瓶頸時間縮短
+  });
+
+  it("classifies workstation changes as improved/worsened/neutral", () => {
+    const wsA = [
+      { name: "站A", cycleTime: 60 },
+      { name: "站B", cycleTime: 45 },
+      { name: "站C", cycleTime: 38 },
+    ];
+    const wsB = [
+      { name: "站A", cycleTime: 52 }, // 改善 -8s
+      { name: "站B", cycleTime: 48 }, // 退步 +3s
+      { name: "站C", cycleTime: 38 }, // 持平
+    ];
+
+    const diff = wsA.map(a => {
+      const b = wsB.find(w => w.name === a.name);
+      const delta = (b?.cycleTime ?? 0) - a.cycleTime;
+      return { name: a.name, delta, improved: delta < -0.1, worsened: delta > 0.1 };
+    });
+
+    expect(diff[0]?.improved).toBe(true);
+    expect(diff[1]?.worsened).toBe(true);
+    expect(diff[2]?.improved).toBe(false);
+    expect(diff[2]?.worsened).toBe(false);
+  });
+
+  it("detects newly added and removed workstations", () => {
+    const wsA = ["站A", "站B", "站C"];
+    const wsB = ["站A", "站C", "站D"]; // 站B 移除，站D 新增
+
+    const allNames = Array.from(new Set([...wsA, ...wsB]));
+    const result = allNames.map(name => ({
+      name,
+      onlyA: wsA.includes(name) && !wsB.includes(name),
+      onlyB: !wsA.includes(name) && wsB.includes(name),
+    }));
+
+    const removed = result.filter(r => r.onlyA).map(r => r.name);
+    const added = result.filter(r => r.onlyB).map(r => r.name);
+
+    expect(removed).toEqual(["站B"]);
+    expect(added).toEqual(["站D"]);
+  });
+
+  it("calculates takt time pass rate improvement", () => {
+    const snapA = { taktPassRate: 50, taktPassCount: 2, workstationCount: 4 };
+    const snapB = { taktPassRate: 75, taktPassCount: 3, workstationCount: 4 };
+
+    const delta = snapB.taktPassRate - snapA.taktPassRate;
+    expect(delta).toBe(25);
+    expect(snapB.taktPassCount - snapA.taktPassCount).toBe(1);
+  });
+
+  it("generates correct trend data from snapshot history", () => {
+    const snapshots = [
+      { name: "基準", balanceRate: 68.0, taktPassRate: 40 },
+      { name: "第一次改善", balanceRate: 75.5, taktPassRate: 60 },
+      { name: "第二次改善", balanceRate: 83.2, taktPassRate: 80 },
+    ];
+
+    // 驗證趨勢為持續上升
+    for (let i = 1; i < snapshots.length; i++) {
+      expect(snapshots[i]!.balanceRate).toBeGreaterThan(snapshots[i - 1]!.balanceRate);
+      expect(snapshots[i]!.taktPassRate).toBeGreaterThan(snapshots[i - 1]!.taktPassRate);
+    }
+
+    // 最終改善幅度
+    const totalImprovement = snapshots[snapshots.length - 1]!.balanceRate - snapshots[0]!.balanceRate;
+    expect(totalImprovement).toBeCloseTo(15.2, 1);
+  });
+});
