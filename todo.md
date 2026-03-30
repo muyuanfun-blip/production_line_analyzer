@@ -41,3 +41,13 @@
 ## 測試
 - [x] 後端 API 單元測試（vitest）
 - [x] 平衡計算邏輯測試
+
+## Takt Time 功能（新增）
+- [x] 確認 production_lines 資料表是否已有 targetCycleTime 欄位
+- [x] 更新生產線新增/編輯表單，加入 Takt Time 輸入欄位
+- [x] 在平衡分析圖表加入 Takt Time 參考線（紫色虛線）
+- [x] 在工站時間柱狀圖上標示每個工站的達標/超標狀態
+- [x] 在 KPI 卡片區加入 Takt Time 達標率指標
+- [x] 在工站詳細分析表格加入 vs Takt Time 欄位
+- [x] 更新 AI 分析 prompt 納入 Takt Time 資訊
+- [x] 補強 Takt Time 相關測試

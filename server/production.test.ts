@@ -99,6 +99,73 @@ describe("Balance Analysis Calculation", () => {
   });
 });
 
+describe("Takt Time Analysis", () => {
+  it("identifies stations exceeding takt time", () => {
+    const taktTime = 55;
+    const workstations = [
+      { name: "站A", cycleTime: 45 },
+      { name: "站B", cycleTime: 60 }, // 超出
+      { name: "站C", cycleTime: 38 },
+      { name: "站D", cycleTime: 58 }, // 超出
+    ];
+    const exceedStations = workstations.filter(w => w.cycleTime > taktTime);
+    const passStations = workstations.filter(w => w.cycleTime <= taktTime);
+    const passRate = (passStations.length / workstations.length) * 100;
+
+    expect(exceedStations).toHaveLength(2);
+    expect(exceedStations.map(w => w.name)).toEqual(["站B", "站D"]);
+    expect(passStations).toHaveLength(2);
+    expect(passRate).toBe(50);
+  });
+
+  it("calculates takt time pass rate correctly", () => {
+    const taktTime = 60;
+    const workstations = [
+      { name: "站A", cycleTime: 45 },
+      { name: "站B", cycleTime: 60 }, // 剛好達標
+      { name: "站C", cycleTime: 38 },
+      { name: "站D", cycleTime: 52 },
+    ];
+    const passCount = workstations.filter(w => w.cycleTime <= taktTime).length;
+    const passRate = (passCount / workstations.length) * 100;
+
+    expect(passCount).toBe(4); // 全部達標（等於也算達標）
+    expect(passRate).toBe(100);
+  });
+
+  it("calculates takt time deviation correctly", () => {
+    const taktTime = 55;
+    const cycleTime = 65;
+    const deviation = cycleTime - taktTime;
+    const deviationPct = (deviation / taktTime) * 100;
+
+    expect(deviation).toBe(10);
+    expect(deviationPct).toBeCloseTo(18.18, 1);
+  });
+
+  it("calculates hourly capacity from takt time", () => {
+    const taktTime = 60; // 60 秒一件
+    const hourlyCapacity = Math.floor(3600 / taktTime);
+    expect(hourlyCapacity).toBe(60);
+
+    const taktTime2 = 45; // 45 秒一件
+    const hourlyCapacity2 = Math.floor(3600 / taktTime2);
+    expect(hourlyCapacity2).toBe(80);
+  });
+
+  it("all stations exceed takt time returns 0% pass rate", () => {
+    const taktTime = 30;
+    const workstations = [
+      { name: "站A", cycleTime: 45 },
+      { name: "站B", cycleTime: 60 },
+    ];
+    const passCount = workstations.filter(w => w.cycleTime <= taktTime).length;
+    const passRate = (passCount / workstations.length) * 100;
+    expect(passCount).toBe(0);
+    expect(passRate).toBe(0);
+  });
+});
+
 describe("Action Type Analysis", () => {
   it("calculates value-added ratio correctly", () => {
     const steps = [

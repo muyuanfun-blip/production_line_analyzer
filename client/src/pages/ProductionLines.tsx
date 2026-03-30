@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import {
   Factory, Plus, Pencil, Trash2, BarChart3, Activity, Brain,
-  ChevronRight, Clock, Users, MoreVertical, Settings
+  ChevronRight, Clock, Users, MoreVertical, Settings, Target, TrendingUp, AlertTriangle
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -182,10 +182,18 @@ export default function ProductionLines() {
                   {line.description && (
                     <p className="text-sm text-muted-foreground line-clamp-2">{line.description}</p>
                   )}
-                  {line.targetCycleTime && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Clock className="h-3.5 w-3.5" />
-                      <span>目標節拍：{line.targetCycleTime}s</span>
+                  {line.targetCycleTime ? (
+                    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-violet-400/8 border border-violet-400/20">
+                      <Target className="h-4 w-4 text-violet-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground">目標節拍時間（Takt Time）</p>
+                        <p className="text-sm font-bold text-violet-400">{parseFloat(line.targetCycleTime).toFixed(1)} 秒</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/30 border border-dashed border-border">
+                      <Target className="h-4 w-4 text-muted-foreground/50 shrink-0" />
+                      <p className="text-xs text-muted-foreground/60">尚未設定目標節拍時間</p>
                     </div>
                   )}
                   {/* Action Buttons */}
@@ -252,16 +260,24 @@ export default function ProductionLines() {
               />
             </div>
             <div className="space-y-2">
-              <Label>目標節拍時間（秒）</Label>
+              <Label className="flex items-center gap-2">
+                <Target className="h-3.5 w-3.5 text-violet-400" />
+                目標節拍時間 Takt Time（秒）
+              </Label>
               <Input
                 type="number"
-                placeholder="例：60"
+                placeholder="例：60（依客戶需求計算：可用時間 ÷ 需求數量）"
                 value={form.targetCycleTime}
                 onChange={e => setForm(f => ({ ...f, targetCycleTime: e.target.value }))}
                 className="bg-input border-border"
                 min="0"
                 step="0.1"
               />
+              {form.targetCycleTime && parseFloat(form.targetCycleTime) > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  每小時產能目標：約 {Math.floor(3600 / parseFloat(form.targetCycleTime))} 件
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
