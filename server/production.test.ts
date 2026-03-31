@@ -267,3 +267,65 @@ describe("Snapshot Comparison Logic", () => {
     expect(totalImprovement).toBeCloseTo(15.2, 1);
   });
 });
+
+describe("Home Dashboard - Lines Latest Snapshot Comparison", () => {
+  it("correctly identifies best and worst balance rate lines", () => {
+    const lines = [
+      { lineName: "A線", balanceRate: 88.5 },
+      { lineName: "B線", balanceRate: 72.3 },
+      { lineName: "C線", balanceRate: 94.1 },
+      { lineName: "D線", balanceRate: 65.0 },
+    ];
+    const best  = lines.reduce((a, b) => a.balanceRate > b.balanceRate ? a : b);
+    const worst = lines.reduce((a, b) => a.balanceRate < b.balanceRate ? a : b);
+
+    expect(best.lineName).toBe("C線");
+    expect(best.balanceRate).toBe(94.1);
+    expect(worst.lineName).toBe("D線");
+    expect(worst.balanceRate).toBe(65.0);
+  });
+
+  it("calculates average balance rate across all lines", () => {
+    const rates = [88.5, 72.3, 94.1, 65.0];
+    const avg = rates.reduce((s, r) => s + r, 0) / rates.length;
+    expect(avg).toBeCloseTo(79.975, 2);
+  });
+
+  it("counts lines needing improvement (< 70%)", () => {
+    const lines = [
+      { balanceRate: 88.5 },
+      { balanceRate: 72.3 },
+      { balanceRate: 94.1 },
+      { balanceRate: 65.0 }, // 待改善
+      { balanceRate: 68.9 }, // 待改善
+    ];
+    const needImprove = lines.filter(l => l.balanceRate < 70).length;
+    expect(needImprove).toBe(2);
+  });
+
+  it("assigns correct color category by balance rate", () => {
+    const getCategory = (rate: number) => {
+      if (rate >= 90) return "優秀";
+      if (rate >= 80) return "良好";
+      if (rate >= 70) return "普通";
+      return "待改善";
+    };
+    expect(getCategory(94.1)).toBe("優秀");
+    expect(getCategory(85.0)).toBe("良好");
+    expect(getCategory(75.5)).toBe("普通");
+    expect(getCategory(65.0)).toBe("待改善");
+  });
+
+  it("filters out lines without snapshots from chart data", () => {
+    const allLatest = [
+      { lineId: 1, lineName: "A線", snapshot: { balanceRate: 88.5 } },
+      { lineId: 2, lineName: "B線", snapshot: null },
+      { lineId: 3, lineName: "C線", snapshot: { balanceRate: 72.3 } },
+    ];
+    const chartData = allLatest.filter(item => item.snapshot !== null);
+    const linesWithoutSnapshot = allLatest.filter(item => item.snapshot === null).length;
+
+    expect(chartData).toHaveLength(2);
+    expect(linesWithoutSnapshot).toBe(1);
+  });
+});

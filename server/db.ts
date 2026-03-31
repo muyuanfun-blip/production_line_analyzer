@@ -206,3 +206,48 @@ export async function deleteSnapshot(id: number) {
   if (!db) throw new Error("Database not available");
   return db.delete(analysisSnapshots).where(eq(analysisSnapshots.id, id));
 }
+
+/**
+ * 取得所有產線的最新快照摘要（用於首頁並排比較圖表）
+ */
+export async function getAllLinesLatestSnapshot() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // 取得所有產線
+  const lines = await db.select().from(productionLines).orderBy(asc(productionLines.id));
+  if (lines.length === 0) return [];
+
+  // 對每條產線取得最新快照
+  const results = await Promise.all(
+    lines.map(async (line) => {
+      const snapshots = await db
+        .select()
+        .from(analysisSnapshots)
+        .where(eq(analysisSnapshots.productionLineId, line.id))
+        .orderBy(desc(analysisSnapshots.createdAt))
+        .limit(1);
+      const latest = snapshots[0] ?? null;
+      return {
+        lineId: line.id,
+        lineName: line.name,
+        lineStatus: line.status,
+        targetCycleTime: line.targetCycleTime ? Number(line.targetCycleTime) : null,
+        snapshot: latest ? {
+          id: latest.id,
+          name: latest.name,
+          balanceRate: Number(latest.balanceRate),
+          balanceLoss: Number(latest.balanceLoss),
+          maxTime: Number(latest.maxTime),
+          avgTime: Number(latest.avgTime),
+          workstationCount: latest.workstationCount,
+          totalManpower: latest.totalManpower,
+          taktPassRate: latest.taktPassRate ? Number(latest.taktPassRate) : null,
+          bottleneckName: latest.bottleneckName,
+          createdAt: latest.createdAt,
+        } : null,
+      };
+    })
+  );
+  return results;
+}
