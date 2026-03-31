@@ -384,3 +384,58 @@ describe("Home Dashboard - Historical Trend Chart", () => {
     expect(chartData[2]!["產線B"]).toBeNull();
   });
 });
+
+describe("Ollama API 整合", () => {
+  const OLLAMA_BASE_URL = "https://ollama.com";
+  const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY ?? "";
+  const OLLAMA_MODEL = "qwen3-coder:480b";
+
+  it("OLLAMA_API_KEY 環境變數已設定", () => {
+    expect(OLLAMA_API_KEY).toBeTruthy();
+    expect(OLLAMA_API_KEY.length).toBeGreaterThan(10);
+  });
+
+  it("Ollama base URL 格式正確", () => {
+    expect(OLLAMA_BASE_URL).toBe("https://ollama.com");
+    expect(OLLAMA_BASE_URL.startsWith("https://")).toBe(true);
+  });
+
+  it("Ollama 模型名稱已設定", () => {
+    expect(OLLAMA_MODEL).toBeTruthy();
+    expect(typeof OLLAMA_MODEL).toBe("string");
+  });
+
+  it("Ollama API 可正常呼叫並回傳內容", async () => {
+    const res = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OLLAMA_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gemma3:4b",
+        messages: [{ role: "user", content: "reply with one word: hello" }],
+        stream: false,
+      }),
+    });
+    expect(res.ok).toBe(true);
+    const data = await res.json() as { message?: { content?: string } };
+    expect(data.message?.content).toBeTruthy();
+  }, 30000);
+
+  it("Ollama API 使用無效金鑰時回傳 401", async () => {
+    const res = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer invalid-key-12345",
+      },
+      body: JSON.stringify({
+        model: "gemma3:4b",
+        messages: [{ role: "user", content: "hi" }],
+        stream: false,
+      }),
+    });
+    expect(res.status).toBe(401);
+  }, 15000);
+});

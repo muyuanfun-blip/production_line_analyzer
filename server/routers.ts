@@ -14,7 +14,7 @@ import {
   getAllLinesLatestSnapshot,
   getAllLinesSnapshotHistory,
 } from "./db";
-import { invokeLLM } from "./_core/llm";
+import { ENV } from "./_core/env";
 
 // ─── Zod Schemas ─────────────────────────────────────────────────────────────
 
@@ -332,14 +332,34 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
 ## 6. 實施優先順序
 按重要性排列改善項目的實施順序。`;
 
-        const response = await invokeLLM({
-          messages: [
-            { role: "system", content: "你是一位精通精實生產和工業工程的專家顧問，擅長產線平衡分析和改善建議。請用繁體中文回答，格式清晰專業。" },
-            { role: "user", content: prompt },
-          ],
+        // 呼叫 Ollama API（OpenAI 相容格式）
+        const ollamaRes = await fetch(`${ENV.ollamaBaseUrl}/api/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${ENV.ollamaApiKey}`,
+          },
+          body: JSON.stringify({
+            model: ENV.ollamaModel,
+            messages: [
+              { role: "system", content: "你是一位精通精實生產（Lean Manufacturing）和工業工程的專家顧問，擅長產線平衡分析和改善建議。請用繁體中文回答，格式清晰專業。" },
+              { role: "user", content: prompt },
+            ],
+            stream: false,
+          }),
         });
 
-         const content = response.choices?.[0]?.message?.content ?? "無法生成建議，請稍後再試。";
+        if (!ollamaRes.ok) {
+          const errText = await ollamaRes.text();
+          throw new Error(`Ollama API 錯誤 (${ollamaRes.status}): ${errText}`);
+        }
+
+        const ollamaData = await ollamaRes.json() as {
+          message?: { content?: string };
+          error?: string;
+        };
+
+        const content = ollamaData.message?.content ?? "無法生成建議，請稍後再試。";
         return { suggestion: content };
       }),
   }),

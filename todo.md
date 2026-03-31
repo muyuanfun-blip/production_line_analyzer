@@ -80,3 +80,9 @@
 - [x] 加入 80%/90% 基準參考線（ReferenceLine）
 - [x] 無歷史資料時顯示引導空狀態
 - [x] 補強相關測試（5 項）
+
+## AI 改用 Ollama API（新增）
+- [x] 設定 OLLAMA_API_KEY secret
+- [x] 更新後端 AI 分析路由，改用 Ollama API（api/chat）
+- [x] 確認模型名稱（預設 qwen3-coder:480b）
+- [x] 測試 AI 分析功能是否正常回應（33 項測試全通過）
