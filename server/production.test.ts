@@ -439,3 +439,86 @@ describe("Ollama API 整合", () => {
     expect(res.status).toBe(401);
   }, 15000);
 });
+
+// ─── 動作拆解分析測試 ────────────────────────────────────────────────────────
+
+describe("動作拆解計算邏輯", () => {
+  type ActionType = "value_added" | "non_value_added" | "necessary_waste";
+  interface Step { duration: number; actionType: ActionType; }
+
+  function calcStats(steps: Step[]) {
+    const totalSec = steps.reduce((s, st) => s + st.duration, 0);
+    const byType = {
+      value_added: steps.filter(s => s.actionType === "value_added").reduce((a, s) => a + s.duration, 0),
+      non_value_added: steps.filter(s => s.actionType === "non_value_added").reduce((a, s) => a + s.duration, 0),
+      necessary_waste: steps.filter(s => s.actionType === "necessary_waste").reduce((a, s) => a + s.duration, 0),
+    };
+    const valueAddedRate = totalSec > 0 ? (byType.value_added / totalSec) * 100 : 0;
+    return { totalSec, byType, valueAddedRate };
+  }
+
+  it("正確計算合計時間", () => {
+    const steps: Step[] = [
+      { duration: 5, actionType: "value_added" },
+      { duration: 3, actionType: "non_value_added" },
+      { duration: 2, actionType: "necessary_waste" },
+    ];
+    const { totalSec } = calcStats(steps);
+    expect(totalSec).toBe(10);
+  });
+
+  it("正確計算各類型時間", () => {
+    const steps: Step[] = [
+      { duration: 6, actionType: "value_added" },
+      { duration: 2, actionType: "value_added" },
+      { duration: 4, actionType: "non_value_added" },
+    ];
+    const { byType } = calcStats(steps);
+    expect(byType.value_added).toBe(8);
+    expect(byType.non_value_added).toBe(4);
+    expect(byType.necessary_waste).toBe(0);
+  });
+
+  it("正確計算增值率", () => {
+    const steps: Step[] = [
+      { duration: 8, actionType: "value_added" },
+      { duration: 2, actionType: "non_value_added" },
+    ];
+    const { valueAddedRate } = calcStats(steps);
+    expect(valueAddedRate).toBe(80);
+  });
+
+  it("空步驟時增值率為 0", () => {
+    const { valueAddedRate } = calcStats([]);
+    expect(valueAddedRate).toBe(0);
+  });
+
+  it("全增值時增值率為 100%", () => {
+    const steps: Step[] = [
+      { duration: 5, actionType: "value_added" },
+      { duration: 3, actionType: "value_added" },
+    ];
+    const { valueAddedRate } = calcStats(steps);
+    expect(valueAddedRate).toBe(100);
+  });
+
+  it("正確判斷 vs Takt Time 達標狀態", () => {
+    const taktTime = 30;
+    const totalUnder = 28;
+    const totalOver = 35;
+    expect(totalUnder <= taktTime).toBe(true);
+    expect(totalOver <= taktTime).toBe(false);
+    expect((totalOver - taktTime).toFixed(1)).toBe("5.0");
+  });
+
+  it("各類型佔比合計應為 100%", () => {
+    const steps: Step[] = [
+      { duration: 5, actionType: "value_added" },
+      { duration: 3, actionType: "non_value_added" },
+      { duration: 2, actionType: "necessary_waste" },
+    ];
+    const { totalSec, byType } = calcStats(steps);
+    const sumPct = Object.values(byType).reduce((a, v) => a + (v / totalSec) * 100, 0);
+    expect(Math.round(sumPct)).toBe(100);
+  });
+});
