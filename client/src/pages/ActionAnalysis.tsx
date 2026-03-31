@@ -332,10 +332,14 @@ export default function ActionAnalysis() {
       }
       if (syncCycleTime && stats.totalSec > 0) {
         await updateWorkstation.mutateAsync({ id: selectedWsId, cycleTime: stats.totalSec });
-        utils.workstation.listByLine.invalidate({ productionLineId: lineIdNum });
-        toast.success(`工站時間已同步更新為 ${stats.totalSec.toFixed(1)}s`);
+        // 同步刷新工站列表、工站詳細資料與平衡分析頁面的工站快取
+        await utils.workstation.listByLine.invalidate({ productionLineId: lineIdNum });
+        await utils.workstation.getById.invalidate({ id: selectedWsId });
+        toast.success(`工站時間已同步更新為 ${stats.totalSec.toFixed(1)}s，平衡分析將自動重新計算`);
       }
       await refetchSteps();
+      // 刷新工站步驟列表與計數快取
+      await utils.actionStep.listByWorkstation.invalidate({ workstationId: selectedWsId });
       toast.success("動作步驟已儲存成功");
     } catch {
       toast.error("儲存失敗，請稍後再試");

@@ -124,6 +124,7 @@ export default function BalanceAnalysis() {
   const [snapName, setSnapName] = useState("");
   const [snapNote, setSnapNote] = useState("");
 
+  const utils = trpc.useUtils();
   const { data: line } = trpc.productionLine.getById.useQuery({ id: lineId });
   const { data: workstations, isLoading } = trpc.workstation.listByLine.useQuery({ productionLineId: lineId });
 
@@ -133,6 +134,10 @@ export default function BalanceAnalysis() {
       setShowSaveDialog(false);
       setSnapName("");
       setSnapNote("");
+      // 即時刷新快照相關快取，確保歷史頁面與首頁圖表即時同步
+      utils.snapshot.listByLine.invalidate({ productionLineId: lineId });
+      utils.snapshot.getAllLinesLatest.invalidate();
+      utils.snapshot.getAllLinesHistory.invalidate();
     },
     onError: () => toast.error("快照儲存失敗，請稍後再試"),
   });
@@ -360,9 +365,19 @@ export default function BalanceAnalysis() {
                   <span className="text-muted-foreground">工站數 / 人員</span>
                   <span className="font-medium">{analysis.workstationCount} 站 / {analysis.totalManpower} 人</span>
                 </div>
-                <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border/50">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span className="text-xs text-emerald-400">將自動同步各工站動作拆解增值率</span>
+                <div className="mt-2 pt-2 border-t border-border/50 space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                    <span className="text-xs text-emerald-400">將自動同步各工站動作拆解增値率（即時快取最新資料）</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+                    <span className="text-xs text-cyan-400">快照儲存後首頁儀表板圖表將即時同步更新</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                    <span className="text-xs text-amber-400">建議：儲存快照前請確認工站 CT 與動作拆解已完成最新更新</span>
+                  </div>
                 </div>
               </div>
             )}

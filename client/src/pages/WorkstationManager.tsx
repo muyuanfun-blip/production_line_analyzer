@@ -44,6 +44,9 @@ export default function WorkstationManager() {
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
   const [importPreview, setImportPreview] = useState<any[]>([]);
+  // 快速內嵌編輯狀態
+  const [inlineEdits, setInlineEdits] = useState<Record<number, { cycleTime: string; manpower: string }>>({});
+  const [savingInline, setSavingInline] = useState<Record<number, boolean>>({});
   const [form, setForm] = useState<WsFormData>({
     name: "", sequenceOrder: "", cycleTime: "", manpower: "1", description: "", notes: ""
   });
@@ -60,7 +63,9 @@ export default function WorkstationManager() {
 
   const updateMutation = trpc.workstation.update.useMutation({
     onSuccess: () => {
+      // 同時 invalidate 列表與對應工站詳細資料，確保平衡分析頁面即時重新計算
       utils.workstation.listByLine.invalidate({ productionLineId: lineId });
+      if (editingId) utils.workstation.getById.invalidate({ id: editingId });
       toast.success("工站更新成功");
       setShowForm(false);
       setEditingId(null);
@@ -171,6 +176,37 @@ export default function WorkstationManager() {
     bulkImportMutation.mutate({ productionLineId: lineId, workstations: importPreview });
   };
 
+  // ── 快速內嵌編輯輔助函數 ──────────────────────────────────────────────────
+  const startInlineEdit = (ws: any) => {
+    setInlineEdits(prev => ({
+      ...prev,
+      [ws.id]: { cycleTime: ws.cycleTime.toString(), manpower: ws.manpower.toString() }
+    }));
+  };
+
+  const cancelInlineEdit = (wsId: number) => {
+    setInlineEdits(prev => { const n = { ...prev }; delete n[wsId]; return n; });
+  };
+
+  const saveInlineEdit = async (wsId: number) => {
+    const edit = inlineEdits[wsId];
+    if (!edit) return;
+    const ct = parseFloat(edit.cycleTime);
+    const mp = parseInt(edit.manpower);
+    if (isNaN(ct) || ct <= 0) { toast.error("請輸入有效的工序時間"); return; }
+    if (isNaN(mp) || mp < 1) { toast.error("請輸入有效的人員配置"); return; }
+    setSavingInline(prev => ({ ...prev, [wsId]: true }));
+    try {
+      await updateMutation.mutateAsync({ id: wsId, cycleTime: ct, manpower: mp });
+      cancelInlineEdit(wsId);
+      toast.success("工站資料已即時更新，平衡分析將自動重新計算");
+    } catch {
+      toast.error("更新失敗");
+    } finally {
+      setSavingInline(prev => { const n = { ...prev }; delete n[wsId]; return n; });
+    }
+  };
+
   const handleExport = () => {
     if (!workstations?.length) { toast.error("沒有工站資料可導出"); return; }
     const header = "工站名稱,工序時間(s),人員配置,順序,描述\n";
@@ -276,15 +312,24 @@ export default function WorkstationManager() {
                 <tr className="border-b border-border bg-muted/30">
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 w-12">順序</th>
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">工站名稱</th>
-                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3">工序時間</th>
+                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3">
+                    工序時間
+                    <span className="ml-1 text-xs text-primary/60">(點擊即可編輯)</span>
+                  </th>
                   <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3">人員配置</th>
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">描述</th>
-                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3 w-24">操作</th>
+                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3 w-32">操作</th>
                 </tr>
               </thead>
               <tbody>
-                {workstations?.map((ws, idx) => (
-                  <tr key={ws.id} className="border-b border-border/50 hover:bg-accent/20 transition-colors">
+                {workstations?.map((ws) => {
+                  const isInlineEditing = !!inlineEdits[ws.id];
+                  const isSaving = !!savingInline[ws.id];
+                  const edit = inlineEdits[ws.id];
+                  return (
+                  <tr key={ws.id} className={`border-b border-border/50 transition-colors ${
+                    isInlineEditing ? 'bg-primary/5 border-primary/20' : 'hover:bg-accent/20'
+                  }`}>
                     <td className="px-4 py-3">
                       <span className="text-sm font-mono text-muted-foreground">{ws.sequenceOrder}</span>
                     </td>
@@ -292,39 +337,94 @@ export default function WorkstationManager() {
                       <span className="text-sm font-medium">{ws.name}</span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <span className="text-sm font-mono text-cyan-400">{parseFloat(ws.cycleTime.toString()).toFixed(1)}s</span>
+                      {isInlineEditing ? (
+                        <Input
+                          type="number"
+                          value={edit?.cycleTime ?? ''}
+                          onChange={e => setInlineEdits(prev => ({ ...prev, [ws.id]: { ...prev[ws.id]!, cycleTime: e.target.value } }))}
+                          onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(ws.id); if (e.key === 'Escape') cancelInlineEdit(ws.id); }}
+                          className="h-7 w-24 text-right text-sm font-mono bg-input border-primary/50 ml-auto"
+                          min="0" step="0.1" autoFocus
+                        />
+                      ) : (
+                        <button
+                          className="text-sm font-mono text-cyan-400 hover:text-cyan-300 hover:underline decoration-dashed cursor-pointer transition-colors"
+                          onClick={() => startInlineEdit(ws)}
+                          title="點擊即可快速編輯"
+                        >
+                          {parseFloat(ws.cycleTime.toString()).toFixed(1)}s
+                        </button>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <span className="text-sm text-muted-foreground">{ws.manpower} 人</span>
+                      {isInlineEditing ? (
+                        <Input
+                          type="number"
+                          value={edit?.manpower ?? ''}
+                          onChange={e => setInlineEdits(prev => ({ ...prev, [ws.id]: { ...prev[ws.id]!, manpower: e.target.value } }))}
+                          onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(ws.id); if (e.key === 'Escape') cancelInlineEdit(ws.id); }}
+                          className="h-7 w-16 text-right text-sm bg-input border-primary/50 ml-auto"
+                          min="1"
+                        />
+                      ) : (
+                        <button
+                          className="text-sm text-muted-foreground hover:text-foreground hover:underline decoration-dashed cursor-pointer transition-colors"
+                          onClick={() => startInlineEdit(ws)}
+                          title="點擊即可快速編輯"
+                        >
+                          {ws.manpower} 人
+                        </button>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-sm text-muted-foreground truncate max-w-[200px] block">{ws.description ?? "—"}</span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost" size="icon" className="h-7 w-7 hover:text-violet-400"
-                          onClick={() => setLocation(`/lines/${lineId}/actions?ws=${ws.id}`)}
-                          title="動作分析"
-                        >
-                          <Activity className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost" size="icon" className="h-7 w-7 hover:text-primary"
-                          onClick={() => openEdit(ws)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive"
-                          onClick={() => setDeleteId(ws.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
+                      {isInlineEditing ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm" className="h-7 px-2 text-xs bg-emerald-600 hover:bg-emerald-500"
+                            onClick={() => saveInlineEdit(ws.id)}
+                            disabled={isSaving}
+                          >
+                            {isSaving ? "儲存中...": "儲存"}
+                          </Button>
+                          <Button
+                            variant="ghost" size="sm" className="h-7 px-2 text-xs"
+                            onClick={() => cancelInlineEdit(ws.id)}
+                            disabled={isSaving}
+                          >
+                            取消
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost" size="icon" className="h-7 w-7 hover:text-violet-400"
+                            onClick={() => setLocation(`/lines/${lineId}/actions?ws=${ws.id}`)}
+                            title="動作分析"
+                          >
+                            <Activity className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost" size="icon" className="h-7 w-7 hover:text-primary"
+                            onClick={() => openEdit(ws)}
+                            title="完整編輯"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive"
+                            onClick={() => setDeleteId(ws.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

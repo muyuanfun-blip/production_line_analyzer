@@ -106,3 +106,11 @@
 - [x] 更新 SnapshotCompare.tsx：新增「增值率比較」區塊（各工站增值率並排柱狀圖）
 - [x] 更新 SnapshotCompare.tsx：在工站差異明細表加入增值率欄位（前後對比 + 差異箭頭）
 - [x] 補強相關測試（增值率快照計算邏輯，6 項）
+
+## 資料同步完善（新增）
+- [x] 審查 WorkstationManager、ActionAnalysis、BalanceAnalysis 三頁面的資料同步缺口
+- [x] 動作拆解合計秒數「同步至工站 CT」按鈕：確認 mutation invalidate 正確刷新平衡分析數據
+- [x] 工站 CT 更新後，平衡分析頁面自動重新計算（確認 query invalidation 正確）
+- [x] 加入工站快速批量編輯介面（表格內嵌編輯，點擊 CT/人員欄位即可編輯，Enter 儲存）
+- [x] 快照儲存前加入「資料一致性提示」：顯示 CT 與動作拆解同步狀態、儀表板即時同步提示
+- [x] 補強同步邏輯相關測試（46 項全通過）
