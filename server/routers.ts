@@ -12,6 +12,7 @@ import {
   deleteActionStep, bulkCreateActionSteps,
   getSnapshotsByLine, getSnapshotById, createSnapshot, deleteSnapshot,
   getAllLinesLatestSnapshot,
+  getAllLinesSnapshotHistory,
 } from "./db";
 import { invokeLLM } from "./_core/llm";
 
@@ -438,6 +439,11 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
     getAllLinesLatest: publicProcedure
       .query(async () => {
         const rows = await getAllLinesLatestSnapshot();
+        return rows;
+      }),
+    getAllLinesHistory: publicProcedure
+      .query(async () => {
+        const rows = await getAllLinesSnapshotHistory();
         return rows;
       }),
   }),

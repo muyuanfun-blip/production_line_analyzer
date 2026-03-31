@@ -210,6 +210,41 @@ export async function deleteSnapshot(id: number) {
 /**
  * 取得所有產線的最新快照摘要（用於首頁並排比較圖表）
  */
+export async function getAllLinesSnapshotHistory() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // 取得所有產線
+  const lines = await db.select().from(productionLines).orderBy(asc(productionLines.id));
+  if (lines.length === 0) return [];
+  // 對每條產線取得所有快照（按時間排序）
+  const results = await Promise.all(
+    lines.map(async (line) => {
+      const snapshots = await db
+        .select()
+        .from(analysisSnapshots)
+        .where(eq(analysisSnapshots.productionLineId, line.id))
+        .orderBy(asc(analysisSnapshots.createdAt));
+      return {
+        lineId: line.id,
+        lineName: line.name,
+        lineStatus: line.status,
+        snapshots: snapshots.map((s) => ({
+          id: s.id,
+          name: s.name,
+          balanceRate: Number(s.balanceRate),
+          taktPassRate: s.taktPassRate ? Number(s.taktPassRate) : null,
+          maxTime: Number(s.maxTime),
+          avgTime: Number(s.avgTime),
+          workstationCount: s.workstationCount,
+          createdAt: s.createdAt,
+        })),
+      };
+    })
+  );
+  // 只回傳有快照的產線
+  return results.filter((r) => r.snapshots.length > 0);
+}
+
 export async function getAllLinesLatestSnapshot() {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

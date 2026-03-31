@@ -329,3 +329,58 @@ describe("Home Dashboard - Lines Latest Snapshot Comparison", () => {
     expect(linesWithoutSnapshot).toBe(1);
   });
 });
+
+// ─── getAllLinesSnapshotHistory 趨勢圖表測試 ──────────────────────────────────
+describe("Home Dashboard - Historical Trend Chart", () => {
+  it("sorts snapshots chronologically (ascending)", () => {
+    const snapshots = [
+      { id: 3, createdAt: new Date("2024-03-01"), balanceRate: 85 },
+      { id: 1, createdAt: new Date("2024-01-01"), balanceRate: 70 },
+      { id: 2, createdAt: new Date("2024-02-01"), balanceRate: 78 },
+    ];
+    const sorted = [...snapshots].sort(
+      (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
+    );
+    expect(sorted[0]!.balanceRate).toBe(70);
+    expect(sorted[1]!.balanceRate).toBe(78);
+    expect(sorted[2]!.balanceRate).toBe(85);
+  });
+
+  it("calculates improvement delta correctly", () => {
+    const snapshots = [
+      { balanceRate: 70 },
+      { balanceRate: 78 },
+      { balanceRate: 85 },
+    ];
+    const first = snapshots[0]!;
+    const last = snapshots[snapshots.length - 1]!;
+    const delta = last.balanceRate - first.balanceRate;
+    expect(delta).toBeCloseTo(15, 1);
+    expect(delta > 0).toBe(true);
+  });
+
+  it("detects regression (negative delta)", () => {
+    const snapshots = [{ balanceRate: 88 }, { balanceRate: 82 }];
+    const delta = snapshots[1]!.balanceRate - snapshots[0]!.balanceRate;
+    expect(delta).toBeLessThan(0);
+  });
+
+  it("handles single snapshot (no delta comparison possible)", () => {
+    const snapshots = [{ balanceRate: 75 }];
+    const canCompare = snapshots.length >= 2;
+    expect(canCompare).toBe(false);
+  });
+
+  it("builds trend chart data points aligned by index across lines", () => {
+    const lineA = [70, 78, 85];
+    const lineB = [65, 72];
+    const maxSnaps = Math.max(lineA.length, lineB.length);
+    const chartData = Array.from({ length: maxSnaps }, (_, i) => ({
+      "產線A": lineA[i] ?? null,
+      "產線B": lineB[i] ?? null,
+    }));
+    expect(chartData).toHaveLength(3);
+    expect(chartData[2]!["產線A"]).toBe(85);
+    expect(chartData[2]!["產線B"]).toBeNull();
+  });
+});

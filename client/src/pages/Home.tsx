@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import {
   Activity, BarChart3, Brain, Factory, TrendingUp, Zap, ArrowRight,
   Clock, Users, Target, Camera, AlertTriangle, CheckCircle2, Minus,
-  ChevronRight, TrendingDown,
+  ChevronRight, TrendingDown, LineChart as LineChartIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, Cell, LabelList,
+  LineChart, Line, Legend,
 } from "recharts";
 import { useMemo } from "react";
 
@@ -66,6 +67,7 @@ export default function Home() {
   const [, setLocation] = useLocation();
   const { data: lines } = trpc.productionLine.list.useQuery();
   const { data: allLatest, isLoading: latestLoading } = trpc.snapshot.getAllLinesLatest.useQuery();
+  const { data: allHistory, isLoading: historyLoading } = trpc.snapshot.getAllLinesHistory.useQuery();
 
   const totalLines = lines?.length ?? 0;
   const activeLines = lines?.filter(l => l.status === "active").length ?? 0;
@@ -100,6 +102,55 @@ export default function Home() {
     const needImprove = chartData.filter(d => d.balanceRate < 70).length;
     return { avg, best, worst, needImprove, total: chartData.length };
   }, [chartData]);
+
+  // ─── 歷史趨勢圖表資料整理 ──────────────────────────────────────────────────
+  // 將各產線快照整理為折線圖所需的時間序列格式
+  // 每個資料點為一個時間點，包含各產線在該時間點的平衡率
+  const { trendChartData, lineColors, lineNames } = useMemo(() => {
+    if (!allHistory || allHistory.length === 0) {
+      return { trendChartData: [], lineColors: {}, lineNames: [] };
+    }
+    // 為每條產線分配固定顏色
+    const palette = [
+      "#34d399", "#22d3ee", "#a78bfa", "#f59e0b",
+      "#f87171", "#60a5fa", "#fb923c", "#e879f9",
+    ];
+    const lineColors: Record<string, string> = {};
+    const lineNames: string[] = [];
+    allHistory.forEach((line, idx) => {
+      lineColors[line.lineName] = palette[idx % palette.length]!;
+      lineNames.push(line.lineName);
+    });
+
+    // 收集所有時間點（以快照 ID 為序，格式化為日期標籤）
+    // 每條產線可能有不同數量的快照，以「快照序號」對齊
+    // 找出最多快照數的產線，以其為 X 軸基準
+    const maxSnaps = Math.max(...allHistory.map(l => l.snapshots.length));
+    const trendChartData: Record<string, string | number>[] = [];
+
+    for (let i = 0; i < maxSnaps; i++) {
+      const point: Record<string, string | number> = { index: i + 1 };
+      let hasLabel = false;
+      allHistory.forEach((line) => {
+        const snap = line.snapshots[i];
+        if (snap) {
+          point[line.lineName] = parseFloat(snap.balanceRate.toFixed(1));
+          if (!hasLabel) {
+            // 使用第一條有資料的產線的快照日期作為 X 軸標籤
+            const d = new Date(snap.createdAt);
+            point.label = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+            hasLabel = true;
+          }
+          // 也記錄快照名稱供 tooltip 使用
+          point[`${line.lineName}_snapName`] = snap.name;
+        }
+      });
+      trendChartData.push(point);
+    }
+    return { trendChartData, lineColors, lineNames };
+  }, [allHistory]);
+
+  const hasTrendData = trendChartData.length > 0;
 
   // 有多少產線尚無快照
   const linesWithoutSnapshot = useMemo(() => {
@@ -418,6 +469,203 @@ export default function Home() {
               )}
             </div>
           </div>
+        )}
+      </div>
+
+      {/* ─── 歷史平衡率趨勢折線圖 ─────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
+              <LineChartIcon className="h-5 w-5 text-primary" />
+              歷史平衡率趨勢
+            </h2>
+            <p className="text-sm text-muted-foreground mt-0.5">追蹤各產線長期改善軌跡</p>
+          </div>
+          {hasTrendData && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setLocation("/lines")}
+              className="border-border text-muted-foreground hover:text-foreground"
+            >
+              查看快照
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          )}
+        </div>
+
+        {/* 無歷史資料時的引導提示 */}
+        {!historyLoading && !hasTrendData && (
+          <Card className="border-dashed border-primary/20 bg-primary/5">
+            <CardContent className="p-8 text-center">
+              <LineChartIcon className="h-12 w-12 text-primary/30 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">尚無歷史趨勢資料</h3>
+              <p className="text-muted-foreground text-sm mb-4 max-w-md mx-auto">
+                每次在平衡分析頁面儲存快照後，此處將自動繪製各產線的平衡率改善趨勢折線圖，
+                幫助您追蹤長期優化成效。
+              </p>
+              <Button onClick={() => setLocation("/lines")}>
+                前往建立快照
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 有歷史資料時顯示折線圖 */}
+        {hasTrendData && (
+          <Card className="border-border bg-card">
+            <CardHeader className="pb-2 pt-5 px-6">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <CardTitle className="text-base font-semibold">各產線平衡率歷史趨勢</CardTitle>
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-8 h-0.5 bg-amber-400/70" style={{ borderTop: '2px dashed #f59e0b' }} />
+                    80% 基準
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-8 h-0.5 bg-emerald-400/70" style={{ borderTop: '2px dashed #34d399' }} />
+                    90% 優秀
+                  </span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="px-2 pb-5">
+              <ResponsiveContainer width="100%" height={320}>
+                <LineChart
+                  data={trendChartData}
+                  margin={{ top: 10, right: 30, left: 0, bottom: 20 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="oklch(1 0 0 / 0.06)" />
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: "oklch(0.65 0 0)", fontSize: 10 }}
+                    angle={-30}
+                    textAnchor="end"
+                    height={50}
+                    interval={0}
+                  />
+                  <YAxis
+                    domain={[0, 100]}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: "oklch(0.65 0 0)", fontSize: 11 }}
+                    tickFormatter={(v) => `${v}%`}
+                    width={42}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: "oklch(0.18 0.01 240)",
+                      border: "1px solid oklch(0.3 0.01 240)",
+                      borderRadius: "12px",
+                      fontSize: "12px",
+                    }}
+                    labelStyle={{ color: "oklch(0.85 0 0)", fontWeight: 600, marginBottom: 4 }}
+                    formatter={(value: number, name: string, props: any) => {
+                      const snapName = props.payload?.[`${name}_snapName`];
+                      return [
+                        <span style={{ color: lineColors[name] }}>
+                          {value.toFixed(1)}%{snapName ? ` (${snapName})` : ""}
+                        </span>,
+                        name,
+                      ];
+                    }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: "12px", paddingTop: "8px" }}
+                    formatter={(value) => (
+                      <span style={{ color: lineColors[value] ?? "oklch(0.75 0 0)" }}>{value}</span>
+                    )}
+                  />
+                  {/* 80% 基準線 */}
+                  <ReferenceLine
+                    y={80}
+                    stroke="oklch(0.75 0.18 80 / 0.5)"
+                    strokeDasharray="5 4"
+                    label={{ value: "80%", position: "insideTopRight", fill: "oklch(0.75 0.18 80 / 0.7)", fontSize: 10 }}
+                  />
+                  {/* 90% 優秀基準線 */}
+                  <ReferenceLine
+                    y={90}
+                    stroke="oklch(0.75 0.18 155 / 0.5)"
+                    strokeDasharray="5 4"
+                    label={{ value: "90%", position: "insideTopRight", fill: "oklch(0.75 0.18 155 / 0.7)", fontSize: 10 }}
+                  />
+                  {/* 每條產線一條折線 */}
+                  {lineNames.map((name) => (
+                    <Line
+                      key={name}
+                      type="monotone"
+                      dataKey={name}
+                      stroke={lineColors[name]}
+                      strokeWidth={2.5}
+                      dot={{ r: 4, fill: lineColors[name], strokeWidth: 2, stroke: "oklch(0.15 0.01 240)" }}
+                      activeDot={{ r: 6, strokeWidth: 0 }}
+                      connectNulls={false}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+
+              {/* 各產線最新改善幅度摘要 */}
+              {allHistory && allHistory.length > 0 && (
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 px-4">
+                  {allHistory
+                    .filter(line => line.snapshots.length >= 2)
+                    .map(line => {
+                      const first = line.snapshots[0]!;
+                      const last = line.snapshots[line.snapshots.length - 1]!;
+                      const delta = last.balanceRate - first.balanceRate;
+                      const isImproved = delta > 0;
+                      return (
+                        <div
+                          key={line.lineId}
+                          className="rounded-xl border border-border bg-card/60 p-3 cursor-pointer hover:bg-accent/20 transition-colors"
+                          onClick={() => setLocation(`/lines/${line.lineId}/balance`)}
+                        >
+                          <p className="text-xs text-muted-foreground truncate mb-1">{line.lineName}</p>
+                          <div className="flex items-center gap-1.5">
+                            {isImproved
+                              ? <TrendingUp className="h-4 w-4 text-emerald-400 shrink-0" />
+                              : delta < 0
+                                ? <TrendingDown className="h-4 w-4 text-red-400 shrink-0" />
+                                : <Minus className="h-4 w-4 text-muted-foreground shrink-0" />
+                            }
+                            <span className={`text-sm font-bold ${
+                              isImproved ? "text-emerald-400" : delta < 0 ? "text-red-400" : "text-muted-foreground"
+                            }`}>
+                              {isImproved ? "+" : ""}{delta.toFixed(1)}%
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            共 {line.snapshots.length} 次快照
+                          </p>
+                        </div>
+                      );
+                    })}
+                  {allHistory.filter(line => line.snapshots.length === 1).map(line => (
+                    <div
+                      key={line.lineId}
+                      className="rounded-xl border border-dashed border-border bg-card/40 p-3 cursor-pointer hover:bg-accent/20 transition-colors"
+                      onClick={() => setLocation(`/lines/${line.lineId}/balance`)}
+                    >
+                      <p className="text-xs text-muted-foreground truncate mb-1">{line.lineName}</p>
+                      <div className="flex items-center gap-1.5">
+                        <Camera className="h-4 w-4 text-muted-foreground/50 shrink-0" />
+                        <span className="text-sm font-bold" style={{ color: lineColors[line.lineName] }}>
+                          {line.snapshots[0]!.balanceRate.toFixed(1)}%
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">僅 1 次快照</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         )}
       </div>
 
