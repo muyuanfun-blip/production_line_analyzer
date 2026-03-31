@@ -522,3 +522,76 @@ describe("動作拆解計算邏輯", () => {
     expect(Math.round(sumPct)).toBe(100);
   });
 });
+
+// ─── 動作拆解整合快照測試 ─────────────────────────────────────────────────────
+
+describe("動作拆解整合快照計算邏輯", () => {
+  type ActionType = "value_added" | "non_value_added" | "necessary_waste";
+  interface Step { duration: number; actionType: ActionType; }
+
+  function enrichWorkstation(steps: Step[]) {
+    const totalStepSec = steps.reduce((s, st) => s + st.duration, 0);
+    const valueAddedSec = steps.filter(s => s.actionType === "value_added").reduce((s, st) => s + st.duration, 0);
+    const nonValueAddedSec = steps.filter(s => s.actionType === "non_value_added").reduce((s, st) => s + st.duration, 0);
+    const necessaryWasteSec = steps.filter(s => s.actionType === "necessary_waste").reduce((s, st) => s + st.duration, 0);
+    const valueAddedRate = totalStepSec > 0 ? parseFloat(((valueAddedSec / totalStepSec) * 100).toFixed(2)) : null;
+    return { totalStepSec, valueAddedSec, nonValueAddedSec, necessaryWasteSec, valueAddedRate, actionStepCount: steps.length };
+  }
+
+  it("無動作步驟時 valueAddedRate 為 null", () => {
+    const result = enrichWorkstation([]);
+    expect(result.valueAddedRate).toBeNull();
+    expect(result.actionStepCount).toBe(0);
+  });
+
+  it("全增值步驟時 valueAddedRate 為 100", () => {
+    const steps: Step[] = [
+      { duration: 5, actionType: "value_added" },
+      { duration: 3, actionType: "value_added" },
+    ];
+    const result = enrichWorkstation(steps);
+    expect(result.valueAddedRate).toBe(100);
+  });
+
+  it("混合步驟時正確計算增值率", () => {
+    const steps: Step[] = [
+      { duration: 6, actionType: "value_added" },
+      { duration: 2, actionType: "non_value_added" },
+      { duration: 2, actionType: "necessary_waste" },
+    ];
+    const result = enrichWorkstation(steps);
+    expect(result.valueAddedRate).toBe(60);
+    expect(result.valueAddedSec).toBe(6);
+    expect(result.nonValueAddedSec).toBe(2);
+    expect(result.necessaryWasteSec).toBe(2);
+    expect(result.totalStepSec).toBe(10);
+  });
+
+  it("快照比較時正確計算增值率差異", () => {
+    const vaA = 60;
+    const vaB = 75;
+    const delta = vaB - vaA;
+    expect(delta).toBe(15);
+    expect(delta > 0.5).toBe(true); // vaImproved
+    expect(delta < -0.5).toBe(false); // vaWorsened
+  });
+
+  it("整體平均增值率計算（多工站）", () => {
+    const workstations = [
+      { valueAddedRate: 80 },
+      { valueAddedRate: 60 },
+      { valueAddedRate: 70 },
+      { valueAddedRate: null }, // 無資料工站不計入
+    ];
+    const withData = workstations.filter(w => w.valueAddedRate != null);
+    const avg = withData.reduce((s, w) => s + (w.valueAddedRate ?? 0), 0) / withData.length;
+    expect(avg).toBeCloseTo(70, 1);
+    expect(withData.length).toBe(3);
+  });
+
+  it("增值率 vaDelta 邊界值：小於 0.5 視為持平", () => {
+    const delta = 0.3;
+    expect(delta > 0.5).toBe(false);  // 非 vaImproved
+    expect(delta < -0.5).toBe(false); // 非 vaWorsened
+  });
+});

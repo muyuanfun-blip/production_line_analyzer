@@ -428,6 +428,35 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         bottleneckName: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
+        // 自動查詢各工站的動作拆解資料並計算增值率
+        const enrichedWorkstations = await Promise.all(
+          input.workstationsData.map(async (ws) => {
+            const steps = await getActionStepsByWorkstation(ws.id);
+            const totalStepSec = steps.reduce((s, st) => s + parseFloat(String(st.duration)), 0);
+            const valueAddedSec = steps
+              .filter(s => s.actionType === 'value_added')
+              .reduce((s, st) => s + parseFloat(String(st.duration)), 0);
+            const nonValueAddedSec = steps
+              .filter(s => s.actionType === 'non_value_added')
+              .reduce((s, st) => s + parseFloat(String(st.duration)), 0);
+            const necessaryWasteSec = steps
+              .filter(s => s.actionType === 'necessary_waste')
+              .reduce((s, st) => s + parseFloat(String(st.duration)), 0);
+            const valueAddedRate = totalStepSec > 0
+              ? parseFloat(((valueAddedSec / totalStepSec) * 100).toFixed(2))
+              : null;
+            return {
+              ...ws,
+              // 動作拆解摘要
+              actionStepCount: steps.length,
+              totalStepSec: parseFloat(totalStepSec.toFixed(2)),
+              valueAddedSec: parseFloat(valueAddedSec.toFixed(2)),
+              nonValueAddedSec: parseFloat(nonValueAddedSec.toFixed(2)),
+              necessaryWasteSec: parseFloat(necessaryWasteSec.toFixed(2)),
+              valueAddedRate,  // null 表示該工站無動作拆解資料
+            };
+          })
+        );
         await createSnapshot({
           productionLineId: input.productionLineId,
           name: input.name,
@@ -443,7 +472,7 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
           taktTime: input.taktTime != null ? String(input.taktTime) : null,
           taktPassRate: input.taktPassRate != null ? String(input.taktPassRate) : null,
           taktPassCount: input.taktPassCount ?? null,
-          workstationsData: input.workstationsData,
+          workstationsData: enrichedWorkstations,
           bottleneckName: input.bottleneckName ?? null,
         });
         return { success: true };

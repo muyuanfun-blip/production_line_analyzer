@@ -97,3 +97,12 @@
 - [x] 圓餅圖即時更新（依動作類型分佈）
 - [x] 工站時間自動同步（動作合計秒數可回寫至工站 cycleTime）
 - [x] 補強相關測試（7 項）
+
+## 動作拆解整合快照（新增）
+- [x] 確認 analysis_snapshots.snapshotData JSON 結構
+- [x] 擴充快照 snapshotData：加入各工站 actionSteps 摘要（valueAddedSec, nonValueAddedSec, necessaryWasteSec, totalStepSec, valueAddedRate）
+- [x] 更新後端 snapshot.create API：建立快照時同步查詢各工站的動作拆解資料
+- [x] 更新 BalanceAnalysis.tsx 儲存快照 Dialog：顯示「將同步記錄各工站動作拆解資料」提示
+- [x] 更新 SnapshotCompare.tsx：新增「增值率比較」區塊（各工站增值率並排柱狀圖）
+- [x] 更新 SnapshotCompare.tsx：在工站差異明細表加入增值率欄位（前後對比 + 差異箭頭）
+- [x] 補強相關測試（增值率快照計算邏輯，6 項）

@@ -316,7 +316,7 @@ export default function BalanceAnalysis() {
               儲存分析快照
             </DialogTitle>
             <DialogDescription>
-              快照會記錄目前產線的平衡率、Takt Time 達標率與工站時間明細。
+              快照會記錄目前產線的平衡率、Takt Time 達標率與工站時間明細，並自動同步各工站的動作拆解增值率資料。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -359,6 +359,10 @@ export default function BalanceAnalysis() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">工站數 / 人員</span>
                   <span className="font-medium">{analysis.workstationCount} 站 / {analysis.totalManpower} 人</span>
+                </div>
+                <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border/50">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span className="text-xs text-emerald-400">將自動同步各工站動作拆解增值率</span>
                 </div>
               </div>
             )}

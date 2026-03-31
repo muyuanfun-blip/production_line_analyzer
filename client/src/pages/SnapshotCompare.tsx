@@ -10,7 +10,7 @@ import {
 } from "recharts";
 import {
   ArrowLeft, TrendingUp, TrendingDown, Minus,
-  BarChart3, Target, Users, Camera, AlertTriangle, CheckCircle2
+  BarChart3, Camera, AlertTriangle, CheckCircle2, Zap
 } from "lucide-react";
 
 type WorkstationData = {
@@ -20,6 +20,13 @@ type WorkstationData = {
   manpower: number;
   sequenceOrder: number;
   description?: string;
+  // 動作拆解摘要（新快照才有）
+  actionStepCount?: number;
+  totalStepSec?: number;
+  valueAddedSec?: number;
+  nonValueAddedSec?: number;
+  necessaryWasteSec?: number;
+  valueAddedRate?: number | null;
 };
 
 type Snapshot = {
@@ -61,7 +68,7 @@ function DeltaBadge({ a, b, unit = "", higherIsBetter = true }: {
   );
 }
 
-const C = { a: "#22d3ee", b: "#a78bfa" };
+const C = { a: "#22d3ee", b: "#a78bfa", va: "#34d399", nva: "#f87171", nw: "#fbbf24" };
 
 export default function SnapshotCompare() {
   const params = useParams<{ id: string }>();
@@ -88,24 +95,53 @@ export default function SnapshotCompare() {
     return (snapB.workstationsData as WorkstationData[]).sort((a, b) => a.sequenceOrder - b.sequenceOrder);
   }, [snapB]);
 
-  // 工站差異比較資料
+  // 工站差異比較資料（含增值率）
   const stationDiff = useMemo(() => {
     const allNames = Array.from(new Set([...wsA.map(w => w.name), ...wsB.map(w => w.name)]));
     return allNames.map(name => {
       const a = wsA.find(w => w.name === name);
       const b = wsB.find(w => w.name === name);
       const delta = (b?.cycleTime ?? 0) - (a?.cycleTime ?? 0);
+      const vaA = a?.valueAddedRate ?? null;
+      const vaB = b?.valueAddedRate ?? null;
+      const vaDelta = vaA != null && vaB != null ? vaB - vaA : null;
       return {
         name,
-        "A 快照": a?.cycleTime ?? null,
-        "B 快照": b?.cycleTime ?? null,
+        "A 週期時間": a?.cycleTime ?? null,
+        "B 週期時間": b?.cycleTime ?? null,
         delta,
         improved: delta < -0.1,
         worsened: delta > 0.1,
         onlyA: !b,
         onlyB: !a,
+        vaA,
+        vaB,
+        vaDelta,
+        vaImproved: vaDelta != null ? vaDelta > 0.5 : null,
+        vaWorsened: vaDelta != null ? vaDelta < -0.5 : null,
       };
     });
+  }, [wsA, wsB]);
+
+  // 增值率對比圖表資料（只取兩快照都有 valueAddedRate 的工站）
+  const vaChartData = useMemo(() => {
+    return stationDiff
+      .filter(r => r.vaA != null || r.vaB != null)
+      .map(r => ({
+        name: r.name.length > 8 ? r.name.slice(0, 8) + "…" : r.name,
+        "A 增值率": r.vaA,
+        "B 增值率": r.vaB,
+      }));
+  }, [stationDiff]);
+
+  // 整體增值率摘要（快照層級）
+  const overallVA = useMemo(() => {
+    const calcAvg = (ws: WorkstationData[]) => {
+      const withData = ws.filter(w => w.valueAddedRate != null);
+      if (withData.length === 0) return null;
+      return withData.reduce((s, w) => s + (w.valueAddedRate ?? 0), 0) / withData.length;
+    };
+    return { a: calcAvg(wsA), b: calcAvg(wsB) };
   }, [wsA, wsB]);
 
   // 趨勢圖（所有快照按時間正序）
@@ -149,6 +185,7 @@ export default function SnapshotCompare() {
   const improvedCount = stationDiff.filter(r => r.improved).length;
   const worsenedCount = stationDiff.filter(r => r.worsened).length;
   const neutralCount = stationDiff.filter(r => !r.improved && !r.worsened && !r.onlyA && !r.onlyB).length;
+  const hasVAData = vaChartData.length > 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -162,7 +199,7 @@ export default function SnapshotCompare() {
         <div>
           <div className="text-sm text-muted-foreground mb-1">歷史快照 › 快照比較</div>
           <h1 className="text-2xl font-bold text-foreground">快照比較分析</h1>
-          <p className="text-sm text-muted-foreground mt-1">對比兩個時間點的產線平衡狀態，追蹤改善成效</p>
+          <p className="text-sm text-muted-foreground mt-1">對比兩個時間點的產線平衡狀態與增值率，追蹤改善成效</p>
         </div>
       </div>
 
@@ -183,8 +220,8 @@ export default function SnapshotCompare() {
         ))}
       </div>
 
-      {/* KPI 比較 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* KPI 比較（含整體增值率）*/}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {kpis.map(({ label, a, b, unit, higherIsBetter, noData }) => (
           <Card key={label} className="bg-card border-border">
             <CardContent className="p-4">
@@ -210,9 +247,42 @@ export default function SnapshotCompare() {
             </CardContent>
           </Card>
         ))}
+        {/* 整體平均增值率 KPI */}
+        <Card className="bg-card border-border">
+          <CardContent className="p-4">
+            <div className="text-sm text-muted-foreground mb-3 flex items-center gap-1">
+              <Zap className="w-3.5 h-3.5 text-emerald-400" />
+              平均增值率
+            </div>
+            {overallVA.a == null && overallVA.b == null ? (
+              <div className="text-muted-foreground text-sm">無動作拆解資料</div>
+            ) : (
+              <>
+                <div className="flex items-end gap-3 mb-2">
+                  <div>
+                    <div className="text-lg font-bold text-cyan-400">
+                      {overallVA.a != null ? `${overallVA.a.toFixed(1)}%` : "—"}
+                    </div>
+                    <div className="text-xs text-muted-foreground">快照 A</div>
+                  </div>
+                  <div className="text-muted-foreground mb-1 text-sm">→</div>
+                  <div>
+                    <div className="text-lg font-bold text-violet-400">
+                      {overallVA.b != null ? `${overallVA.b.toFixed(1)}%` : "—"}
+                    </div>
+                    <div className="text-xs text-muted-foreground">快照 B</div>
+                  </div>
+                </div>
+                {overallVA.a != null && overallVA.b != null && (
+                  <DeltaBadge a={overallVA.a} b={overallVA.b} unit="%" higherIsBetter={true} />
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* 工站時間對比柱狀圖 */}
+      {/* 工站週期時間對比柱狀圖 */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -236,12 +306,47 @@ export default function SnapshotCompare() {
                 <ReferenceLine y={A.taktTime} stroke="#a78bfa" strokeDasharray="6 3"
                   label={{ value: `Takt ${A.taktTime}s`, fill: "#a78bfa", fontSize: 11 }} />
               )}
-              <Bar dataKey="A 快照" fill={C.a} radius={[3, 3, 0, 0]} maxBarSize={40} />
-              <Bar dataKey="B 快照" fill={C.b} radius={[3, 3, 0, 0]} maxBarSize={40} />
+              <Bar dataKey="A 週期時間" fill={C.a} radius={[3, 3, 0, 0]} maxBarSize={40} />
+              <Bar dataKey="B 週期時間" fill={C.b} radius={[3, 3, 0, 0]} maxBarSize={40} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
       </Card>
+
+      {/* 增值率對比柱狀圖（有資料才顯示） */}
+      {hasVAData && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Zap className="w-4 h-4 text-emerald-400" />
+              各工站增值率對比
+              <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-xs ml-1">動作拆解</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={vaChartData} margin={{ top: 10, right: 20, left: 0, bottom: 50 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
+                <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} unit="%" domain={[0, 100]} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px" }}
+                  labelStyle={{ color: "#f1f5f9" }}
+                  formatter={(v: number, name: string) => [v != null ? `${v.toFixed(1)}%` : "—", name]}
+                />
+                <Legend wrapperStyle={{ paddingTop: "16px" }} />
+                <ReferenceLine y={80} stroke="#34d399" strokeDasharray="5 3"
+                  label={{ value: "目標 80%", fill: "#34d399", fontSize: 10 }} />
+                <Bar dataKey="A 增值率" fill={C.a} radius={[3, 3, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="B 增值率" fill={C.b} radius={[3, 3, 0, 0]} maxBarSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+            <p className="text-xs text-muted-foreground mt-2">
+              增值率 = 增值動作秒數 ÷ 動作拆解合計秒數 × 100%。僅顯示有動作拆解資料的工站。
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 平衡率趨勢折線圖 */}
       {trendData.length > 1 && (
@@ -276,12 +381,12 @@ export default function SnapshotCompare() {
         </Card>
       )}
 
-      {/* 工站差異明細表 */}
+      {/* 工站差異明細表（含增值率欄位） */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <BarChart3 className="w-4 h-4 text-blue-400" />
-            工站時間差異明細
+            工站差異明細
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -290,9 +395,12 @@ export default function SnapshotCompare() {
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-2 px-3 text-muted-foreground font-medium">工站名稱</th>
-                  <th className="text-right py-2 px-3 text-cyan-400 font-medium">快照 A</th>
-                  <th className="text-right py-2 px-3 text-violet-400 font-medium">快照 B</th>
-                  <th className="text-right py-2 px-3 text-muted-foreground font-medium">變化量</th>
+                  <th className="text-right py-2 px-3 text-cyan-400 font-medium">A 週期</th>
+                  <th className="text-right py-2 px-3 text-violet-400 font-medium">B 週期</th>
+                  <th className="text-right py-2 px-3 text-muted-foreground font-medium">週期變化</th>
+                  <th className="text-right py-2 px-3 text-cyan-400/70 font-medium">A 增值率</th>
+                  <th className="text-right py-2 px-3 text-violet-400/70 font-medium">B 增值率</th>
+                  <th className="text-right py-2 px-3 text-muted-foreground font-medium">增值率變化</th>
                   <th className="text-center py-2 px-3 text-muted-foreground font-medium">狀態</th>
                 </tr>
               </thead>
@@ -301,15 +409,30 @@ export default function SnapshotCompare() {
                   <tr key={row.name} className="border-b border-border/50 hover:bg-white/[0.02]">
                     <td className="py-2 px-3 text-foreground font-medium">{row.name}</td>
                     <td className="py-2 px-3 text-right text-cyan-400">
-                      {row["A 快照"] != null ? `${row["A 快照"].toFixed(1)}s` : <span className="text-muted-foreground">—</span>}
+                      {row["A 週期時間"] != null ? `${row["A 週期時間"].toFixed(1)}s` : <span className="text-muted-foreground">—</span>}
                     </td>
                     <td className="py-2 px-3 text-right text-violet-400">
-                      {row["B 快照"] != null ? `${row["B 快照"].toFixed(1)}s` : <span className="text-muted-foreground">—</span>}
+                      {row["B 週期時間"] != null ? `${row["B 週期時間"].toFixed(1)}s` : <span className="text-muted-foreground">—</span>}
                     </td>
                     <td className="py-2 px-3 text-right">
                       {!row.onlyA && !row.onlyB ? (
                         <span className={row.improved ? "text-emerald-400" : row.worsened ? "text-red-400" : "text-muted-foreground"}>
                           {row.delta > 0 ? "+" : ""}{row.delta.toFixed(1)}s
+                        </span>
+                      ) : <span className="text-muted-foreground">—</span>}
+                    </td>
+                    {/* 增值率欄位 */}
+                    <td className="py-2 px-3 text-right text-cyan-400/80">
+                      {row.vaA != null ? `${row.vaA.toFixed(1)}%` : <span className="text-muted-foreground text-xs">無資料</span>}
+                    </td>
+                    <td className="py-2 px-3 text-right text-violet-400/80">
+                      {row.vaB != null ? `${row.vaB.toFixed(1)}%` : <span className="text-muted-foreground text-xs">無資料</span>}
+                    </td>
+                    <td className="py-2 px-3 text-right">
+                      {row.vaDelta != null ? (
+                        <span className={`inline-flex items-center justify-end gap-1 ${row.vaImproved ? "text-emerald-400" : row.vaWorsened ? "text-red-400" : "text-muted-foreground"}`}>
+                          {row.vaImproved ? <TrendingUp className="w-3 h-3" /> : row.vaWorsened ? <TrendingDown className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+                          {row.vaDelta > 0 ? "+" : ""}{row.vaDelta.toFixed(1)}%
                         </span>
                       ) : <span className="text-muted-foreground">—</span>}
                     </td>
@@ -349,6 +472,26 @@ export default function SnapshotCompare() {
               </div>
             ))}
           </div>
+
+          {/* 增值率改善提示 */}
+          {hasVAData && (() => {
+            const vaImproved = stationDiff.filter(r => r.vaImproved).length;
+            const vaWorsened = stationDiff.filter(r => r.vaWorsened).length;
+            if (vaImproved === 0 && vaWorsened === 0) return null;
+            return (
+              <div className="mt-3 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                <div className="flex items-center gap-2 text-sm">
+                  <Zap className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="text-emerald-400 font-medium">增值率變化摘要：</span>
+                  <span className="text-muted-foreground">
+                    {vaImproved > 0 && `${vaImproved} 個工站增值率提升`}
+                    {vaImproved > 0 && vaWorsened > 0 && "，"}
+                    {vaWorsened > 0 && `${vaWorsened} 個工站增值率下降`}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
     </div>
