@@ -181,7 +181,7 @@ function StepRow({ step, index, total, totalSec, onChange, onDelete, onMove }: S
 // ─── 主元件 ───────────────────────────────────────────────────────────────────
 
 export default function ActionAnalysis() {
-  const { lineId } = useParams<{ lineId: string }>();
+  const { id: lineId } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const search = useSearch();
   const lineIdNum = parseInt(lineId ?? "0");
