@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from "react";
-import { useParams, useLocation } from "wouter";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useParams, useLocation, useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -183,9 +183,17 @@ function StepRow({ step, index, total, totalSec, onChange, onDelete, onMove }: S
 export default function ActionAnalysis() {
   const { lineId } = useParams<{ lineId: string }>();
   const [, navigate] = useLocation();
+  const search = useSearch();
   const lineIdNum = parseInt(lineId ?? "0");
 
-  const [selectedWsId, setSelectedWsId] = useState<number | null>(null);
+  // 從 URL 查詢參數 ?ws=N 讀取初始工站 ID
+  const initialWsId = useMemo(() => {
+    const params = new URLSearchParams(search);
+    const ws = params.get("ws");
+    return ws ? parseInt(ws) : null;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [selectedWsId, setSelectedWsId] = useState<number | null>(initialWsId);
   const [steps, setSteps] = useState<LocalStep[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [syncCycleTime, setSyncCycleTime] = useState(false);
@@ -206,8 +214,18 @@ export default function ActionAnalysis() {
     { enabled: selectedWsId !== null }
   );
 
+  // 使用 ref 追蹤上一次 dbSteps 的序列化值，避免陣列參考變化導致無限迴圈
+  const prevDbStepsKeyRef = useRef<string>("");
+  // 使用 ref 儲存 selectedWsId 的最新值，避免它被加入 useEffect 依賴陣列觸發額外執行
+  const selectedWsIdRef = useRef<number | null>(selectedWsId);
+  useEffect(() => { selectedWsIdRef.current = selectedWsId; });
+
   useEffect(() => {
-    if (!dbSteps.length && selectedWsId !== null) return;
+    // 序列化 dbSteps 以穩定比較，避免每次 refetch 產生新陣列參考觸發無限更新
+    const key = dbSteps.map((s: any) => `${s.id}:${s.stepOrder}:${s.stepName}:${s.duration}:${s.actionType}`).join("|");
+    if (key === prevDbStepsKeyRef.current) return;
+    prevDbStepsKeyRef.current = key;
+
     setSteps(
       [...dbSteps]
         .sort((a: any, b: any) => Number(a.stepOrder) - Number(b.stepOrder))
@@ -223,10 +241,11 @@ export default function ActionAnalysis() {
           isNew: false,
         }))
     );
-    if (selectedWsId && dbSteps.length >= 0) {
-      setWsStepCounts(prev => ({ ...prev, [selectedWsId]: dbSteps.length }));
+    const wsId = selectedWsIdRef.current;
+    if (wsId !== null) {
+      setWsStepCounts(prev => ({ ...prev, [wsId]: dbSteps.length }));
     }
-  }, [dbSteps]);
+  }, [dbSteps]); // 只依賴 dbSteps，selectedWsId 透過 ref 讀取避免觸發額外迴圈
 
   // ── Mutations ─────────────────────────────────────────────────────────────
   const createStep = trpc.actionStep.create.useMutation();
