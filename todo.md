@@ -114,3 +114,23 @@
 - [x] 加入工站快速批量編輯介面（表格內嵌編輯，點擊 CT/人員欄位即可編輯，Enter 儲存）
 - [x] 快照儲存前加入「資料一致性提示」：顯示 CT 與動作拆解同步狀態、儀表板即時同步提示
 - [x] 補強同步邏輯相關測試（46 項全通過）
+
+## UPPH 顯示功能（新增）
+- [x] 擴充 analysis_snapshots 資料表加入 upph 欄位
+- [x] 執行資料庫遷移（ALTER TABLE）
+- [x] 更新 snapshot.create API 計算並儲存 UPPH
+- [x] 更新 snapshot.listByLine / getById / getAllLinesLatest / getAllLinesHistory 回傳 upph
+- [x] BalanceAnalysis.tsx：useMemo 加入 UPPH 計算（3600 ÷ maxTime ÷ totalManpower）
+- [x] BalanceAnalysis.tsx：KPI 卡片區加入 UPPH 卡片（amber 色系，凸顯 IE 績效）
+- [x] BalanceAnalysis.tsx：工站詳細表格加入「人均產能」欄位（工站級 UPPH）
+- [x] BalanceAnalysis.tsx：快照儲存 Dialog 加入 UPPH 預覽與傳遞
+- [x] Home.tsx：chartData 加入 upph 欄位
+- [x] Home.tsx：summaryStats 加入 bestUpph / avgUpph 統計
+- [x] Home.tsx：摘要統計卡片加入 UPPH 最高產線卡片
+- [x] Home.tsx：各產線卡片加入 UPPH 顯示
+- [x] Home.tsx：CustomTooltip 加入 UPPH 欄位
+- [x] Home.tsx：歷史趨勢加入 UPPH 趨勢折線圖（獨立區塊）
+- [x] SnapshotCompare.tsx：KPI 對比卡片加入 UPPH 前後比較
+- [x] SnapshotHistory.tsx：快照卡片加入 UPPH 顯示
+- [x] 補強 UPPH 相關測試（20 項全通過）
+- [x] AISuggestions.tsx：KPI 卡片加入 UPPH、導出報告（TXT/JSON）加入 UPPH

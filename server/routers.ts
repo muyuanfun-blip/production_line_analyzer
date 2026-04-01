@@ -380,6 +380,7 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
           avgTime: Number(r.avgTime),
           taktTime: r.taktTime ? Number(r.taktTime) : null,
           taktPassRate: r.taktPassRate ? Number(r.taktPassRate) : null,
+          upph: r.upph ? Number(r.upph) : null,
         }));
       }),
 
@@ -398,6 +399,7 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
           avgTime: Number(row.avgTime),
           taktTime: row.taktTime ? Number(row.taktTime) : null,
           taktPassRate: row.taktPassRate ? Number(row.taktPassRate) : null,
+          upph: row.upph ? Number(row.upph) : null,
         };
       }),
 
@@ -426,9 +428,10 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
           description: z.string().optional(),
         })),
         bottleneckName: z.string().optional(),
+        upph: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
-        // 自動查詢各工站的動作拆解資料並計算增值率
+        // 自動查詢各工站的動作拆解資料並計算增値率
         const enrichedWorkstations = await Promise.all(
           input.workstationsData.map(async (ws) => {
             const steps = await getActionStepsByWorkstation(ws.id);
@@ -474,6 +477,7 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
           taktPassCount: input.taktPassCount ?? null,
           workstationsData: enrichedWorkstations,
           bottleneckName: input.bottleneckName ?? null,
+          upph: input.upph != null ? String(input.upph) : null,
         });
         return { success: true };
       }),

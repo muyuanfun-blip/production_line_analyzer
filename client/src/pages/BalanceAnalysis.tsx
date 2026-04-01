@@ -162,6 +162,7 @@ export default function BalanceAnalysis() {
       taktTime: taktTime,
       taktPassRate: analysis.taktStats?.passRate,
       taktPassCount: analysis.taktStats?.passCount,
+      upph: analysis.upph,
       workstationsData: workstations.map(w => ({
         id: w.id,
         name: w.name,
@@ -209,11 +210,19 @@ export default function BalanceAnalysis() {
       };
     });
 
+    const totalManpower = workstations.reduce((s, w) => s + w.manpower, 0);
+    // UPPH = 3600 ÷ maxTime ÷ totalManpower
+    // 意義：在瓶頸工站節拍下，每人每小時可產出的件數
+    const upph = totalManpower > 0 && maxTime > 0
+      ? 3600 / maxTime / totalManpower
+      : 0;
+
     return {
       totalTime, maxTime, minTime, avgTime, balanceRate, balanceLoss,
       bottleneck, taktStats, chartData,
       workstationCount: workstations.length,
-      totalManpower: workstations.reduce((s, w) => s + w.manpower, 0),
+      totalManpower,
+      upph,
     };
   }, [workstations, taktTime]);
 
@@ -365,6 +374,10 @@ export default function BalanceAnalysis() {
                   <span className="text-muted-foreground">工站數 / 人員</span>
                   <span className="font-medium">{analysis.workstationCount} 站 / {analysis.totalManpower} 人</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-amber-400 font-medium">UPPH</span>
+                  <span className="font-bold text-amber-400">{analysis.upph.toFixed(2)} 件/人/時</span>
+                </div>
                 <div className="mt-2 pt-2 border-t border-border/50 space-y-1.5">
                   <div className="flex items-center gap-1.5">
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
@@ -458,7 +471,7 @@ export default function BalanceAnalysis() {
       ) : (
         <>
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             {[
               {
                 label: "產線平衡率",
@@ -514,6 +527,29 @@ export default function BalanceAnalysis() {
                 </CardContent>
               </Card>
             ))}
+            {/* UPPH KPI 卡片（獨立顯示，凸顯 IE 績效） */}
+            <Card className="border-amber-500/30 bg-amber-500/5">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <p className="text-sm text-amber-400 font-medium">UPPH</p>
+                  <div className="h-8 w-8 rounded-lg bg-amber-400/15 flex items-center justify-center">
+                    <Users className="h-4 w-4 text-amber-400" />
+                  </div>
+                </div>
+                <p className="text-2xl font-bold text-amber-400">
+                  {analysis.upph.toFixed(2)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">件/人/時</p>
+                <div className="mt-2 pt-2 border-t border-amber-500/20">
+                  <p className="text-xs text-amber-400/70">
+                    = 3600 ÷ {analysis.maxTime.toFixed(1)}s ÷ {analysis.totalManpower}人
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    瓶頸節拍下的 IE 績效指標
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Balance Rate Progress */}
@@ -734,6 +770,7 @@ export default function BalanceAnalysis() {
                     {taktTime && (
                       <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3">vs Takt Time</th>
                     )}
+                    <th className="text-right text-xs font-medium text-amber-400/80 px-4 py-3">人均產能 (UPPH)</th>
                     <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">狀態</th>
                   </tr>
                 </thead>
@@ -781,6 +818,13 @@ export default function BalanceAnalysis() {
                             )}
                           </td>
                         )}
+                        <td className="px-4 py-3 text-right">
+                          {/* 工站級 UPPH = 3600 ÷ ct ÷ manpower */}
+                          <span className="text-sm font-mono font-bold text-amber-400">
+                            {ws.manpower > 0 && ct > 0 ? (3600 / ct / ws.manpower).toFixed(2) : "—"}
+                          </span>
+                          <span className="text-xs text-muted-foreground ml-1">件/人/時</span>
+                        </td>
                         <td className="px-4 py-3">
                           <span
                             className="text-xs px-2 py-0.5 rounded-full font-medium"

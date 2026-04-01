@@ -39,7 +39,9 @@ export default function AISuggestions() {
     const avgTime = totalTime / times.length;
     const balanceRate = (totalTime / (maxTime * workstations.length)) * 100;
     const bottleneck = workstations.find(w => parseFloat(w.cycleTime.toString()) === maxTime);
-    return { totalTime, maxTime, avgTime, balanceRate, bottleneck };
+    const totalManpower = workstations.reduce((s, w) => s + w.manpower, 0);
+    const upph = maxTime > 0 && totalManpower > 0 ? 3600 / maxTime / totalManpower : null;
+    return { totalTime, maxTime, avgTime, balanceRate, bottleneck, totalManpower, upph };
   }, [workstations]);
 
   const handleAnalyze = () => {
@@ -67,6 +69,7 @@ export default function AISuggestions() {
       `=== 產線概況 ===`,
       `工站數量：${workstations?.length ?? 0}`,
       `平衡率：${analysis?.balanceRate.toFixed(1) ?? "N/A"}%`,
+      `UPPH：${analysis?.upph != null ? analysis.upph.toFixed(2) + " 件/人/時" : "N/A"}`,
       `瓶頸工站：${analysis?.bottleneck?.name ?? "N/A"}`,
       ``,
       `=== AI 優化建議 ===`,
@@ -97,6 +100,8 @@ export default function AISuggestions() {
         maxCycleTime: analysis.maxTime.toFixed(2),
         avgCycleTime: analysis.avgTime.toFixed(2),
         balanceRate: analysis.balanceRate.toFixed(2) + "%",
+        upph: analysis.upph != null ? parseFloat(analysis.upph.toFixed(4)) : null,
+        upphUnit: "件/人/時",
         bottleneckStation: analysis.bottleneck?.name,
       } : null,
       workstations: workstations.map(w => ({
@@ -147,7 +152,7 @@ export default function AISuggestions() {
 
       {/* Current Status Summary */}
       {analysis && workstations && workstations.length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           {[
             {
               label: "工站數量", value: workstations.length, unit: "個",
@@ -164,8 +169,14 @@ export default function AISuggestions() {
               icon: AlertTriangle, color: "text-orange-400", bg: "bg-orange-400/10"
             },
             {
-              label: "總人員", value: workstations.reduce((s, w) => s + w.manpower, 0), unit: "人",
+              label: "總人員", value: analysis.totalManpower, unit: "人",
               icon: Users, color: "text-violet-400", bg: "bg-violet-400/10"
+            },
+            {
+              label: "UPPH",
+              value: analysis.upph != null ? analysis.upph.toFixed(2) : "—",
+              unit: analysis.upph != null ? " 件/人/時" : "",
+              icon: TrendingUp, color: "text-amber-400", bg: "bg-amber-400/10"
             },
           ].map(kpi => (
             <Card key={kpi.label} className="border-border bg-card">

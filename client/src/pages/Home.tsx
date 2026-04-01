@@ -57,6 +57,12 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: any[] 
           <span className="text-muted-foreground">快照名稱</span>
           <span className="font-medium text-foreground truncate max-w-[120px]">{d.snapshotName}</span>
         </div>
+        {d.upph != null && (
+          <div className="flex justify-between gap-4 border-t border-border/50 pt-1 mt-1">
+            <span className="text-amber-400 font-medium">UPPH</span>
+            <span className="font-bold text-amber-400">{Number(d.upph).toFixed(2)} 件/人/時</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -88,6 +94,7 @@ export default function Home() {
         avgTime: item.snapshot!.avgTime,
         workstationCount: item.snapshot!.workstationCount,
         totalManpower: item.snapshot!.totalManpower,
+        upph: item.snapshot!.upph ?? null,
         snapshotId: item.snapshot!.id,
       }));
   }, [allLatest]);
@@ -100,15 +107,23 @@ export default function Home() {
     const best = chartData.reduce((a, b) => a.balanceRate > b.balanceRate ? a : b);
     const worst = chartData.reduce((a, b) => a.balanceRate < b.balanceRate ? a : b);
     const needImprove = chartData.filter(d => d.balanceRate < 70).length;
-    return { avg, best, worst, needImprove, total: chartData.length };
+    // UPPH 統計
+    const upphData = chartData.filter(d => d.upph != null);
+    const bestUpph = upphData.length > 0
+      ? upphData.reduce((a, b) => (a.upph ?? 0) > (b.upph ?? 0) ? a : b)
+      : null;
+    const avgUpph = upphData.length > 0
+      ? upphData.reduce((s, d) => s + (d.upph ?? 0), 0) / upphData.length
+      : null;
+    return { avg, best, worst, needImprove, total: chartData.length, bestUpph, avgUpph };
   }, [chartData]);
 
   // ─── 歷史趨勢圖表資料整理 ──────────────────────────────────────────────────
   // 將各產線快照整理為折線圖所需的時間序列格式
   // 每個資料點為一個時間點，包含各產線在該時間點的平衡率
-  const { trendChartData, lineColors, lineNames } = useMemo(() => {
+  const { trendChartData, upphTrendData, lineColors, lineNames } = useMemo(() => {
     if (!allHistory || allHistory.length === 0) {
-      return { trendChartData: [], lineColors: {}, lineNames: [] };
+      return { trendChartData: [], upphTrendData: [], lineColors: {}, lineNames: [] };
     }
     // 為每條產線分配固定顏色
     const palette = [
@@ -123,31 +138,35 @@ export default function Home() {
     });
 
     // 收集所有時間點（以快照 ID 為序，格式化為日期標籤）
-    // 每條產線可能有不同數量的快照，以「快照序號」對齊
-    // 找出最多快照數的產線，以其為 X 軸基準
     const maxSnaps = Math.max(...allHistory.map(l => l.snapshots.length));
     const trendChartData: Record<string, string | number>[] = [];
+    const upphTrendData: Record<string, string | number | null>[] = [];
 
     for (let i = 0; i < maxSnaps; i++) {
       const point: Record<string, string | number> = { index: i + 1 };
+      const upphPoint: Record<string, string | number | null> = { index: i + 1 };
       let hasLabel = false;
       allHistory.forEach((line) => {
         const snap = line.snapshots[i];
         if (snap) {
           point[line.lineName] = parseFloat(snap.balanceRate.toFixed(1));
+          // UPPH 趨勢資料
+          upphPoint[line.lineName] = snap.upph != null ? parseFloat(Number(snap.upph).toFixed(4)) : null;
           if (!hasLabel) {
-            // 使用第一條有資料的產線的快照日期作為 X 軸標籤
             const d = new Date(snap.createdAt);
-            point.label = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+            const label = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+            point.label = label;
+            upphPoint.label = label;
             hasLabel = true;
           }
-          // 也記錄快照名稱供 tooltip 使用
           point[`${line.lineName}_snapName`] = snap.name;
+          upphPoint[`${line.lineName}_snapName`] = snap.name;
         }
       });
       trendChartData.push(point);
+      upphTrendData.push(upphPoint);
     }
-    return { trendChartData, lineColors, lineNames };
+    return { trendChartData, upphTrendData, lineColors, lineNames };
   }, [allHistory]);
 
   const hasTrendData = trendChartData.length > 0;
@@ -274,7 +293,7 @@ export default function Home() {
           <div className="space-y-4">
             {/* 摘要統計卡片 */}
             {summaryStats && (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                 <Card className="border-border bg-card/60">
                   <CardContent className="p-4">
                     <p className="text-xs text-muted-foreground mb-1">平均平衡率</p>
@@ -312,6 +331,25 @@ export default function Home() {
                       {summaryStats.needImprove}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">條產線</p>
+                  </CardContent>
+                </Card>
+                {/* UPPH 最高產線卡片 */}
+                <Card className="border-amber-500/30 bg-amber-500/5">
+                  <CardContent className="p-4">
+                    <p className="text-xs text-amber-400 mb-1 flex items-center gap-1 font-medium">
+                      <Users className="h-3 w-3" /> UPPH 最高
+                    </p>
+                    {summaryStats.bestUpph ? (
+                      <>
+                        <p className="text-lg font-bold text-amber-400 truncate">{summaryStats.bestUpph.lineName}</p>
+                        <p className="text-xs text-amber-400/70 mt-1">{Number(summaryStats.bestUpph.upph ?? 0).toFixed(2)} 件/人/時</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-lg font-bold text-muted-foreground">—</p>
+                        <p className="text-xs text-muted-foreground mt-1">尚無 UPPH 資料</p>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -439,6 +477,17 @@ export default function Home() {
                           </div>
                         )}
                       </div>
+                      {/* UPPH 指標列 */}
+                      {item.upph != null && (
+                        <div className="mt-2 pt-2 border-t border-amber-500/20 flex items-center justify-between">
+                          <span className="text-xs text-amber-400 font-medium flex items-center gap-1">
+                            <Users className="h-3 w-3" /> UPPH
+                          </span>
+                          <span className="text-sm font-bold text-amber-400">
+                            {Number(item.upph).toFixed(2)} 件/人/時
+                          </span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-end mt-3 text-xs text-muted-foreground group-hover:text-primary transition-colors">
                         查看詳情
                         <ChevronRight className="h-3 w-3 ml-0.5 group-hover:translate-x-0.5 transition-transform" />
@@ -515,6 +564,7 @@ export default function Home() {
 
         {/* 有歷史資料時顯示折線圖 */}
         {hasTrendData && (
+          <>
           <Card className="border-border bg-card">
             <CardHeader className="pb-2 pt-5 px-6">
               <div className="flex items-center justify-between flex-wrap gap-2">
@@ -666,6 +716,88 @@ export default function Home() {
               )}
             </CardContent>
           </Card>
+
+          {/* UPPH 歷史趨勢折線圖 */}
+          {upphTrendData.some(pt => lineNames.some(n => pt[n] != null)) && (
+            <Card className="border-amber-500/20 bg-card">
+              <CardHeader className="pb-2 pt-5 px-6">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+                    <Users className="h-4 w-4 text-amber-400" />
+                    <span>UPPH 歷史趨勢（件/人/時）</span>
+                  </CardTitle>
+                  <span className="text-xs text-muted-foreground">IE 績效指標趨勢追蹤</span>
+                </div>
+              </CardHeader>
+              <CardContent className="px-2 pb-5">
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart
+                    data={upphTrendData}
+                    margin={{ top: 10, right: 30, left: 0, bottom: 20 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="oklch(1 0 0 / 0.06)" />
+                    <XAxis
+                      dataKey="label"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: "oklch(0.65 0 0)", fontSize: 10 }}
+                      angle={-30}
+                      textAnchor="end"
+                      height={50}
+                      interval={0}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: "oklch(0.65 0 0)", fontSize: 11 }}
+                      tickFormatter={(v) => v.toFixed(1)}
+                      width={48}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "oklch(0.18 0.01 240)",
+                        border: "1px solid oklch(0.3 0.01 240)",
+                        borderRadius: "12px",
+                        fontSize: "12px",
+                      }}
+                      labelStyle={{ color: "oklch(0.85 0 0)", fontWeight: 600, marginBottom: 4 }}
+                      formatter={(value: number, name: string, props: any) => {
+                        const snapName = props.payload?.[`${name}_snapName`];
+                        return [
+                          <span style={{ color: lineColors[name] }}>
+                            {Number(value).toFixed(2)} 件/人/時{snapName ? ` (${snapName})` : ""}
+                          </span>,
+                          name,
+                        ];
+                      }}
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: "12px", paddingTop: "8px" }}
+                      formatter={(value) => (
+                        <span style={{ color: lineColors[value] ?? "oklch(0.75 0 0)" }}>{value}</span>
+                      )}
+                    />
+                    {lineNames.map((name) => (
+                      <Line
+                        key={name}
+                        type="monotone"
+                        dataKey={name}
+                        stroke={lineColors[name]}
+                        strokeWidth={2.5}
+                        dot={{ r: 4, fill: lineColors[name], strokeWidth: 2, stroke: "oklch(0.15 0.01 240)" }}
+                        activeDot={{ r: 6, strokeWidth: 0 }}
+                        connectNulls={false}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+                <p className="text-xs text-muted-foreground text-center mt-1">
+                  UPPH = 3600 ÷ 瓶頸工站時間 ÷ 總人數，數值越高表示 IE 改善效果越好
+                </p>
+              </CardContent>
+            </Card>
+          )}
+          </>
         )}
       </div>
 

@@ -30,6 +30,7 @@ type Snapshot = {
   taktPassRate: number | null;
   taktPassCount: number | null;
   bottleneckName: string | null;
+  upph: number | null;
   createdAt: Date;
 };
 
@@ -239,6 +240,27 @@ export default function SnapshotHistory() {
                           <div className="text-xs text-muted-foreground">Takt Time</div>
                           {snap.taktPassCount !== null && (
                             <div className="text-xs text-muted-foreground">{snap.taktPassCount}/{snap.workstationCount} 達標</div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* UPPH */}
+                      {snap.upph != null && (
+                        <div className="text-center min-w-[70px]">
+                          <div className="text-xl font-bold text-amber-400 flex items-center gap-1 justify-center">
+                            {Number(snap.upph).toFixed(2)}
+                            <TrendIcon value={Number(snap.upph)} prev={prevSnap?.upph != null ? Number(prevSnap.upph) : undefined} />
+                          </div>
+                          <div className="text-xs text-amber-400/80 font-medium">UPPH</div>
+                          {prevSnap?.upph != null && (
+                            <div className={`text-xs ${
+                              Number(snap.upph) > Number(prevSnap.upph) ? "text-emerald-400"
+                              : Number(snap.upph) < Number(prevSnap.upph) ? "text-red-400"
+                              : "text-muted-foreground"
+                            }`}>
+                              {Number(snap.upph) > Number(prevSnap.upph) ? "+" : ""}
+                              {(Number(snap.upph) - Number(prevSnap.upph)).toFixed(2)}
+                            </div>
                           )}
                         </div>
                       )}

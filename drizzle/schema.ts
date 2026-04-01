@@ -94,6 +94,8 @@ export const analysisSnapshots = mysqlTable("analysis_snapshots", {
   taktTime: decimal("taktTime", { precision: 10, scale: 2 }),
   taktPassRate: decimal("taktPassRate", { precision: 6, scale: 2 }),
   taktPassCount: int("taktPassCount"),
+  // UPPH （Units Per Person Per Hour）
+  upph: decimal("upph", { precision: 10, scale: 4 }),
   // 工站快照（JSON）
   workstationsData: json("workstationsData").notNull(),
   bottleneckName: varchar("bottleneckName", { length: 255 }),

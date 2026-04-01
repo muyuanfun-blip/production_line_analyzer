@@ -45,6 +45,7 @@ type Snapshot = {
   taktPassRate: number | null;
   taktPassCount: number | null;
   bottleneckName: string | null;
+  upph: number | null;
   workstationsData: unknown;
   createdAt: Date;
 };
@@ -150,6 +151,7 @@ export default function SnapshotCompare() {
       name: s.name.length > 8 ? s.name.slice(0, 8) + "…" : s.name,
       平衡率: s.balanceRate,
       達標率: s.taktPassRate ?? undefined,
+      UPPH: s.upph != null ? parseFloat(Number(s.upph).toFixed(4)) : undefined,
     }));
   }, [allSnaps]);
 
@@ -181,6 +183,7 @@ export default function SnapshotCompare() {
       noData: !A.taktPassRate && !B.taktPassRate,
     },
   ];
+  const hasUpphData = A.upph != null || B.upph != null;
 
   const improvedCount = stationDiff.filter(r => r.improved).length;
   const worsenedCount = stationDiff.filter(r => r.worsened).length;
@@ -247,12 +250,44 @@ export default function SnapshotCompare() {
             </CardContent>
           </Card>
         ))}
-        {/* 整體平均增值率 KPI */}
+        {/* UPPH 對比 KPI */}
+        <Card className="bg-card border-amber-500/25">
+          <CardContent className="p-4">
+            <div className="text-sm text-amber-400 mb-3 flex items-center gap-1 font-medium">
+              ★ UPPH
+            </div>
+            {!hasUpphData ? (
+              <div className="text-muted-foreground text-sm">快照尚無 UPPH</div>
+            ) : (
+              <>
+                <div className="flex items-end gap-3 mb-2">
+                  <div>
+                    <div className="text-lg font-bold text-cyan-400">
+                      {A.upph != null ? Number(A.upph).toFixed(2) : "—"}
+                    </div>
+                    <div className="text-xs text-muted-foreground">快照 A</div>
+                  </div>
+                  <div className="text-muted-foreground mb-1 text-sm">→</div>
+                  <div>
+                    <div className="text-lg font-bold text-violet-400">
+                      {B.upph != null ? Number(B.upph).toFixed(2) : "—"}
+                    </div>
+                    <div className="text-xs text-muted-foreground">快照 B</div>
+                  </div>
+                </div>
+                {A.upph != null && B.upph != null && (
+                  <DeltaBadge a={Number(A.upph)} b={Number(B.upph)} unit=" 件/人/時" higherIsBetter={true} />
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+        {/* 整體平均增値率 KPI */}
         <Card className="bg-card border-border">
           <CardContent className="p-4">
             <div className="text-sm text-muted-foreground mb-3 flex items-center gap-1">
               <Zap className="w-3.5 h-3.5 text-emerald-400" />
-              平均增值率
+              平均增値率
             </div>
             {overallVA.a == null && overallVA.b == null ? (
               <div className="text-muted-foreground text-sm">無動作拆解資料</div>
@@ -381,7 +416,43 @@ export default function SnapshotCompare() {
         </Card>
       )}
 
-      {/* 工站差異明細表（含增值率欄位） */}
+      {/* UPPH 趨勢折線圖 */}
+      {trendData.length > 1 && trendData.some(d => d.UPPH !== undefined) && (
+        <Card className="bg-card border-amber-500/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-amber-400" />
+              UPPH 歷史趨勢（件/人/時）
+              <span className="text-xs text-muted-foreground font-normal ml-2">IE 績效指標趨勢</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={trendData} margin={{ top: 10, right: 20, left: 0, bottom: 50 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} angle={-25} textAnchor="end" interval={0} />
+                <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px" }}
+                  labelStyle={{ color: "#f1f5f9" }}
+                  formatter={(v: number) => [`${Number(v).toFixed(2)} 件/人/時`, "UPPH"]}
+                />
+                <Legend wrapperStyle={{ paddingTop: "16px" }} />
+                <Line
+                  type="monotone" dataKey="UPPH" stroke="#f59e0b" strokeWidth={2.5}
+                  dot={{ fill: "#f59e0b", r: 4 }} activeDot={{ r: 6 }}
+                  connectNulls={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+            <p className="text-xs text-muted-foreground text-center mt-1">
+              UPPH = 3600 ÷ 瓶頸工站時間 ÷ 總人數，數值越高表示 IE 改善效果越好
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 工站差異明細表（含增値率欄位） */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
