@@ -2,9 +2,9 @@ import { trpc } from "@/lib/trpc";
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import {
-  Factory, Plus, Pencil, Trash2, BarChart3, Brain,
-  MoreVertical, Settings, Target, ArrowUpDown,
-  ArrowUp, ArrowDown, Activity, Users
+  Factory, Plus, Pencil, Trash2, BarChart3, Activity, Brain,
+  ChevronRight, Clock, Users, MoreVertical, Settings, Target, TrendingUp, AlertTriangle,
+  Calculator
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 type LineFormData = {
   name: string;
@@ -26,83 +27,37 @@ type LineFormData = {
   targetCycleTime: string;
 };
 
-type SortKey = "default" | "balanceRate" | "upph" | "name";
-type SortDir = "asc" | "desc";
-
-/** 依平衡率回傳顏色 class */
-function getBalanceColor(rate: number) {
-  if (rate >= 90) return { text: "text-emerald-400", bg: "bg-emerald-400/10 border-emerald-400/30", label: "優秀" };
-  if (rate >= 80) return { text: "text-cyan-400", bg: "bg-cyan-400/10 border-cyan-400/30", label: "良好" };
-  if (rate >= 70) return { text: "text-amber-400", bg: "bg-amber-400/10 border-amber-400/30", label: "待改善" };
-  return { text: "text-red-400", bg: "bg-red-400/10 border-red-400/30", label: "需優化" };
-}
-
 export default function ProductionLines() {
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
   const { data: lines, isLoading } = trpc.productionLine.list.useQuery();
-  const { data: allLatest } = trpc.snapshot.getAllLinesLatest.useQuery();
-
-  // 建立 lineId → 最新快照的 Map，方便卡片查詢
-  const latestMap = useMemo(() => {
-    const map = new Map<number, { balanceRate: number; upph: number | null; snapshotName: string }>();
-    if (!allLatest) return map;
-    for (const item of allLatest) {
-      if (item.snapshot) {
-        map.set(item.lineId, {
-          balanceRate: item.snapshot.balanceRate,
-          upph: item.snapshot.upph ?? null,
-          snapshotName: item.snapshot.name,
-        });
-      }
-    }
-    return map;
-  }, [allLatest]);
-
-  const [sortKey, setSortKey] = useState<SortKey>("default");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
-
-  // 切換排序：同一欄位再點一次則反轉方向，切換新欄位則預設 asc
-  const handleSort = (key: SortKey) => {
-    if (key === sortKey) {
-      setSortDir(d => d === "asc" ? "desc" : "asc");
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
-  };
-
-  // 排序後的產線清單
-  const sortedLines = useMemo(() => {
-    if (!lines) return [];
-    if (sortKey === "default") return [...lines];
-    return [...lines].sort((a, b) => {
-      const la = latestMap.get(a.id);
-      const lb = latestMap.get(b.id);
-      let valA: number | string;
-      let valB: number | string;
-      if (sortKey === "name") {
-        valA = a.name;
-        valB = b.name;
-      } else if (sortKey === "balanceRate") {
-        // 無快照排末尾
-        valA = la ? la.balanceRate : (sortDir === "asc" ? Infinity : -Infinity);
-        valB = lb ? lb.balanceRate : (sortDir === "asc" ? Infinity : -Infinity);
-      } else {
-        // upph：null 排末尾
-        valA = la?.upph != null ? la.upph : (sortDir === "asc" ? Infinity : -Infinity);
-        valB = lb?.upph != null ? lb.upph : (sortDir === "asc" ? Infinity : -Infinity);
-      }
-      if (valA < valB) return sortDir === "asc" ? -1 : 1;
-      if (valA > valB) return sortDir === "asc" ? 1 : -1;
-      return 0;
-    });
-  }, [lines, sortKey, sortDir, latestMap]);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [form, setForm] = useState<LineFormData>({ name: "", description: "", targetCycleTime: "" });
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [calcAvailMin, setCalcAvailMin] = useState("");
+  const [calcDemand, setCalcDemand] = useState("");
+
+  const calcResult = useMemo(() => {
+    const avail = parseFloat(calcAvailMin);
+    const demand = parseFloat(calcDemand);
+    if (!isNaN(avail) && avail > 0 && !isNaN(demand) && demand > 0) {
+      return ((avail * 60) / demand);
+    }
+    return null;
+  }, [calcAvailMin, calcDemand]);
+
+  const applyCalcResult = () => {
+    if (calcResult !== null) {
+      setForm(f => ({ ...f, targetCycleTime: calcResult.toFixed(1) }));
+      setCalcOpen(false);
+      setCalcAvailMin("");
+      setCalcDemand("");
+      toast.success(`Takt Time 已帶入：${calcResult.toFixed(1)} 秒`);
+    }
+  };
 
   const createMutation = trpc.productionLine.create.useMutation({
     onSuccess: () => {
@@ -154,15 +109,10 @@ export default function ProductionLines() {
 
   const handleSubmit = () => {
     if (!form.name.trim()) { toast.error("請輸入生產線名稱"); return; }
-    const parsedTakt = form.targetCycleTime ? parseFloat(form.targetCycleTime) : NaN;
-    if (!isNaN(parsedTakt) && parsedTakt <= 0) {
-      toast.error("目標節拍時間必須大於 0 秒，若不設定請清空欄位");
-      return;
-    }
     const payload = {
       name: form.name.trim(),
       description: form.description || undefined,
-      targetCycleTime: (!isNaN(parsedTakt) && parsedTakt > 0) ? parsedTakt : undefined,
+      targetCycleTime: form.targetCycleTime ? parseFloat(form.targetCycleTime) : undefined,
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, ...payload });
@@ -194,55 +144,11 @@ export default function ProductionLines() {
         </Button>
       </div>
 
-      {/* Sort Toolbar */}
-      {!isLoading && (lines?.length ?? 0) > 1 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-muted-foreground mr-1 flex items-center gap-1">
-            <ArrowUpDown className="h-3.5 w-3.5" />排序：
-          </span>
-          {([
-            { key: "default" as SortKey, label: "預設" },
-            { key: "balanceRate" as SortKey, label: "平衡率" },
-            { key: "upph" as SortKey, label: "UPPH" },
-            { key: "name" as SortKey, label: "名稱" },
-          ]).map(({ key, label }) => {
-            const active = sortKey === key;
-            return (
-              <button
-                key={key}
-                onClick={() => handleSort(key)}
-                className={[
-                  "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border transition-all",
-                  active
-                    ? "bg-primary/15 border-primary/40 text-primary"
-                    : "bg-muted/30 border-border text-muted-foreground hover:border-primary/30 hover:text-foreground",
-                ].join(" ")}
-              >
-                {label}
-                {active && key !== "default" && (
-                  sortDir === "asc"
-                    ? <ArrowUp className="h-3 w-3" />
-                    : <ArrowDown className="h-3 w-3" />
-                )}
-              </button>
-            );
-          })}
-          {sortKey !== "default" && (
-            <button
-              onClick={() => { setSortKey("default"); setSortDir("asc"); }}
-              className="text-xs text-muted-foreground/60 hover:text-muted-foreground underline underline-offset-2 ml-1"
-            >
-              重置
-            </button>
-          )}
-        </div>
-      )}
-
       {/* Lines Grid */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-64 rounded-xl bg-card animate-pulse border border-border" />
+            <div key={i} className="h-48 rounded-xl bg-card animate-pulse border border-border" />
           ))}
         </div>
       ) : lines?.length === 0 ? (
@@ -259,10 +165,8 @@ export default function ProductionLines() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sortedLines.map((line) => {
+          {lines?.map((line) => {
             const st = statusLabel(line.status);
-            const latest = latestMap.get(line.id) ?? null;
-            const balColor = latest ? getBalanceColor(latest.balanceRate) : null;
             return (
               <Card key={line.id} className="border-border bg-card hover:border-primary/30 transition-all group">
                 <CardHeader className="pb-3">
@@ -302,50 +206,6 @@ export default function ProductionLines() {
                   {line.description && (
                     <p className="text-sm text-muted-foreground line-clamp-2">{line.description}</p>
                   )}
-
-                  {/* ── 最新快照指標區塊 ── */}
-                  {latest ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      {/* 平衡率 */}
-                      <div className={`flex items-center gap-2 p-2.5 rounded-lg border ${balColor!.bg}`}>
-                        <BarChart3 className={`h-4 w-4 shrink-0 ${balColor!.text}`} />
-                        <div className="min-w-0">
-                          <p className="text-xs text-muted-foreground leading-none mb-0.5">平衡率</p>
-                          <p className={`text-sm font-bold leading-none ${balColor!.text}`}>
-                            {latest.balanceRate.toFixed(1)}%
-                          </p>
-                          <p className={`text-xs leading-none mt-0.5 ${balColor!.text} opacity-70`}>
-                            {balColor!.label}
-                          </p>
-                        </div>
-                      </div>
-                      {/* UPPH */}
-                      <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-400/10 border border-amber-400/30">
-                        <Users className="h-4 w-4 text-amber-400 shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-xs text-muted-foreground leading-none mb-0.5">UPPH</p>
-                          {latest.upph != null ? (
-                            <>
-                              <p className="text-sm font-bold text-amber-400 leading-none">
-                                {latest.upph.toFixed(1)}
-                              </p>
-                              <p className="text-xs text-amber-400/70 leading-none mt-0.5">件/人/時</p>
-                            </>
-                          ) : (
-                            <p className="text-xs text-muted-foreground/60 leading-none">—</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    /* 無快照時的提示 */
-                    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/20 border border-dashed border-border">
-                      <Activity className="h-4 w-4 text-muted-foreground/40 shrink-0" />
-                      <p className="text-xs text-muted-foreground/60">尚無分析資料，請先進行平衡分析並儲存快照</p>
-                    </div>
-                  )}
-
-                  {/* Takt Time */}
                   {line.targetCycleTime ? (
                     <div className="flex items-center gap-2 p-2.5 rounded-lg bg-violet-400/8 border border-violet-400/20">
                       <Target className="h-4 w-4 text-violet-400 shrink-0" />
@@ -360,7 +220,6 @@ export default function ProductionLines() {
                       <p className="text-xs text-muted-foreground/60">尚未設定目標節拍時間</p>
                     </div>
                   )}
-
                   {/* Action Buttons */}
                   <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border">
                     <Button
@@ -429,15 +288,86 @@ export default function ProductionLines() {
                 <Target className="h-3.5 w-3.5 text-violet-400" />
                 目標節拍時間 Takt Time（秒）
               </Label>
-              <Input
-                type="number"
-                placeholder="例：60（依客戶需求計算：可用時間 ÷ 需求數量）"
-                value={form.targetCycleTime}
-                onChange={e => setForm(f => ({ ...f, targetCycleTime: e.target.value }))}
-                className="bg-input border-border"
-                min="0"
-                step="0.1"
-              />
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  placeholder="例：60（秒）"
+                  value={form.targetCycleTime}
+                  onChange={e => setForm(f => ({ ...f, targetCycleTime: e.target.value }))}
+                  className="bg-input border-border flex-1"
+                  min="0.1"
+                  step="0.1"
+                />
+                <Popover open={calcOpen} onOpenChange={setCalcOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="shrink-0 border-violet-500/40 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300"
+                      title="依可用時間與需求數量計算 Takt Time"
+                    >
+                      <Calculator className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-72 bg-card border-border p-4" side="right" align="start">
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 pb-1 border-b border-border">
+                        <Calculator className="h-4 w-4 text-violet-400" />
+                        <p className="text-sm font-semibold text-foreground">Takt Time 計算機</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        公式：可用時間（秒）÷ 需求數量 = Takt Time
+                      </p>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">每班可用時間（分鐘）</Label>
+                        <Input
+                          type="number"
+                          placeholder="例：480（8 小時班）"
+                          value={calcAvailMin}
+                          onChange={e => setCalcAvailMin(e.target.value)}
+                          className="bg-input border-border h-8 text-sm"
+                          min="1"
+                          step="1"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">每班需求數量（件）</Label>
+                        <Input
+                          type="number"
+                          placeholder="例：240"
+                          value={calcDemand}
+                          onChange={e => setCalcDemand(e.target.value)}
+                          className="bg-input border-border h-8 text-sm"
+                          min="1"
+                          step="1"
+                        />
+                      </div>
+                      {calcResult !== null ? (
+                        <div className="rounded-md bg-violet-500/10 border border-violet-500/30 p-3 space-y-1">
+                          <p className="text-xs text-muted-foreground">計算結果</p>
+                          <p className="text-lg font-bold text-violet-400">{calcResult.toFixed(1)} 秒</p>
+                          <p className="text-xs text-muted-foreground">
+                            每小時可生產約 {Math.floor(3600 / calcResult)} 件
+                          </p>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="w-full mt-1 bg-violet-600 hover:bg-violet-700 text-white"
+                            onClick={applyCalcResult}
+                          >
+                            套用此數值
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="rounded-md bg-muted/30 border border-border p-3">
+                          <p className="text-xs text-muted-foreground text-center">請輸入可用時間與需求數量</p>
+                        </div>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
               {form.targetCycleTime && parseFloat(form.targetCycleTime) > 0 && (
                 <p className="text-xs text-muted-foreground">
                   每小時產能目標：約 {Math.floor(3600 / parseFloat(form.targetCycleTime))} 件

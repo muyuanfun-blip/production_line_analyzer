@@ -135,19 +135,7 @@
 - [x] 補強 UPPH 相關測試（20 項全通過）
 - [x] AISuggestions.tsx：KPI 卡片加入 UPPH、導出報告（TXT/JSON）加入 UPPH
 
-## 生產管理頁面產線卡片強化（新增）
-- [x] ProductionLines.tsx：串接 snapshot.getAllLinesLatest API 取得最新快照資料
-- [x] ProductionLines.tsx：在產線卡片加入最新平衡率顯示（含顏色等級）
-- [x] ProductionLines.tsx：在產線卡片加入最新 UPPH 顯示
-- [x] ProductionLines.tsx：無快照時顯示「尚無分析資料」提示
-
-## 產線卡片排序功能（新增）
-- [x] ProductionLines.tsx：加入排序狀態（sortKey + sortDir）
-- [x] ProductionLines.tsx：實作排序工具列（平衡率、UPPH、名稱、預設）
-- [x] ProductionLines.tsx：依排序條件對卡片清單進行排序
-- [x] ProductionLines.tsx：無快照的產線在「平衡率/UPPH 排序」時排至末尾
-
-## Bug Fix：Takt Time 輸入 0 導致 API 錯誤
-- [x] ProductionLines.tsx：handleSubmit 中 targetCycleTime <= 0 時傳 undefined（而非 0）
-- [x] ProductionLines.tsx：表單加入前端驗證提示（輸入 0 或負數時顯示錯誤訊息）
-- [x] server/routers.ts：確認 productionLine.create/update 的 targetCycleTime Zod schema 與前端一致（positive() 已正確）
+## Takt Time 計算輔助工具（新增）
+- [x] ProductionLines.tsx：在目標節拍時間欄位旁加入計算機圖示按鈕
+- [x] ProductionLines.tsx：實作 Popover 展開式計算工具（可用時間分鐘數 + 需求數量 → 自動計算 Takt Time）
+- [x] ProductionLines.tsx：計算結果一鍵帶入目標節拍時間欄位
