@@ -146,3 +146,8 @@
 - [x] ProductionLines.tsx：實作排序工具列（平衡率、UPPH、名稱、預設）
 - [x] ProductionLines.tsx：依排序條件對卡片清單進行排序
 - [x] ProductionLines.tsx：無快照的產線在「平衡率/UPPH 排序」時排至末尾
+
+## Bug Fix：Takt Time 輸入 0 導致 API 錯誤
+- [x] ProductionLines.tsx：handleSubmit 中 targetCycleTime <= 0 時傳 undefined（而非 0）
+- [x] ProductionLines.tsx：表單加入前端驗證提示（輸入 0 或負數時顯示錯誤訊息）
+- [x] server/routers.ts：確認 productionLine.create/update 的 targetCycleTime Zod schema 與前端一致（positive() 已正確）

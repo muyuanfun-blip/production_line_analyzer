@@ -154,10 +154,15 @@ export default function ProductionLines() {
 
   const handleSubmit = () => {
     if (!form.name.trim()) { toast.error("請輸入生產線名稱"); return; }
+    const parsedTakt = form.targetCycleTime ? parseFloat(form.targetCycleTime) : NaN;
+    if (!isNaN(parsedTakt) && parsedTakt <= 0) {
+      toast.error("目標節拍時間必須大於 0 秒，若不設定請清空欄位");
+      return;
+    }
     const payload = {
       name: form.name.trim(),
       description: form.description || undefined,
-      targetCycleTime: form.targetCycleTime ? parseFloat(form.targetCycleTime) : undefined,
+      targetCycleTime: (!isNaN(parsedTakt) && parsedTakt > 0) ? parsedTakt : undefined,
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, ...payload });
@@ -436,6 +441,11 @@ export default function ProductionLines() {
               {form.targetCycleTime && parseFloat(form.targetCycleTime) > 0 && (
                 <p className="text-xs text-muted-foreground">
                   每小時產能目標：約 {Math.floor(3600 / parseFloat(form.targetCycleTime))} 件
+                </p>
+              )}
+              {form.targetCycleTime && parseFloat(form.targetCycleTime) <= 0 && (
+                <p className="text-xs text-destructive">
+                  節拍時間必須大於 0 秒
                 </p>
               )}
             </div>
