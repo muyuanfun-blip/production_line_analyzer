@@ -3,8 +3,8 @@ import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import {
   Factory, Plus, Pencil, Trash2, BarChart3, Brain,
-  ChevronRight, MoreVertical, Settings, Target, TrendingUp, AlertTriangle,
-  Activity, Users
+  MoreVertical, Settings, Target, ArrowUpDown,
+  ArrowUp, ArrowDown, Activity, Users
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,9 @@ type LineFormData = {
   description: string;
   targetCycleTime: string;
 };
+
+type SortKey = "default" | "balanceRate" | "upph" | "name";
+type SortDir = "asc" | "desc";
 
 /** 依平衡率回傳顏色 class */
 function getBalanceColor(rate: number) {
@@ -55,6 +58,46 @@ export default function ProductionLines() {
     }
     return map;
   }, [allLatest]);
+
+  const [sortKey, setSortKey] = useState<SortKey>("default");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  // 切換排序：同一欄位再點一次則反轉方向，切換新欄位則預設 asc
+  const handleSort = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  // 排序後的產線清單
+  const sortedLines = useMemo(() => {
+    if (!lines) return [];
+    if (sortKey === "default") return [...lines];
+    return [...lines].sort((a, b) => {
+      const la = latestMap.get(a.id);
+      const lb = latestMap.get(b.id);
+      let valA: number | string;
+      let valB: number | string;
+      if (sortKey === "name") {
+        valA = a.name;
+        valB = b.name;
+      } else if (sortKey === "balanceRate") {
+        // 無快照排末尾
+        valA = la ? la.balanceRate : (sortDir === "asc" ? Infinity : -Infinity);
+        valB = lb ? lb.balanceRate : (sortDir === "asc" ? Infinity : -Infinity);
+      } else {
+        // upph：null 排末尾
+        valA = la?.upph != null ? la.upph : (sortDir === "asc" ? Infinity : -Infinity);
+        valB = lb?.upph != null ? lb.upph : (sortDir === "asc" ? Infinity : -Infinity);
+      }
+      if (valA < valB) return sortDir === "asc" ? -1 : 1;
+      if (valA > valB) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [lines, sortKey, sortDir, latestMap]);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -146,6 +189,50 @@ export default function ProductionLines() {
         </Button>
       </div>
 
+      {/* Sort Toolbar */}
+      {!isLoading && (lines?.length ?? 0) > 1 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground mr-1 flex items-center gap-1">
+            <ArrowUpDown className="h-3.5 w-3.5" />排序：
+          </span>
+          {([
+            { key: "default" as SortKey, label: "預設" },
+            { key: "balanceRate" as SortKey, label: "平衡率" },
+            { key: "upph" as SortKey, label: "UPPH" },
+            { key: "name" as SortKey, label: "名稱" },
+          ]).map(({ key, label }) => {
+            const active = sortKey === key;
+            return (
+              <button
+                key={key}
+                onClick={() => handleSort(key)}
+                className={[
+                  "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border transition-all",
+                  active
+                    ? "bg-primary/15 border-primary/40 text-primary"
+                    : "bg-muted/30 border-border text-muted-foreground hover:border-primary/30 hover:text-foreground",
+                ].join(" ")}
+              >
+                {label}
+                {active && key !== "default" && (
+                  sortDir === "asc"
+                    ? <ArrowUp className="h-3 w-3" />
+                    : <ArrowDown className="h-3 w-3" />
+                )}
+              </button>
+            );
+          })}
+          {sortKey !== "default" && (
+            <button
+              onClick={() => { setSortKey("default"); setSortDir("asc"); }}
+              className="text-xs text-muted-foreground/60 hover:text-muted-foreground underline underline-offset-2 ml-1"
+            >
+              重置
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Lines Grid */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -167,7 +254,7 @@ export default function ProductionLines() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {lines?.map((line) => {
+          {sortedLines.map((line) => {
             const st = statusLabel(line.status);
             const latest = latestMap.get(line.id) ?? null;
             const balColor = latest ? getBalanceColor(latest.balanceRate) : null;

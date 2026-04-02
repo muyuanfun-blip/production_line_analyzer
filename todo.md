@@ -140,3 +140,9 @@
 - [x] ProductionLines.tsx：在產線卡片加入最新平衡率顯示（含顏色等級）
 - [x] ProductionLines.tsx：在產線卡片加入最新 UPPH 顯示
 - [x] ProductionLines.tsx：無快照時顯示「尚無分析資料」提示
+
+## 產線卡片排序功能（新增）
+- [x] ProductionLines.tsx：加入排序狀態（sortKey + sortDir）
+- [x] ProductionLines.tsx：實作排序工具列（平衡率、UPPH、名稱、預設）
+- [x] ProductionLines.tsx：依排序條件對卡片清單進行排序
+- [x] ProductionLines.tsx：無快照的產線在「平衡率/UPPH 排序」時排至末尾
