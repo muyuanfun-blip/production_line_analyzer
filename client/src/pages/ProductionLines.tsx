@@ -1,9 +1,10 @@
 import { trpc } from "@/lib/trpc";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import {
-  Factory, Plus, Pencil, Trash2, BarChart3, Activity, Brain,
-  ChevronRight, Clock, Users, MoreVertical, Settings, Target, TrendingUp, AlertTriangle
+  Factory, Plus, Pencil, Trash2, BarChart3, Brain,
+  ChevronRight, MoreVertical, Settings, Target, TrendingUp, AlertTriangle,
+  Activity, Users
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,10 +26,35 @@ type LineFormData = {
   targetCycleTime: string;
 };
 
+/** 依平衡率回傳顏色 class */
+function getBalanceColor(rate: number) {
+  if (rate >= 90) return { text: "text-emerald-400", bg: "bg-emerald-400/10 border-emerald-400/30", label: "優秀" };
+  if (rate >= 80) return { text: "text-cyan-400", bg: "bg-cyan-400/10 border-cyan-400/30", label: "良好" };
+  if (rate >= 70) return { text: "text-amber-400", bg: "bg-amber-400/10 border-amber-400/30", label: "待改善" };
+  return { text: "text-red-400", bg: "bg-red-400/10 border-red-400/30", label: "需優化" };
+}
+
 export default function ProductionLines() {
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
   const { data: lines, isLoading } = trpc.productionLine.list.useQuery();
+  const { data: allLatest } = trpc.snapshot.getAllLinesLatest.useQuery();
+
+  // 建立 lineId → 最新快照的 Map，方便卡片查詢
+  const latestMap = useMemo(() => {
+    const map = new Map<number, { balanceRate: number; upph: number | null; snapshotName: string }>();
+    if (!allLatest) return map;
+    for (const item of allLatest) {
+      if (item.snapshot) {
+        map.set(item.lineId, {
+          balanceRate: item.snapshot.balanceRate,
+          upph: item.snapshot.upph ?? null,
+          snapshotName: item.snapshot.name,
+        });
+      }
+    }
+    return map;
+  }, [allLatest]);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -124,7 +150,7 @@ export default function ProductionLines() {
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-48 rounded-xl bg-card animate-pulse border border-border" />
+            <div key={i} className="h-64 rounded-xl bg-card animate-pulse border border-border" />
           ))}
         </div>
       ) : lines?.length === 0 ? (
@@ -143,6 +169,8 @@ export default function ProductionLines() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {lines?.map((line) => {
             const st = statusLabel(line.status);
+            const latest = latestMap.get(line.id) ?? null;
+            const balColor = latest ? getBalanceColor(latest.balanceRate) : null;
             return (
               <Card key={line.id} className="border-border bg-card hover:border-primary/30 transition-all group">
                 <CardHeader className="pb-3">
@@ -182,6 +210,50 @@ export default function ProductionLines() {
                   {line.description && (
                     <p className="text-sm text-muted-foreground line-clamp-2">{line.description}</p>
                   )}
+
+                  {/* ── 最新快照指標區塊 ── */}
+                  {latest ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {/* 平衡率 */}
+                      <div className={`flex items-center gap-2 p-2.5 rounded-lg border ${balColor!.bg}`}>
+                        <BarChart3 className={`h-4 w-4 shrink-0 ${balColor!.text}`} />
+                        <div className="min-w-0">
+                          <p className="text-xs text-muted-foreground leading-none mb-0.5">平衡率</p>
+                          <p className={`text-sm font-bold leading-none ${balColor!.text}`}>
+                            {latest.balanceRate.toFixed(1)}%
+                          </p>
+                          <p className={`text-xs leading-none mt-0.5 ${balColor!.text} opacity-70`}>
+                            {balColor!.label}
+                          </p>
+                        </div>
+                      </div>
+                      {/* UPPH */}
+                      <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-400/10 border border-amber-400/30">
+                        <Users className="h-4 w-4 text-amber-400 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-xs text-muted-foreground leading-none mb-0.5">UPPH</p>
+                          {latest.upph != null ? (
+                            <>
+                              <p className="text-sm font-bold text-amber-400 leading-none">
+                                {latest.upph.toFixed(1)}
+                              </p>
+                              <p className="text-xs text-amber-400/70 leading-none mt-0.5">件/人/時</p>
+                            </>
+                          ) : (
+                            <p className="text-xs text-muted-foreground/60 leading-none">—</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* 無快照時的提示 */
+                    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/20 border border-dashed border-border">
+                      <Activity className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                      <p className="text-xs text-muted-foreground/60">尚無分析資料，請先進行平衡分析並儲存快照</p>
+                    </div>
+                  )}
+
+                  {/* Takt Time */}
                   {line.targetCycleTime ? (
                     <div className="flex items-center gap-2 p-2.5 rounded-lg bg-violet-400/8 border border-violet-400/20">
                       <Target className="h-4 w-4 text-violet-400 shrink-0" />
@@ -196,6 +268,7 @@ export default function ProductionLines() {
                       <p className="text-xs text-muted-foreground/60">尚未設定目標節拍時間</p>
                     </div>
                   )}
+
                   {/* Action Buttons */}
                   <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border">
                     <Button

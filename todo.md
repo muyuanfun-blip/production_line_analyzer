@@ -134,3 +134,9 @@
 - [x] SnapshotHistory.tsx：快照卡片加入 UPPH 顯示
 - [x] 補強 UPPH 相關測試（20 項全通過）
 - [x] AISuggestions.tsx：KPI 卡片加入 UPPH、導出報告（TXT/JSON）加入 UPPH
+
+## 生產管理頁面產線卡片強化（新增）
+- [x] ProductionLines.tsx：串接 snapshot.getAllLinesLatest API 取得最新快照資料
+- [x] ProductionLines.tsx：在產線卡片加入最新平衡率顯示（含顏色等級）
+- [x] ProductionLines.tsx：在產線卡片加入最新 UPPH 顯示
+- [x] ProductionLines.tsx：無快照時顯示「尚無分析資料」提示
