@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { FormulaTooltip } from "@/components/FormulaTooltip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -195,10 +196,12 @@ export default function SnapshotHistory() {
                     <div className="flex items-center gap-5 flex-shrink-0 flex-wrap">
                       {/* 平衡率 */}
                       <div className="text-center min-w-[60px]">
-                        <div className={`text-xl font-bold ${getBalanceColor(snap.balanceRate)} flex items-center gap-1 justify-center`}>
-                          {snap.balanceRate.toFixed(1)}%
-                          <TrendIcon value={snap.balanceRate} prev={prevSnap?.balanceRate} />
-                        </div>
+                        <FormulaTooltip formulaKey="balanceRate" liveValues={{ "平衡率": `${snap.balanceRate.toFixed(1)}%` }}>
+                          <div className={`text-xl font-bold ${getBalanceColor(snap.balanceRate)} flex items-center gap-1 justify-center`}>
+                            {snap.balanceRate.toFixed(1)}%
+                            <TrendIcon value={snap.balanceRate} prev={prevSnap?.balanceRate} />
+                          </div>
+                        </FormulaTooltip>
                         <div className="text-xs text-muted-foreground">平衡率</div>
                         {prevSnap && (
                           <div className={`text-xs ${snap.balanceRate > prevSnap.balanceRate ? "text-emerald-400" : snap.balanceRate < prevSnap.balanceRate ? "text-red-400" : "text-muted-foreground"}`}>
@@ -209,10 +212,12 @@ export default function SnapshotHistory() {
 
                       {/* 瓶頸時間 */}
                       <div className="text-center min-w-[60px]">
-                        <div className="text-xl font-bold text-orange-400 flex items-center gap-1 justify-center">
-                          {snap.maxTime.toFixed(1)}s
-                          <TrendIcon value={-snap.maxTime} prev={prevSnap ? -prevSnap.maxTime : undefined} />
-                        </div>
+                        <FormulaTooltip formulaKey="bottleneckTime" liveValues={{ "瓶頸時間": `${snap.maxTime.toFixed(1)}s` }}>
+                          <div className="text-xl font-bold text-orange-400 flex items-center gap-1 justify-center">
+                            {snap.maxTime.toFixed(1)}s
+                            <TrendIcon value={-snap.maxTime} prev={prevSnap ? -prevSnap.maxTime : undefined} />
+                          </div>
+                        </FormulaTooltip>
                         <div className="text-xs text-muted-foreground">瓶頸時間</div>
                         {snap.bottleneckName && (
                           <div className="text-xs text-muted-foreground truncate max-w-[80px]">{snap.bottleneckName}</div>
@@ -234,9 +239,11 @@ export default function SnapshotHistory() {
                       {/* Takt Time */}
                       {snap.taktTime && (
                         <div className="text-center min-w-[60px]">
-                          <div className="text-xl font-bold text-violet-400 flex items-center gap-1 justify-center">
-                            <Target className="w-4 h-4" />{snap.taktTime}s
-                          </div>
+                          <FormulaTooltip formulaKey="taktPassRate" liveValues={{ "Takt Time": `${snap.taktTime}s` }}>
+                            <div className="text-xl font-bold text-violet-400 flex items-center gap-1 justify-center">
+                              <Target className="w-4 h-4" />{snap.taktTime}s
+                            </div>
+                          </FormulaTooltip>
                           <div className="text-xs text-muted-foreground">Takt Time</div>
                           {snap.taktPassCount !== null && (
                             <div className="text-xs text-muted-foreground">{snap.taktPassCount}/{snap.workstationCount} 達標</div>
@@ -247,10 +254,12 @@ export default function SnapshotHistory() {
                       {/* UPPH */}
                       {snap.upph != null && (
                         <div className="text-center min-w-[70px]">
-                          <div className="text-xl font-bold text-amber-400 flex items-center gap-1 justify-center">
-                            {Number(snap.upph).toFixed(2)}
-                            <TrendIcon value={Number(snap.upph)} prev={prevSnap?.upph != null ? Number(prevSnap.upph) : undefined} />
-                          </div>
+                          <FormulaTooltip formulaKey="upph" liveValues={{ "UPPH": `${Number(snap.upph).toFixed(2)} 件/人/時` }}>
+                            <div className="text-xl font-bold text-amber-400 flex items-center gap-1 justify-center">
+                              {Number(snap.upph).toFixed(2)}
+                              <TrendIcon value={Number(snap.upph)} prev={prevSnap?.upph != null ? Number(prevSnap.upph) : undefined} />
+                            </div>
+                          </FormulaTooltip>
                           <div className="text-xs text-amber-400/80 font-medium">UPPH</div>
                           {prevSnap?.upph != null && (
                             <div className={`text-xs ${

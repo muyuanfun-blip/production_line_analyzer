@@ -139,3 +139,11 @@
 - [x] ProductionLines.tsx：在目標節拍時間欄位旁加入計算機圖示按鈕
 - [x] ProductionLines.tsx：實作 Popover 展開式計算工具（可用時間分鐘數 + 需求數量 → 自動計算 Takt Time）
 - [x] ProductionLines.tsx：計算結果一鍵帶入目標節拍時間欄位
+
+## KPI 公式說明 Tooltip（新增）
+- [x] 建立共用 FormulaTooltip 元件（懸停顯示公式、說明、計算範例）
+- [x] BalanceAnalysis.tsx：5 個 KPI 卡片數字套用 FormulaTooltip
+- [x] Home.tsx：摘要統計卡片與各產線卡片數字套用 FormulaTooltip
+- [x] SnapshotCompare.tsx：KPI 對比卡片數字套用 FormulaTooltip
+- [x] SnapshotHistory.tsx：快照卡片 KPI 數字套用 FormulaTooltip
+- [x] AISuggestions.tsx：KPI 卡片數字套用 FormulaTooltip

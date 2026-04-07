@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { FormulaTooltip } from "@/components/FormulaTooltip";
 import { useState, useMemo } from "react";
 import { useLocation, useParams } from "wouter";
 import {
@@ -186,7 +187,12 @@ export default function AISuggestions() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">{kpi.label}</p>
-                  <p className={`text-xl font-bold ${kpi.color}`}>{kpi.value}<span className="text-sm font-normal ml-0.5">{kpi.unit}</span></p>
+                  <FormulaTooltip
+                    formulaKey={kpi.label === "產線平衡率" ? "balanceRate" : kpi.label === "瓶頸時間" ? "bottleneckTime" : kpi.label === "UPPH" ? "upph" : kpi.label === "總人員" ? "totalManpower" : "workstationCount"}
+                    liveValues={{ [kpi.label]: `${kpi.value}${kpi.unit}` }}
+                  >
+                    <p className={`text-xl font-bold ${kpi.color}`}>{kpi.value}<span className="text-sm font-normal ml-0.5">{kpi.unit}</span></p>
+                  </FormulaTooltip>
                 </div>
               </CardContent>
             </Card>

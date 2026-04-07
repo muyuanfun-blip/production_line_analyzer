@@ -17,6 +17,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { FormulaTooltip } from "@/components/FormulaTooltip";
 
 // ─── Color Tokens ──────────────────────────────────────────────────────────────
 const COLORS = {
@@ -480,6 +481,8 @@ export default function BalanceAnalysis() {
                 icon: TrendingUp,
                 color: analysis.balanceRate >= 85 ? "text-emerald-400" : analysis.balanceRate >= 70 ? "text-amber-400" : "text-orange-400",
                 bg: analysis.balanceRate >= 85 ? "bg-emerald-400/10" : analysis.balanceRate >= 70 ? "bg-amber-400/10" : "bg-orange-400/10",
+                formulaKey: "balanceRate",
+                liveValues: { "總工序時間": `${analysis.totalTime.toFixed(1)}s`, "瓶頸時間": `${analysis.maxTime.toFixed(1)}s`, "工站數": analysis.workstationCount },
               },
               {
                 label: "瓶頸工站時間",
@@ -488,6 +491,8 @@ export default function BalanceAnalysis() {
                 icon: AlertTriangle,
                 color: taktTime && analysis.maxTime > taktTime ? "text-red-400" : "text-orange-400",
                 bg: taktTime && analysis.maxTime > taktTime ? "bg-red-400/10" : "bg-orange-400/10",
+                formulaKey: "bottleneckTime",
+                liveValues: { "瓶頸工站": String(analysis.bottleneck?.name ?? "-"), "瓶頸時間": `${analysis.maxTime.toFixed(1)}s` },
               },
               {
                 label: taktTime ? "Takt Time 達標率" : "平均工序時間",
@@ -504,6 +509,10 @@ export default function BalanceAnalysis() {
                 bg: taktTime
                   ? (analysis.taktStats!.passRate >= 80 ? "bg-emerald-400/10" : analysis.taktStats!.passRate >= 50 ? "bg-amber-400/10" : "bg-red-400/10")
                   : "bg-cyan-400/10",
+                formulaKey: taktTime ? "taktPassRate" : "avgCycleTime",
+                liveValues: taktTime
+                  ? { "Takt Time": `${taktTime}s`, "達標工站": `${analysis.taktStats!.passCount}/${analysis.workstationCount}` }
+                  : { "總工序時間": `${analysis.totalTime.toFixed(1)}s`, "工站數": analysis.workstationCount },
               },
               {
                 label: "平衡損失率",
@@ -512,6 +521,8 @@ export default function BalanceAnalysis() {
                 icon: Activity,
                 color: "text-violet-400",
                 bg: "bg-violet-400/10",
+                formulaKey: "balanceLoss",
+                liveValues: { "平衡率": `${analysis.balanceRate.toFixed(1)}%`, "損失率": `${analysis.balanceLoss.toFixed(1)}%` },
               },
             ].map(kpi => (
               <Card key={kpi.label} className="border-border bg-card">
@@ -522,7 +533,9 @@ export default function BalanceAnalysis() {
                       <kpi.icon className={`h-4 w-4 ${kpi.color}`} />
                     </div>
                   </div>
-                  <p className={`text-2xl font-bold ${kpi.color}`}>{kpi.value}</p>
+                  <FormulaTooltip formulaKey={kpi.formulaKey as any} liveValues={kpi.liveValues as unknown as Record<string, string | number>}>
+                    <p className={`text-2xl font-bold ${kpi.color}`}>{kpi.value}</p>
+                  </FormulaTooltip>
                   <p className="text-xs text-muted-foreground mt-1">{kpi.sub}</p>
                 </CardContent>
               </Card>
@@ -536,9 +549,14 @@ export default function BalanceAnalysis() {
                     <Users className="h-4 w-4 text-amber-400" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-amber-400">
-                  {analysis.upph.toFixed(2)}
-                </p>
+                <FormulaTooltip
+                  formulaKey="upph"
+                  liveValues={{ "瓶頸時間": `${analysis.maxTime.toFixed(1)}s`, "總人數": `${analysis.totalManpower}人` }}
+                >
+                  <p className="text-2xl font-bold text-amber-400">
+                    {analysis.upph.toFixed(2)}
+                  </p>
+                </FormulaTooltip>
                 <p className="text-xs text-muted-foreground mt-1">件/人/時</p>
                 <div className="mt-2 pt-2 border-t border-amber-500/20">
                   <p className="text-xs text-amber-400/70">

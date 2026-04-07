@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { FormulaTooltip } from "@/components/FormulaTooltip";
 import { useLocation } from "wouter";
 import {
   Activity, BarChart3, Brain, Factory, TrendingUp, Zap, ArrowRight,
@@ -297,9 +298,11 @@ export default function Home() {
                 <Card className="border-border bg-card/60">
                   <CardContent className="p-4">
                     <p className="text-xs text-muted-foreground mb-1">平均平衡率</p>
-                    <p className={`text-2xl font-bold ${getBalanceColor(summaryStats.avg).text}`}>
-                      {summaryStats.avg.toFixed(1)}%
-                    </p>
+                    <FormulaTooltip formulaKey="balanceRate" liveValues={{ "說明": "所有產線最新快照的平均平衡率" }}>
+                      <p className={`text-2xl font-bold ${getBalanceColor(summaryStats.avg).text}`}>
+                        {summaryStats.avg.toFixed(1)}%
+                      </p>
+                    </FormulaTooltip>
                     <p className="text-xs text-muted-foreground mt-1">共 {summaryStats.total} 條產線</p>
                   </CardContent>
                 </Card>
@@ -327,9 +330,11 @@ export default function Home() {
                       <AlertTriangle className={`h-3 w-3 ${summaryStats.needImprove > 0 ? "text-red-400" : "text-emerald-400"}`} />
                       待改善（&lt;70%）
                     </p>
-                    <p className={`text-2xl font-bold ${summaryStats.needImprove > 0 ? "text-red-400" : "text-emerald-400"}`}>
-                      {summaryStats.needImprove}
-                    </p>
+                    <FormulaTooltip formulaKey="balanceRate" liveValues={{ "說明": "平衡率 < 70% 的產線數量" }}>
+                      <p className={`text-2xl font-bold ${summaryStats.needImprove > 0 ? "text-red-400" : "text-emerald-400"}`}>
+                        {summaryStats.needImprove}
+                      </p>
+                    </FormulaTooltip>
                     <p className="text-xs text-muted-foreground mt-1">條產線</p>
                   </CardContent>
                 </Card>
@@ -342,7 +347,9 @@ export default function Home() {
                     {summaryStats.bestUpph ? (
                       <>
                         <p className="text-lg font-bold text-amber-400 truncate">{summaryStats.bestUpph.lineName}</p>
-                        <p className="text-xs text-amber-400/70 mt-1">{Number(summaryStats.bestUpph.upph ?? 0).toFixed(2)} 件/人/時</p>
+                        <FormulaTooltip formulaKey="upph" liveValues={{ "說明": "UPPH 最高產線" }}>
+                          <p className="text-xs text-amber-400/70 mt-1">{Number(summaryStats.bestUpph.upph ?? 0).toFixed(2)} 件/人/時</p>
+                        </FormulaTooltip>
                       </>
                     ) : (
                       <>
@@ -446,7 +453,9 @@ export default function Home() {
                       <div className="mb-3">
                         <div className="flex justify-between text-xs mb-1">
                           <span className="text-muted-foreground">平衡率</span>
-                          <span className={`font-bold ${colors.text}`}>{item.balanceRate.toFixed(1)}%</span>
+                          <FormulaTooltip formulaKey="balanceRate" liveValues={{ "平衡率": `${item.balanceRate.toFixed(1)}%` }}>
+                            <span className={`font-bold ${colors.text}`}>{item.balanceRate.toFixed(1)}%</span>
+                          </FormulaTooltip>
                         </div>
                         <div className="h-2 rounded-full bg-border overflow-hidden">
                           <div
@@ -463,17 +472,23 @@ export default function Home() {
                         </div>
                         <div className="text-center">
                           <p className="text-muted-foreground">瓶頸時間</p>
-                          <p className="font-semibold text-foreground">{item.maxTime.toFixed(1)}s</p>
+                          <FormulaTooltip formulaKey="bottleneckTime" liveValues={{ "瓶頸時間": `${item.maxTime.toFixed(1)}s` }}>
+                            <p className="font-semibold text-foreground">{item.maxTime.toFixed(1)}s</p>
+                          </FormulaTooltip>
                         </div>
                         {item.taktPassRate != null ? (
                           <div className="text-center">
                             <p className="text-muted-foreground">Takt 達標</p>
+                            <FormulaTooltip formulaKey="taktPassRate" liveValues={{ "Takt 達標率": `${item.taktPassRate!.toFixed(0)}%` }}>
                             <p className="font-semibold text-violet-400">{item.taktPassRate.toFixed(0)}%</p>
+                          </FormulaTooltip>
                           </div>
                         ) : (
                           <div className="text-center">
                             <p className="text-muted-foreground">人員</p>
+                            <FormulaTooltip formulaKey="totalManpower" liveValues={{ "總人數": `${item.totalManpower} 人` }}>
                             <p className="font-semibold text-foreground">{item.totalManpower}</p>
+                          </FormulaTooltip>
                           </div>
                         )}
                       </div>
@@ -483,9 +498,11 @@ export default function Home() {
                           <span className="text-xs text-amber-400 font-medium flex items-center gap-1">
                             <Users className="h-3 w-3" /> UPPH
                           </span>
-                          <span className="text-sm font-bold text-amber-400">
-                            {Number(item.upph).toFixed(2)} 件/人/時
-                          </span>
+                          <FormulaTooltip formulaKey="upph" liveValues={{ "UPPH": `${Number(item.upph).toFixed(2)} 件/人/時` }}>
+                            <span className="text-sm font-bold text-amber-400">
+                              {Number(item.upph).toFixed(2)} 件/人/時
+                            </span>
+                          </FormulaTooltip>
                         </div>
                       )}
                       <div className="flex items-center justify-end mt-3 text-xs text-muted-foreground group-hover:text-primary transition-colors">

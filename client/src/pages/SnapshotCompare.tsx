@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useParams, useLocation, useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { FormulaTooltip } from "@/components/FormulaTooltip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -235,12 +236,16 @@ export default function SnapshotCompare() {
                 <>
                   <div className="flex items-end gap-3 mb-2">
                     <div>
-                      <div className="text-lg font-bold text-cyan-400">{a.toFixed(1)}{unit}</div>
+                      <FormulaTooltip formulaKey={label === "產線平衡率" ? "balanceRate" : label === "瓶頸工站時間" ? "bottleneckTime" : label.includes("Takt") ? "taktPassRate" : "avgCycleTime"} liveValues={{ "快照": "A" }}>
+                        <div className="text-lg font-bold text-cyan-400">{a.toFixed(1)}{unit}</div>
+                      </FormulaTooltip>
                       <div className="text-xs text-muted-foreground">快照 A</div>
                     </div>
                     <div className="text-muted-foreground mb-1 text-sm">→</div>
                     <div>
-                      <div className="text-lg font-bold text-violet-400">{b.toFixed(1)}{unit}</div>
+                      <FormulaTooltip formulaKey={label === "產線平衡率" ? "balanceRate" : label === "瓶頸工站時間" ? "bottleneckTime" : label.includes("Takt") ? "taktPassRate" : "avgCycleTime"} liveValues={{ "快照": "B" }}>
+                        <div className="text-lg font-bold text-violet-400">{b.toFixed(1)}{unit}</div>
+                      </FormulaTooltip>
                       <div className="text-xs text-muted-foreground">快照 B</div>
                     </div>
                   </div>
@@ -262,16 +267,20 @@ export default function SnapshotCompare() {
               <>
                 <div className="flex items-end gap-3 mb-2">
                   <div>
-                    <div className="text-lg font-bold text-cyan-400">
-                      {A.upph != null ? Number(A.upph).toFixed(2) : "—"}
-                    </div>
+                    <FormulaTooltip formulaKey="upph" liveValues={{ "快照": "A" }}>
+                      <div className="text-lg font-bold text-cyan-400">
+                        {A.upph != null ? Number(A.upph).toFixed(2) : "—"}
+                      </div>
+                    </FormulaTooltip>
                     <div className="text-xs text-muted-foreground">快照 A</div>
                   </div>
                   <div className="text-muted-foreground mb-1 text-sm">→</div>
                   <div>
-                    <div className="text-lg font-bold text-violet-400">
-                      {B.upph != null ? Number(B.upph).toFixed(2) : "—"}
-                    </div>
+                    <FormulaTooltip formulaKey="upph" liveValues={{ "快照": "B" }}>
+                      <div className="text-lg font-bold text-violet-400">
+                        {B.upph != null ? Number(B.upph).toFixed(2) : "—"}
+                      </div>
+                    </FormulaTooltip>
                     <div className="text-xs text-muted-foreground">快照 B</div>
                   </div>
                 </div>
