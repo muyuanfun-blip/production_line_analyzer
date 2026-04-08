@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback } from "react";
-import html2canvas from "html2canvas";
 import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { FormulaTooltip } from "@/components/FormulaTooltip";
@@ -77,27 +76,69 @@ function SnapshotChartDialog({ snap, open, onClose }: {
   const chartRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
 
-  const handleDownload = useCallback(async () => {
+  const handleDownload = useCallback(() => {
     if (!chartRef.current) return;
     setDownloading(true);
     try {
-      const canvas = await html2canvas(chartRef.current, {
-        backgroundColor: "#0f1117",
-        scale: 2,
-        useCORS: true,
-        logging: false,
-      });
-      const link = document.createElement("a");
-      const dateStr = new Date(snap.createdAt).toLocaleDateString("zh-TW", {
-        year: "numeric", month: "2-digit", day: "2-digit",
-      }).replace(/\//g, "-");
-      link.download = `工序時間分佈圖_${snap.name}_${dateStr}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-      toast.success("圖表已下載為 PNG 圖片");
+      // 從 chartRef 內取得 Recharts 產生的 SVG 元素
+      const svgEl = chartRef.current.querySelector("svg");
+      if (!svgEl) {
+        toast.error("找不到圖表元素，請稍後再試");
+        return;
+      }
+
+      const scale = 2;
+      const bbox = svgEl.getBoundingClientRect();
+      const width = bbox.width || svgEl.clientWidth || 800;
+      const height = bbox.height || svgEl.clientHeight || 350;
+
+      // 克隆 SVG 並設定背景色
+      const cloned = svgEl.cloneNode(true) as SVGElement;
+      cloned.setAttribute("width", String(width));
+      cloned.setAttribute("height", String(height));
+      cloned.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+      // 插入背景色矩形
+      const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      bg.setAttribute("width", "100%");
+      bg.setAttribute("height", "100%");
+      bg.setAttribute("fill", "#0f1117");
+      cloned.insertBefore(bg, cloned.firstChild);
+
+      const svgStr = new XMLSerializer().serializeToString(cloned);
+      const svgBlob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(svgBlob);
+
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = width * scale;
+        canvas.height = height * scale;
+        const ctx = canvas.getContext("2d")!;
+        ctx.scale(scale, scale);
+        ctx.fillStyle = "#0f1117";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        URL.revokeObjectURL(url);
+
+        const dateStr = new Date(snap.createdAt).toLocaleDateString("zh-TW", {
+          year: "numeric", month: "2-digit", day: "2-digit",
+        }).replace(/\//g, "-");
+        const link = document.createElement("a");
+        link.download = `工序時間分佈圖_${snap.name}_${dateStr}.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+        toast.success("圖表已下載為 PNG 圖片");
+        setDownloading(false);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        toast.error("圖表轉換失敗，請稍後再試");
+        setDownloading(false);
+      };
+      img.src = url;
     } catch {
       toast.error("下載失敗，請稍後再試");
-    } finally {
       setDownloading(false);
     }
   }, [snap]);

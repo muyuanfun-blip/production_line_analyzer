@@ -192,3 +192,6 @@
 - [x] SnapshotCompare.tsx：兩張圖共用相同 Y 軸最大值，方便視覺對比
 - [x] SnapshotCompare.tsx：套用與 BalanceAnalysis 相同的五級風險等級配色
 - [x] SnapshotCompare.tsx：標示 Takt Time 參考線（若有）
+
+## 修復圖表下載功能（Bug）
+- [x] 改用 Recharts SVG 直接轉 PNG 方式，取代 html2canvas（html2canvas 對 SVG 渲染有相容性問題）
