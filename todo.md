@@ -147,3 +147,12 @@
 - [x] SnapshotCompare.tsx：KPI 對比卡片數字套用 FormulaTooltip
 - [x] SnapshotHistory.tsx：快照卡片 KPI 數字套用 FormulaTooltip
 - [x] AISuggestions.tsx：KPI 卡片數字套用 FormulaTooltip
+
+## 互動式使用指南頁面（新增）
+- [x] 建立 client/src/pages/UserGuide.tsx 互動式使用指南頁面
+- [x] 實作章節導覽（側邊目錄）：6 大章節可快速跳轉
+- [x] 實作步驟卡片：每個功能以編號步驟呈現操作流程
+- [x] 實作公式卡片：6 種 KPI 指標的公式說明（含範例計算）
+- [x] 實作功能亮點卡片：UPPH、FormulaTooltip、Takt Time 計算機等新功能說明
+- [x] 在 App.tsx 加入 /guide 路由
+- [x] 在 DashboardLayout.tsx 側邊欄加入「使用指南」連結（BookOpen 圖示）

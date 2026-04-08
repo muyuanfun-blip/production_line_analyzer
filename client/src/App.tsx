@@ -13,6 +13,7 @@ import ActionAnalysis from "./pages/ActionAnalysis";
 import AISuggestions from "./pages/AISuggestions";
 import SnapshotHistory from "./pages/SnapshotHistory";
 import SnapshotCompare from "./pages/SnapshotCompare";
+import UserGuide from "./pages/UserGuide";
 
 function Router() {
   return (
@@ -25,6 +26,7 @@ function Router() {
       <Route path={"/lines/:id/ai"} component={AISuggestions} />
       <Route path={"/lines/:id/snapshots/compare"} component={SnapshotCompare} />
       <Route path={"/lines/:id/snapshots"} component={SnapshotHistory} />
+      <Route path={"/guide"} component={UserGuide} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
