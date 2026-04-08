@@ -162,3 +162,8 @@
 - [x] UserGuide.tsx：加入 8 個常見問題（平衡率低於 70%、UPPH 提升方法等）
 - [x] UserGuide.tsx：實作可展開/收合的問答卡片 UI（Accordion 樣式）
 - [x] UserGuide.tsx：在側邊欄導覽加入 FAQ 章節連結
+
+## 快照工站明細展示（新增）
+- [x] SnapshotHistory.tsx：每張快照卡片新增「展開工站明細」按鈕（Collapsible）
+- [x] SnapshotHistory.tsx：展開後顯示快照當時所有站別（名稱、週期時間、人員數、是否為瓶頸）
+- [x] SnapshotHistory.tsx：工站列表標示瓶頸工站（橘色高亮）與增值率（若有資料）

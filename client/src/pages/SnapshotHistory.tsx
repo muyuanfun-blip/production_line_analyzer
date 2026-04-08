@@ -12,8 +12,24 @@ import {
 import { toast } from "sonner";
 import {
   Camera, Trash2, GitCompare, ArrowLeft, Clock,
-  TrendingUp, TrendingDown, Minus, BarChart3, Target, Users
+  TrendingUp, TrendingDown, Minus, BarChart3, Target, Users,
+  ChevronDown, ChevronUp, Flame, Activity
 } from "lucide-react";
+
+type WorkstationData = {
+  id: number;
+  name: string;
+  cycleTime: number;
+  manpower: number;
+  sequenceOrder: number;
+  description?: string;
+  actionStepCount?: number;
+  totalStepSec?: number;
+  valueAddedSec?: number;
+  nonValueAddedSec?: number;
+  necessaryWasteSec?: number;
+  valueAddedRate?: number | null;
+};
 
 type Snapshot = {
   id: number;
@@ -32,6 +48,7 @@ type Snapshot = {
   taktPassCount: number | null;
   bottleneckName: string | null;
   upph: number | null;
+  workstationsData: unknown;
   createdAt: Date;
 };
 
@@ -43,11 +60,141 @@ function TrendIcon({ value, prev }: { value: number; prev?: number }) {
   return <TrendingDown className="w-3 h-3 text-red-400 inline" />;
 }
 
+function WorkstationDetail({ snap }: { snap: Snapshot }) {
+  const workstations = (snap.workstationsData as WorkstationData[] | null) ?? [];
+  const sorted = [...workstations].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
+  const maxCT = Math.max(...sorted.map(w => w.cycleTime), 0);
+
+  if (sorted.length === 0) {
+    return (
+      <div className="text-center py-4 text-sm text-muted-foreground">
+        此快照無工站資料
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border/60">
+            <th className="text-left py-2 px-3 text-muted-foreground font-medium text-xs">順序</th>
+            <th className="text-left py-2 px-3 text-muted-foreground font-medium text-xs">工站名稱</th>
+            <th className="text-right py-2 px-3 text-muted-foreground font-medium text-xs">週期時間</th>
+            <th className="text-right py-2 px-3 text-muted-foreground font-medium text-xs">人員數</th>
+            <th className="text-right py-2 px-3 text-muted-foreground font-medium text-xs">增值率</th>
+            <th className="text-left py-2 px-3 text-muted-foreground font-medium text-xs">時間佔比</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((ws) => {
+            const isBottleneck = ws.cycleTime === maxCT && maxCT > 0;
+            const barWidth = maxCT > 0 ? (ws.cycleTime / maxCT) * 100 : 0;
+            const isTaktOk = snap.taktTime ? ws.cycleTime <= snap.taktTime : null;
+
+            return (
+              <tr
+                key={ws.id}
+                className={`border-b border-border/30 ${isBottleneck ? "bg-orange-500/5" : "hover:bg-white/[0.02]"}`}
+              >
+                {/* 順序 */}
+                <td className="py-2 px-3 text-muted-foreground text-xs">{ws.sequenceOrder}</td>
+
+                {/* 工站名稱 */}
+                <td className="py-2 px-3">
+                  <div className="flex items-center gap-1.5">
+                    {isBottleneck && (
+                      <Flame className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />
+                    )}
+                    <span className={`font-medium ${isBottleneck ? "text-orange-300" : "text-foreground"}`}>
+                      {ws.name}
+                    </span>
+                    {isBottleneck && (
+                      <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[10px] px-1 py-0">
+                        瓶頸
+                      </Badge>
+                    )}
+                    {isTaktOk === false && (
+                      <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-[10px] px-1 py-0">
+                        超 TT
+                      </Badge>
+                    )}
+                  </div>
+                  {ws.description && (
+                    <div className="text-xs text-muted-foreground mt-0.5 truncate max-w-[180px]">
+                      {ws.description}
+                    </div>
+                  )}
+                </td>
+
+                {/* 週期時間 */}
+                <td className="py-2 px-3 text-right">
+                  <span className={`font-mono font-semibold ${isBottleneck ? "text-orange-400" : "text-foreground"}`}>
+                    {ws.cycleTime.toFixed(1)}s
+                  </span>
+                </td>
+
+                {/* 人員數 */}
+                <td className="py-2 px-3 text-right">
+                  <span className="text-muted-foreground flex items-center justify-end gap-1">
+                    <Users className="w-3 h-3" />
+                    {ws.manpower}
+                  </span>
+                </td>
+
+                {/* 增值率 */}
+                <td className="py-2 px-3 text-right">
+                  {ws.valueAddedRate != null ? (
+                    <span className={`font-medium flex items-center justify-end gap-1 ${
+                      ws.valueAddedRate >= 70 ? "text-emerald-400"
+                      : ws.valueAddedRate >= 50 ? "text-yellow-400"
+                      : "text-red-400"
+                    }`}>
+                      <Activity className="w-3 h-3" />
+                      {ws.valueAddedRate.toFixed(1)}%
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground text-xs">—</span>
+                  )}
+                </td>
+
+                {/* 時間佔比條 */}
+                <td className="py-2 px-3 min-w-[100px]">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 bg-border/40 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${isBottleneck ? "bg-orange-400" : "bg-cyan-500"}`}
+                        style={{ width: `${barWidth}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-muted-foreground w-8 text-right">
+                      {barWidth.toFixed(0)}%
+                    </span>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {/* 動作拆解摘要（若有資料） */}
+      {sorted.some(w => w.valueAddedRate != null) && (
+        <div className="mt-3 pt-3 border-t border-border/40 flex items-center gap-2 text-xs text-muted-foreground">
+          <Activity className="w-3 h-3" />
+          <span>增值率：快照儲存時已記錄各工站動作拆解資料</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SnapshotHistory() {
   const params = useParams<{ id: string }>();
   const lineId = parseInt(params.id ?? "0");
   const [, navigate] = useLocation();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   const { data: line } = trpc.productionLine.getById.useQuery({ id: lineId });
   const { data: snapshots = [], refetch } = trpc.snapshot.listByLine.useQuery(
@@ -66,6 +213,16 @@ export default function SnapshotHistory() {
         ? prev.filter(x => x !== id)
         : prev.length < 2 ? [...prev, id] : [prev[1]!, id]
     );
+  };
+
+  const toggleExpand = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const handleCompare = () => {
@@ -152,12 +309,14 @@ export default function SnapshotHistory() {
       {snapshots.length > 0 && (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            共 {snapshots.length} 個快照 · 點選最多 2 個進行比較
+            共 {snapshots.length} 個快照 · 點選最多 2 個進行比較 · 點擊「展開工站」查看歷史站別資料
           </p>
           {(snapshots as Snapshot[]).map((snap, idx) => {
             const prevSnap = snapshots[idx + 1] as Snapshot | undefined;
             const isSelected = selectedIds.includes(snap.id);
             const selOrder = selectedIds.indexOf(snap.id);
+            const isExpanded = expandedIds.has(snap.id);
+            const wsCount = Array.isArray(snap.workstationsData) ? snap.workstationsData.length : 0;
 
             return (
               <Card
@@ -274,6 +433,26 @@ export default function SnapshotHistory() {
                         </div>
                       )}
 
+                      {/* 展開工站按鈕 */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground hover:text-foreground hover:bg-white/5 gap-1.5 text-xs"
+                        onClick={(e) => toggleExpand(snap.id, e)}
+                      >
+                        {isExpanded ? (
+                          <>
+                            <ChevronUp className="w-3.5 h-3.5" />
+                            收起
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="w-3.5 h-3.5" />
+                            {wsCount > 0 ? `展開 ${wsCount} 站` : "展開工站"}
+                          </>
+                        )}
+                      </Button>
+
                       {/* 刪除 */}
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -302,6 +481,21 @@ export default function SnapshotHistory() {
                       </AlertDialog>
                     </div>
                   </div>
+
+                  {/* 展開工站明細 */}
+                  {isExpanded && (
+                    <div
+                      className="mt-4 pt-4 border-t border-border/50"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <div className="flex items-center gap-2 mb-3">
+                        <BarChart3 className="w-4 h-4 text-blue-400" />
+                        <span className="text-sm font-semibold text-foreground">快照工站明細</span>
+                        <span className="text-xs text-muted-foreground">（記錄快照當下的站別資料）</span>
+                      </div>
+                      <WorkstationDetail snap={snap} />
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );
