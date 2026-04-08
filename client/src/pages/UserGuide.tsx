@@ -21,7 +21,7 @@ import {
   Play,
   Star,
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 interface Step {
   title: string;
@@ -254,6 +254,7 @@ const sections: Section[] = [
 export default function UserGuide() {
   const [activeSection, setActiveSection] = useState("overview");
   const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({});
+  const [, navigate] = useLocation();
 
   const toggleStep = (key: string) => {
     setExpandedSteps((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -296,17 +297,19 @@ export default function UserGuide() {
         <div className="mt-8 pt-6 border-t border-border/40">
           <p className="text-xs text-muted-foreground px-2 mb-3 font-medium uppercase tracking-wide">快速前往</p>
           <div className="space-y-1">
-            <Link href="/lines">
-              <a className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors">
-                <ArrowRight className="w-3 h-3" />
-                生產線管理
-              </a>
+            <Link
+              href="/lines"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+            >
+              <ArrowRight className="w-3 h-3" />
+              生產線管理
             </Link>
-            <Link href="/">
-              <a className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors">
-                <ArrowRight className="w-3 h-3" />
-                首頁儀表板
-              </a>
+            <Link
+              href="/"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+            >
+              <ArrowRight className="w-3 h-3" />
+              首頁儀表板
             </Link>
           </div>
         </div>
@@ -520,11 +523,13 @@ export default function UserGuide() {
                 下一章節 →
               </Button>
             ) : (
-              <Link href="/lines">
-                <Button size="sm" className="gap-2 bg-cyan-600 hover:bg-cyan-700 text-white">
-                  開始使用系統 <ArrowRight className="w-4 h-4" />
-                </Button>
-              </Link>
+              <Button
+                size="sm"
+                className="gap-2 bg-cyan-600 hover:bg-cyan-700 text-white"
+                onClick={() => navigate("/lines")}
+              >
+                開始使用系統 <ArrowRight className="w-4 h-4" />
+              </Button>
             )}
           </div>
         </div>
