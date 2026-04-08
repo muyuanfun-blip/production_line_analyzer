@@ -167,3 +167,8 @@
 - [x] SnapshotHistory.tsx：每張快照卡片新增「展開工站明細」按鈕（Collapsible）
 - [x] SnapshotHistory.tsx：展開後顯示快照當時所有站別（名稱、週期時間、人員數、是否為瓶頸）
 - [x] SnapshotHistory.tsx：工站列表標示瓶頸工站（橘色高亮）與增值率（若有資料）
+
+## 快照工序時間分佈圖（新增）
+- [x] SnapshotHistory.tsx：每張快照卡片新增「查看分佈圖」按鈕
+- [x] SnapshotHistory.tsx：實作 Dialog 彈窗顯示該快照的工站時間分佈柱狀圖（Recharts）
+- [x] SnapshotHistory.tsx：柱狀圖標示瓶頸工站（橘色）、Takt Time 參考線（紫色虛線）
