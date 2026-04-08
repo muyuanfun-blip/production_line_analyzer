@@ -176,3 +176,13 @@
 ## 工序時間分佈圖人員數顯示（新增）
 - [x] SnapshotHistory.tsx：柱狀圖每根柱子內顯示人員數（柱內標籤，格式「👤N人」）
 - [x] SnapshotHistory.tsx：Tooltip 已有人員數，確認顯示正確
+
+## 工序時間分佈圖下載功能（新增）
+- [x] 安裝 html2canvas
+- [x] SnapshotHistory.tsx：Dialog 右上角新增「下載圖表」按鈕，匯出圖表區塊為 PNG
+- [x] 下載檔名格式：「工序時間分佈圖_快照名稱_日期.png」
+
+## 工序時間分佈圖風險等級配色（新增）
+- [x] SnapshotHistory.tsx：柱狀圖套用與 BalanceAnalysis 相同的 COLORS + getBarStatus 邏輯
+- [x] SnapshotHistory.tsx：圖例說明更新為五種風險等級色塊
+- [x] SnapshotHistory.tsx：Tooltip 顯示風險等級標籤

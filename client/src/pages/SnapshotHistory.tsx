@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
+import html2canvas from "html2canvas";
 import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { FormulaTooltip } from "@/components/FormulaTooltip";
@@ -20,7 +21,7 @@ import { toast } from "sonner";
 import {
   Camera, Trash2, GitCompare, ArrowLeft, Clock,
   TrendingUp, TrendingDown, Minus, BarChart3, Target, Users,
-  ChevronDown, ChevronUp, Flame, Activity, BarChart2,
+  ChevronDown, ChevronUp, Flame, Activity, BarChart2, Download, Loader2,
 } from "lucide-react";
 
 type WorkstationData = {
@@ -73,31 +74,107 @@ function SnapshotChartDialog({ snap, open, onClose }: {
   open: boolean;
   onClose: () => void;
 }) {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = useCallback(async () => {
+    if (!chartRef.current) return;
+    setDownloading(true);
+    try {
+      const canvas = await html2canvas(chartRef.current, {
+        backgroundColor: "#0f1117",
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+      const link = document.createElement("a");
+      const dateStr = new Date(snap.createdAt).toLocaleDateString("zh-TW", {
+        year: "numeric", month: "2-digit", day: "2-digit",
+      }).replace(/\//g, "-");
+      link.download = `工序時間分佈圖_${snap.name}_${dateStr}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+      toast.success("圖表已下載為 PNG 圖片");
+    } catch {
+      toast.error("下載失敗，請稍後再試");
+    } finally {
+      setDownloading(false);
+    }
+  }, [snap]);
+
+  // 風險等級配色（與 BalanceAnalysis 一致）
+  const CHART_COLORS = {
+    exceed:     "#ef4444",  // 超出 Takt Time → 紅
+    bottleneck: "#f97316",  // 甁頃（最大値）→ 橘
+    warning:    "#eab308",  // 接近 Takt Time (>80%) → 黃
+    normal:     "#22d3ee",  // 正常 → 青
+    efficient:  "#4ade80",  // 高效（≤ 70% Takt Time）→ 綠
+  };
+
+  type BarStatus = "exceed" | "bottleneck" | "warning" | "normal" | "efficient";
+
+  const STATUS_LABEL: Record<BarStatus, string> = {
+    exceed:     "超出節拍",
+    bottleneck: "甁頃工站",
+    warning:    "接近節拍",
+    normal:     "正常",
+    efficient:  "高效",
+  };
+
+  const taktTime = snap.taktTime ? Number(snap.taktTime) : undefined;
+
+  function getBarStatus(ct: number, maxTime: number, tt?: number): BarStatus {
+    if (tt && ct > tt) return "exceed";
+    if (ct === maxTime && maxTime > 0) return "bottleneck";
+    if (tt) {
+      const ratio = ct / tt;
+      if (ratio >= 0.8) return "warning";
+      if (ratio <= 0.7) return "efficient";
+    } else {
+      if (ct / maxTime >= 0.95) return "bottleneck";
+      if (ct / maxTime >= 0.8) return "warning";
+    }
+    return "normal";
+  }
+
   const workstations = (snap.workstationsData as WorkstationData[] | null) ?? [];
   const sorted = [...workstations].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
   const maxCT = Math.max(...sorted.map(w => w.cycleTime), 0);
 
-  const chartData = sorted.map(ws => ({
-    name: ws.name.length > 8 ? ws.name.slice(0, 7) + "…" : ws.name,
-    fullName: ws.name,
-    cycleTime: ws.cycleTime,
-    isBottleneck: ws.cycleTime === maxCT && maxCT > 0,
-    manpower: ws.manpower,
-    valueAddedRate: ws.valueAddedRate ?? null,
-  }));
+  const chartData = sorted.map(ws => {
+    const status = getBarStatus(ws.cycleTime, maxCT, taktTime);
+    return {
+      name: ws.name.length > 8 ? ws.name.slice(0, 7) + "…" : ws.name,
+      fullName: ws.name,
+      cycleTime: ws.cycleTime,
+      status,
+      barColor: CHART_COLORS[status],
+      isBottleneck: status === "bottleneck",
+      manpower: ws.manpower,
+      valueAddedRate: ws.valueAddedRate ?? null,
+    };
+  });
 
   const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: typeof chartData[0] }> }) => {
     if (!active || !payload?.length) return null;
     const d = payload[0]!.payload;
+    const statusLabel = STATUS_LABEL[d.status as BarStatus];
     return (
       <div className="bg-card border border-border rounded-lg p-3 text-sm shadow-xl">
-        <div className="font-semibold text-foreground mb-1">{d.fullName}</div>
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="font-semibold text-foreground">{d.fullName}</span>
+          <span
+            className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+            style={{ background: `${d.barColor}25`, color: d.barColor, border: `1px solid ${d.barColor}40` }}
+          >
+            {statusLabel}
+          </span>
+        </div>
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">週期時間：</span>
-          <span className={`font-mono font-bold ${d.isBottleneck ? "text-orange-400" : "text-cyan-400"}`}>
+          <span className="font-mono font-bold" style={{ color: d.barColor }}>
             {d.cycleTime.toFixed(1)}s
           </span>
-          {d.isBottleneck && <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-xs">瓶頸</Badge>}
         </div>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-muted-foreground">人員數：</span>
@@ -105,17 +182,17 @@ function SnapshotChartDialog({ snap, open, onClose }: {
         </div>
         {d.valueAddedRate != null && (
           <div className="flex items-center gap-2 mt-1">
-            <span className="text-muted-foreground">增值率：</span>
+            <span className="text-muted-foreground">增値率：</span>
             <span className={`font-medium ${d.valueAddedRate >= 70 ? "text-emerald-400" : d.valueAddedRate >= 50 ? "text-yellow-400" : "text-red-400"}`}>
               {d.valueAddedRate.toFixed(1)}%
             </span>
           </div>
         )}
-        {snap.taktTime && (
+        {taktTime && (
           <div className="flex items-center gap-2 mt-1">
             <span className="text-muted-foreground">vs Takt Time：</span>
-            <span className={d.cycleTime <= snap.taktTime ? "text-emerald-400" : "text-red-400"}>
-              {d.cycleTime <= snap.taktTime ? "✓ 達標" : `超出 ${(d.cycleTime - snap.taktTime).toFixed(1)}s`}
+            <span className={d.cycleTime <= taktTime ? "text-emerald-400" : "text-red-400"}>
+              {d.cycleTime <= taktTime ? "✓ 達標" : `超出 ${(d.cycleTime - taktTime).toFixed(1)}s`}
             </span>
           </div>
         )}
@@ -133,14 +210,31 @@ function SnapshotChartDialog({ snap, open, onClose }: {
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
       <DialogContent className="bg-card border-border max-w-3xl w-full">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-foreground">
-            <BarChart2 className="w-5 h-5 text-cyan-400" />
-            工序時間分佈圖
-            <span className="text-muted-foreground font-normal text-sm ml-1">— {snap.name}</span>
-          </DialogTitle>
-          <div className="text-xs text-muted-foreground flex items-center gap-1">
-            <Clock className="w-3 h-3" />
-            快照時間：{formatDate(snap.createdAt)}
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <DialogTitle className="flex items-center gap-2 text-foreground">
+                <BarChart2 className="w-5 h-5 text-cyan-400" />
+                工序時間分佈圖
+                <span className="text-muted-foreground font-normal text-sm ml-1">— {snap.name}</span>
+              </DialogTitle>
+              <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                <Clock className="w-3 h-3" />
+                快照時間：{formatDate(snap.createdAt)}
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownload}
+              disabled={downloading}
+              className="gap-1.5 text-xs flex-shrink-0 mt-0.5 border-border/60 hover:border-cyan-500/50 hover:text-cyan-400"
+            >
+              {downloading ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" />匯出中...</>
+              ) : (
+                <><Download className="w-3.5 h-3.5" />下載圖表</>
+              )}
+            </Button>
           </div>
         </DialogHeader>
 
@@ -160,14 +254,14 @@ function SnapshotChartDialog({ snap, open, onClose }: {
           ))}
         </div>
 
-        {/* 柱狀圖 */}
+        {/* 柱狀圖（含 ref 供截圖） */}
         {chartData.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
             <BarChart3 className="w-10 h-10 mb-3 opacity-30" />
             <p className="text-sm">此快照無工站資料</p>
           </div>
         ) : (
-          <div className="mt-2">
+          <div className="mt-2" ref={chartRef}>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={chartData} margin={{ top: 24, right: 16, left: 0, bottom: 40 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
@@ -234,8 +328,8 @@ function SnapshotChartDialog({ snap, open, onClose }: {
                   {chartData.map((entry, index) => (
                     <Cell
                       key={`cell-${index}`}
-                      fill={entry.isBottleneck ? "#f97316" : "#22d3ee"}
-                      fillOpacity={entry.isBottleneck ? 1 : 0.8}
+                      fill={entry.barColor}
+                      fillOpacity={0.9}
                     />
                   ))}
                 </Bar>
@@ -243,27 +337,31 @@ function SnapshotChartDialog({ snap, open, onClose }: {
             </ResponsiveContainer>
 
             {/* 圖例說明 */}
-            <div className="flex items-center gap-4 justify-center mt-1 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded-sm bg-cyan-400 opacity-80" />
-                <span>一般工站</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded-sm bg-orange-500" />
-                <span>瓶頸工站</span>
-              </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 justify-center mt-2 text-xs text-muted-foreground">
+              {([
+                { color: "#ef4444", label: "超出節拍" },
+                { color: "#f97316", label: "甁頃工站" },
+                { color: "#eab308", label: "接近節拍" },
+                { color: "#22d3ee", label: "正常" },
+                { color: "#4ade80", label: "高效" },
+              ] as const).map(({ color, label }) => (
+                <div key={label} className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded-sm" style={{ background: color }} />
+                  <span>{label}</span>
+                </div>
+              ))}
               {snap.taktTime && (
                 <div className="flex items-center gap-1.5">
-                  <div className="w-5 h-0.5 bg-violet-400" style={{ borderTop: "2px dashed #a78bfa" }} />
+                  <div className="w-5 h-0" style={{ borderTop: "2px dashed #a78bfa" }} />
                   <span>Takt Time</span>
                 </div>
               )}
               <div className="flex items-center gap-1.5">
-                <div className="w-5 h-0.5" style={{ borderTop: "2px dashed rgba(100,200,255,0.5)" }} />
+                <div className="w-5 h-0" style={{ borderTop: "2px dashed rgba(100,200,255,0.5)" }} />
                 <span>平均時間</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="text-white/70 font-semibold text-[11px] bg-cyan-500/30 rounded px-1">N人</span>
+                <span className="text-white/70 font-semibold text-[11px] bg-white/10 rounded px-1">N人</span>
                 <span>柱內人員數</span>
               </div>
             </div>
