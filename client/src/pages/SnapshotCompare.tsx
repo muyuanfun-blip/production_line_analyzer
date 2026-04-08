@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  LineChart, Line, ResponsiveContainer, ReferenceLine
+  LineChart, Line, ResponsiveContainer, ReferenceLine, Cell, LabelList
 } from "recharts";
 import {
   ArrowLeft, TrendingUp, TrendingDown, Minus,
@@ -71,6 +71,139 @@ function DeltaBadge({ a, b, unit = "", higherIsBetter = true }: {
 }
 
 const C = { a: "#22d3ee", b: "#a78bfa", va: "#34d399", nva: "#f87171", nw: "#fbbf24" };
+
+// 風險等級配色（與 BalanceAnalysis 一致）
+const RISK_COLORS = {
+  exceed:     "#ef4444",
+  bottleneck: "#f97316",
+  warning:    "#eab308",
+  normal:     "#22d3ee",
+  efficient:  "#4ade80",
+} as const;
+
+type BarStatus = keyof typeof RISK_COLORS;
+
+const RISK_LABEL: Record<BarStatus, string> = {
+  exceed:     "超出節拍",
+  bottleneck: "甁頃工站",
+  warning:    "接近節拍",
+  normal:     "正常",
+  efficient:  "高效",
+};
+
+function getRiskStatus(ct: number, maxTime: number, taktTime?: number): BarStatus {
+  if (taktTime && ct > taktTime) return "exceed";
+  if (ct === maxTime && maxTime > 0) return "bottleneck";
+  if (taktTime) {
+    const ratio = ct / taktTime;
+    if (ratio >= 0.8) return "warning";
+    if (ratio <= 0.7) return "efficient";
+  } else {
+    if (ct / maxTime >= 0.95) return "bottleneck";
+    if (ct / maxTime >= 0.8) return "warning";
+  }
+  return "normal";
+}
+
+function SnapshotBarChart({ ws, taktTime, label, labelColor }: {
+  ws: WorkstationData[];
+  taktTime?: number;
+  label: string;
+  labelColor: string;
+}) {
+  const maxCT = Math.max(...ws.map(w => w.cycleTime), 0);
+  const data = ws.map(w => {
+    const status = getRiskStatus(w.cycleTime, maxCT, taktTime);
+    return {
+      name: w.name.length > 7 ? w.name.slice(0, 6) + "…" : w.name,
+      fullName: w.name,
+      cycleTime: w.cycleTime,
+      manpower: w.manpower,
+      status,
+      barColor: RISK_COLORS[status],
+    };
+  });
+
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: typeof data[0] }> }) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0]!.payload;
+    return (
+      <div className="bg-card border border-border rounded-lg p-2.5 text-xs shadow-xl">
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="font-semibold text-foreground">{d.fullName}</span>
+          <span className="px-1 py-0.5 rounded text-[10px] font-semibold"
+            style={{ background: `${d.barColor}25`, color: d.barColor, border: `1px solid ${d.barColor}40` }}>
+            {RISK_LABEL[d.status]}
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="text-muted-foreground">週期時間：</span>
+          <span className="font-mono font-bold" style={{ color: d.barColor }}>{d.cycleTime.toFixed(1)}s</span>
+        </div>
+        <div className="flex items-center gap-1 mt-0.5">
+          <span className="text-muted-foreground">人員數：</span>
+          <span className="text-foreground">{d.manpower}人</span>
+        </div>
+        {taktTime && (
+          <div className="flex items-center gap-1 mt-0.5">
+            <span className="text-muted-foreground">vs TT：</span>
+            <span className={d.cycleTime <= taktTime ? "text-emerald-400" : "text-red-400"}>
+              {d.cycleTime <= taktTime ? "✓ 達標" : `+${(d.cycleTime - taktTime).toFixed(1)}s`}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: labelColor }} />
+        <span className="text-sm font-semibold" style={{ color: labelColor }}>{label}</span>
+      </div>
+      <ResponsiveContainer width="100%" height={260}>
+        <BarChart data={data} margin={{ top: 20, right: 8, left: 0, bottom: 45 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+          <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 10 }} angle={-35} textAnchor="end" interval={0} height={50} />
+          <YAxis tick={{ fill: "#94a3b8", fontSize: 10 }} tickFormatter={v => `${v}s`}
+            domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.18)]} />
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+          {taktTime && (
+            <ReferenceLine y={taktTime} stroke="#a78bfa" strokeDasharray="6 3" strokeWidth={1.5}
+              label={{ value: `TT ${taktTime}s`, position: "insideTopRight", fill: "#a78bfa", fontSize: 10 }} />
+          )}
+          <Bar dataKey="cycleTime" radius={[3, 3, 0, 0]} maxBarSize={50}>
+            <LabelList dataKey="cycleTime" position="top"
+              formatter={(v: number) => `${v.toFixed(1)}s`}
+              style={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
+            <LabelList dataKey="manpower" position="insideBottom" offset={5}
+              formatter={(v: number) => v > 0 ? `${v}人` : ""}
+              style={{ fill: "rgba(255,255,255,0.8)", fontSize: 10, fontWeight: 600 }} />
+            {data.map((entry, i) => (
+              <Cell key={`cell-${i}`} fill={entry.barColor} fillOpacity={0.9} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      {/* 圖例 */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center text-[10px] text-muted-foreground mt-1">
+        {(Object.entries(RISK_COLORS) as [BarStatus, string][]).map(([key, color]) => (
+          <div key={key} className="flex items-center gap-1">
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
+            <span>{RISK_LABEL[key]}</span>
+          </div>
+        ))}
+        {taktTime && (
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-0" style={{ borderTop: "2px dashed #a78bfa" }} />
+            <span>Takt Time</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function SnapshotCompare() {
   const params = useParams<{ id: string }>();
@@ -325,6 +458,35 @@ export default function SnapshotCompare() {
           </CardContent>
         </Card>
       </div>
+
+      {/* 雙快照並排工序時間分佈圖 */}
+      {wsA.length > 0 && wsB.length > 0 && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-cyan-400" />
+              工序時間分佈圖對比
+              <span className="text-xs text-muted-foreground font-normal ml-1">風險等級配色 · 柱內顯示人員數</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <SnapshotBarChart
+                ws={wsA}
+                taktTime={A.taktTime ? Number(A.taktTime) : undefined}
+                label={`快照 A：${A.name}`}
+                labelColor={C.a}
+              />
+              <SnapshotBarChart
+                ws={wsB}
+                taktTime={B.taktTime ? Number(B.taktTime) : undefined}
+                label={`快照 B：${B.name}`}
+                labelColor={C.b}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 工站週期時間對比柱狀圖 */}
       <Card className="bg-card border-border">

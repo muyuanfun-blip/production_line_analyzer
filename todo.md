@@ -186,3 +186,9 @@
 - [x] SnapshotHistory.tsx：柱狀圖套用與 BalanceAnalysis 相同的 COLORS + getBarStatus 邏輯
 - [x] SnapshotHistory.tsx：圖例說明更新為五種風險等級色塊
 - [x] SnapshotHistory.tsx：Tooltip 顯示風險等級標籤
+
+## 快照比較頁雙快照並排分佈圖（新增）
+- [x] SnapshotCompare.tsx：工站差異表上方新增雙快照並排柱狀圖區塊
+- [x] SnapshotCompare.tsx：兩張圖共用相同 Y 軸最大值，方便視覺對比
+- [x] SnapshotCompare.tsx：套用與 BalanceAnalysis 相同的五級風險等級配色
+- [x] SnapshotCompare.tsx：標示 Takt Time 參考線（若有）
