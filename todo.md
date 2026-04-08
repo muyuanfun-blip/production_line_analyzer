@@ -195,3 +195,11 @@
 
 ## 修復圖表下載功能（Bug）
 - [x] 改用 Recharts SVG 直接轉 PNG 方式，取代 html2canvas（html2canvas 對 SVG 渲染有相容性問題）
+
+## 快照圖表與分析頁一致化（新增）
+- [x] SnapshotHistory.tsx：彈框改為 max-w-5xl 大尺寸
+- [x] SnapshotHistory.tsx：圖表高度改為 h-80（320px），與分析頁一致
+- [x] SnapshotHistory.tsx：使用與分析頁相同的 StatusLabel 圖示標記（×、△、✓、⚡）
+- [x] SnapshotHistory.tsx：使用與分析頁相同的 CustomTooltip 格式
+- [x] SnapshotHistory.tsx：圖例改為與分析頁完全一致（含 Takt Time 有無兩種版本）
+- [x] SnapshotHistory.tsx：CartesianGrid 改為 vertical={false}，XAxis/YAxis 無 axisLine/tickLine
