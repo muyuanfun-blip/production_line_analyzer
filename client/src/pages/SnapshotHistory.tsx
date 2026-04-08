@@ -168,8 +168,8 @@ function SnapshotChartDialog({ snap, open, onClose }: {
           </div>
         ) : (
           <div className="mt-2">
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={chartData} margin={{ top: 20, right: 16, left: 0, bottom: 40 }}>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={chartData} margin={{ top: 24, right: 16, left: 0, bottom: 40 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                 <XAxis
                   dataKey="name"
@@ -216,11 +216,20 @@ function SnapshotChartDialog({ snap, open, onClose }: {
                 />
 
                 <Bar dataKey="cycleTime" radius={[4, 4, 0, 0]} maxBarSize={60}>
+                  {/* 柱頂：週期時間秒數 */}
                   <LabelList
                     dataKey="cycleTime"
                     position="top"
                     formatter={(v: number) => `${v.toFixed(1)}s`}
                     style={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                  />
+                  {/* 柱內：人員數量 */}
+                  <LabelList
+                    dataKey="manpower"
+                    position="insideBottom"
+                    offset={6}
+                    formatter={(v: number) => v > 0 ? `${v}人` : ""}
+                    style={{ fill: "rgba(255,255,255,0.85)", fontSize: 11, fontWeight: 600 }}
                   />
                   {chartData.map((entry, index) => (
                     <Cell
@@ -252,6 +261,10 @@ function SnapshotChartDialog({ snap, open, onClose }: {
               <div className="flex items-center gap-1.5">
                 <div className="w-5 h-0.5" style={{ borderTop: "2px dashed rgba(100,200,255,0.5)" }} />
                 <span>平均時間</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-white/70 font-semibold text-[11px] bg-cyan-500/30 rounded px-1">N人</span>
+                <span>柱內人員數</span>
               </div>
             </div>
           </div>

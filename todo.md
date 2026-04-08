@@ -172,3 +172,7 @@
 - [x] SnapshotHistory.tsx：每張快照卡片新增「查看分佈圖」按鈕
 - [x] SnapshotHistory.tsx：實作 Dialog 彈窗顯示該快照的工站時間分佈柱狀圖（Recharts）
 - [x] SnapshotHistory.tsx：柱狀圖標示瓶頸工站（橘色）、Takt Time 參考線（紫色虛線）
+
+## 工序時間分佈圖人員數顯示（新增）
+- [x] SnapshotHistory.tsx：柱狀圖每根柱子內顯示人員數（柱內標籤，格式「👤N人」）
+- [x] SnapshotHistory.tsx：Tooltip 已有人員數，確認顯示正確
