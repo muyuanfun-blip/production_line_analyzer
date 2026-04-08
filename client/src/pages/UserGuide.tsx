@@ -3,7 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  BookOpen,
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { BookOpen,
   ChevronRight,
   CheckCircle2,
   Calculator,
@@ -20,7 +25,10 @@ import {
   ArrowRight,
   Play,
   Star,
-} from "lucide-react";
+  HelpCircle,
+  AlertTriangle,
+  Wrench,
+} from "lucide-react";;
 import { Link, useLocation } from "wouter";
 
 interface Step {
@@ -37,6 +45,64 @@ interface FormulaItem {
   color: string;
 }
 
+interface FaqItem {
+  q: string;
+  a: string;
+  category: "balance" | "upph" | "takt" | "general";
+  icon: React.ReactNode;
+}
+
+const faqItems: FaqItem[] = [
+  {
+    category: "balance",
+    icon: <AlertTriangle className="w-4 h-4 text-amber-400" />,
+    q: "為何平衡率會低於 70%？",
+    a: "平衡率低於 70% 通常代表工站間的工作量分配嚴重不均。常見原因包括：①瓶頸工站（最長週期時間）與最短工站的時間差距過大；②工站合併或拆分設計不合理，導致某些工站長時間等待；③作業員技能差異造成實際週期時間偏離標準。建議先找出瓶頸工站，透過動作分析拆解其作業步驟，將部分動作移轉至輕負荷工站，以縮小工站間的時間差距。",
+  },
+  {
+    category: "balance",
+    icon: <AlertTriangle className="w-4 h-4 text-amber-400" />,
+    q: "平衡率計算時，為何結果與預期不同？",
+    a: "平衡率 = (所有工站週期時間總和) ÷ (工站數 × 最長週期時間) × 100%。若結果偏低，請確認：①所有工站的週期時間是否已正確輸入（包含等待時間）；②是否有工站的週期時間異常偏高（可能是量測誤差）；③工站數量是否正確（包含輔助工站）。建議在平衡分析頁的工站表格中逐一核對每個工站的時間數值。",
+  },
+  {
+    category: "upph",
+    icon: <TrendingUp className="w-4 h-4 text-cyan-400" />,
+    q: "如何有效提升 UPPH？",
+    a: "UPPH（每人每小時產出）= 3600 ÷ 瓶頸週期時間 ÷ 總人數。提升 UPPH 有兩個主要方向：①縮短瓶頸工站的週期時間——透過動作分析找出非增值動作（等待、搬運、重工），消除或縮短這些動作；②優化人力配置——在不影響品質的前提下，合理減少人員或將人員調配至更需要的工站。建議先使用 AI 建議功能，系統會自動識別最具改善潛力的工站。",
+  },
+  {
+    category: "upph",
+    icon: <TrendingUp className="w-4 h-4 text-cyan-400" />,
+    q: "UPPH 與平衡率的關係是什麼？",
+    a: "UPPH 反映的是整條產線的人力效率，而平衡率反映的是工站間負荷的均衡程度。兩者相輔相成：高平衡率（工站負荷均衡）通常有助於提升 UPPH，因為減少了等待浪費；但即使平衡率高，若瓶頸工站的絕對時間過長，UPPH 仍會偏低。IE 工程師應同時追蹤兩個指標：先提升平衡率（消除不均衡），再縮短瓶頸時間（提升整體效率）。",
+  },
+  {
+    category: "takt",
+    icon: <Clock className="w-4 h-4 text-blue-400" />,
+    q: "Takt Time 達標率低於 100% 代表什麼？",
+    a: "Takt Time 達標率 = 週期時間 ≤ Takt Time 的工站數 ÷ 總工站數 × 100%。達標率低於 100% 代表有工站的週期時間超過客戶需求節拍，意味著這些工站在正常生產速度下無法滿足出貨需求，將導致生產延誤。超標工站（紅色標示）是最優先的改善對象，必須在下一次改善活動中優先處理。",
+  },
+  {
+    category: "takt",
+    icon: <Clock className="w-4 h-4 text-blue-400" />,
+    q: "如何設定合理的目標節拍時間（Takt Time）？",
+    a: "Takt Time = 每班可用時間（秒）÷ 每班需求數量。例如：每班 480 分鐘（扣除休息後實際可用 450 分鐘），每班需求 150 件，則 Takt Time = 450 × 60 ÷ 150 = 180 秒。在產線管理頁的目標節拍時間欄位旁，有內建計算輔助工具，輸入可用時間與需求數量即可自動計算並帶入。建議每季依訂單量重新檢視 Takt Time 設定。",
+  },
+  {
+    category: "general",
+    icon: <Camera className="w-4 h-4 text-green-400" />,
+    q: "何時應該儲存快照？",
+    a: "快照是記錄產線某一時間點狀態的重要工具。建議在以下時機儲存：①改善活動開始前（記錄基準值）；②每次重大改善完成後（記錄改善成果）；③定期（如每週或每月）定期記錄，建立趨勢資料。儲存快照時，系統會自動計算並儲存平衡率、UPPH、瓶頸時間等 KPI，方便後續在快照比較頁追蹤改善幅度。",
+  },
+  {
+    category: "general",
+    icon: <Wrench className="w-4 h-4 text-purple-400" />,
+    q: "AI 建議功能的分析結果準確嗎？",
+    a: "AI 建議功能基於您輸入的工站時間與動作資料進行分析，準確性取決於資料的完整性與正確性。建議在使用 AI 建議前，確保：①所有工站的週期時間已正確輸入；②動作分析頁的各工站步驟已完整填寫（特別是增值/非增值的分類）；③產線的 Takt Time 已正確設定。AI 建議提供的是方向性參考，實際改善方案仍需 IE 工程師結合現場實際情況判斷。",
+  },
+];
+
 interface Section {
   id: string;
   icon: React.ReactNode;
@@ -47,7 +113,15 @@ interface Section {
   steps?: Step[];
   formulas?: FormulaItem[];
   features?: { icon: React.ReactNode; title: string; desc: string; link?: string }[];
+  isFaq?: boolean;
 }
+
+const faqCategories = [
+  { key: "balance", label: "平衡率相關", color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20" },
+  { key: "upph", label: "UPPH 相關", color: "text-cyan-400", bg: "bg-cyan-500/10 border-cyan-500/20" },
+  { key: "takt", label: "Takt Time 相關", color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20" },
+  { key: "general", label: "一般操作", color: "text-green-400", bg: "bg-green-500/10 border-green-500/20" },
+] as const;
 
 const sections: Section[] = [
   {
@@ -248,6 +322,15 @@ const sections: Section[] = [
         tip: "AI 建議僅供參考，實際改善方案需結合現場實際情況評估可行性。",
       },
     ],
+  },
+  {
+    id: "faq",
+    icon: <HelpCircle className="w-5 h-5" />,
+    title: "常見問題 FAQ",
+    subtitle: "新進工程師最常遇到的問題與解答，快速解決疑惑",
+    color: "from-violet-500/10 to-purple-500/5",
+    badge: "FAQ",
+    isFaq: true,
   },
 ];
 
@@ -472,6 +555,46 @@ export default function UserGuide() {
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          )}
+
+          {/* FAQ 問答區塊 */}
+          {currentSection.isFaq && (
+            <div className="space-y-8 mb-8">
+              {faqCategories.map((cat) => {
+                const items = faqItems.filter((f) => f.category === cat.key);
+                if (!items.length) return null;
+                return (
+                  <div key={cat.key}>
+                    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold mb-4 ${cat.bg} ${cat.color}`}>
+                      {cat.label}
+                    </div>
+                    <Accordion type="single" collapsible className="space-y-3">
+                      {items.map((item, i) => (
+                        <AccordionItem
+                          key={i}
+                          value={`${cat.key}-${i}`}
+                          className="bg-card/60 border border-border/40 rounded-xl overflow-hidden px-0"
+                        >
+                          <AccordionTrigger className="px-5 py-4 hover:no-underline hover:bg-muted/20 transition-colors">
+                            <div className="flex items-center gap-3 text-left">
+                              <div className="w-7 h-7 rounded-lg bg-muted/50 flex items-center justify-center shrink-0">
+                                {item.icon}
+                              </div>
+                              <span className="text-sm font-semibold text-foreground">{item.q}</span>
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent className="px-5 pb-5">
+                            <div className="ml-10 text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                              {item.a}
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+                      ))}
+                    </Accordion>
+                  </div>
+                );
+              })}
             </div>
           )}
 

@@ -156,3 +156,9 @@
 - [x] 實作功能亮點卡片：UPPH、FormulaTooltip、Takt Time 計算機等新功能說明
 - [x] 在 App.tsx 加入 /guide 路由
 - [x] 在 DashboardLayout.tsx 側邊欄加入「使用指南」連結（BookOpen 圖示）
+
+## 使用指南 FAQ 章節（新增）
+- [x] UserGuide.tsx：新增 FAQ Section 型別（faqs 陣列）
+- [x] UserGuide.tsx：加入 8 個常見問題（平衡率低於 70%、UPPH 提升方法等）
+- [x] UserGuide.tsx：實作可展開/收合的問答卡片 UI（Accordion 樣式）
+- [x] UserGuide.tsx：在側邊欄導覽加入 FAQ 章節連結
