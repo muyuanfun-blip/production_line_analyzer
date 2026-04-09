@@ -214,3 +214,6 @@
 
 ## 快照圖表寬度 900px（新增）
 - [x] SnapshotHistory.tsx：圖表容器改為 overflow-x-auto，內部 div 固定 min-w-[900px]，ResponsiveContainer 改為固定 width={900}
+
+## 快照圖表 Dialog 固定 900px 寬度（新增）
+- [x] SnapshotHistory.tsx：DialogContent 改為 w-[900px]，移除 overflow-x-auto 與 min-w，圖表直接填滿 900px
