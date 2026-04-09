@@ -208,3 +208,6 @@
 - [x] SnapshotHistory.tsx：UPPH 為 null 時，用 maxTime 與 totalManpower 在前端補算（3600 ÷ maxTime ÷ totalManpower）
 - [x] SnapshotHistory.tsx：補算的 UPPH 同樣顯示在快照卡片 KPI 區與圖表 Dialog KPI 摘要列
 - [x] SnapshotHistory.tsx：補算的 UPPH 顯示時加上「*」標記或 tooltip 說明「由快照資料補算」
+
+## 快照圖表 Dialog 寬度加寬（新增）
+- [x] SnapshotHistory.tsx：Dialog 改為 max-w-[95vw] 全寬，圖表高度改為 h-[480px]
