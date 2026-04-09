@@ -335,8 +335,8 @@ function SnapshotChartDialog({ snap, open, onClose }: {
             <p className="text-sm">此快照無工站資料</p>
           </div>
         ) : (
-          <div ref={chartRef}>
-            <div className="h-[480px]">
+          <div ref={chartRef} className="overflow-x-auto">
+            <div className="h-[480px] min-w-[900px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 28, right: 24, left: 0, bottom: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.25 0.015 240)" vertical={false} />
