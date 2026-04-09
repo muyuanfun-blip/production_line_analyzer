@@ -274,7 +274,7 @@ function SnapshotChartDialog({ snap, open, onClose }: {
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent className="bg-card border-border w-[900px] max-w-[98vw]">
+      <DialogContent className="bg-card border-border" style={{ width: '1024px', maxWidth: '98vw' }}>
         <DialogHeader>
           <div className="flex items-start justify-between gap-2">
             <div>

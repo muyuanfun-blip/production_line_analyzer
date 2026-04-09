@@ -217,3 +217,6 @@
 
 ## 快照圖表 Dialog 固定 900px 寬度（新增）
 - [x] SnapshotHistory.tsx：DialogContent 改為 w-[900px]，移除 overflow-x-auto 與 min-w，圖表直接填滿 900px
+
+## 快照圖表 Dialog 強制 1024px（新增）
+- [x] SnapshotHistory.tsx：DialogContent 改用 style={{ width: '1024px', maxWidth: '98vw' }} 覆蓋 shadcn 預設 sm:max-w-lg 限制
