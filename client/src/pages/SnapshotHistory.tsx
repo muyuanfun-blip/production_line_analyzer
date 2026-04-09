@@ -60,6 +60,15 @@ type Snapshot = {
   createdAt: Date;
 };
 
+// 補算 UPPH（當快照 upph 欄位為 null 時，用 maxTime 與 totalManpower 計算）
+function calcSnapUPPH(snap: Snapshot): { value: number; isCalc: boolean } | null {
+  if (snap.upph != null) return { value: Number(snap.upph), isCalc: false };
+  if (snap.maxTime > 0 && snap.totalManpower > 0) {
+    return { value: 3600 / snap.maxTime / snap.totalManpower, isCalc: true };
+  }
+  return null;
+}
+
 function TrendIcon({ value, prev }: { value: number; prev?: number }) {
   if (prev === undefined) return null;
   const diff = value - prev;
@@ -296,20 +305,28 @@ function SnapshotChartDialog({ snap, open, onClose }: {
         </DialogHeader>
 
         {/* KPI 摘要列 */}
-        <div className="grid grid-cols-4 gap-3 py-2">
-          {[
-            { label: "平衡率", value: `${snap.balanceRate.toFixed(1)}%`, color: snap.balanceRate >= 85 ? "text-emerald-400" : snap.balanceRate >= 70 ? "text-cyan-400" : "text-yellow-400" },
-            { label: "瓶頸時間", value: `${snap.maxTime.toFixed(1)}s`, color: "text-orange-400", sub: snap.bottleneckName ?? undefined },
-            { label: "Takt Time", value: snap.taktTime ? `${snap.taktTime}s` : "—", color: "text-violet-400" },
-            { label: "UPPH", value: snap.upph != null ? `${Number(snap.upph).toFixed(2)}` : "—", color: "text-amber-400" },
-          ].map(({ label, value, color, sub }) => (
-            <div key={label} className="bg-background/40 rounded-lg p-2 text-center border border-border/50">
-              <div className={`text-lg font-bold ${color}`}>{value}</div>
-              <div className="text-xs text-muted-foreground">{label}</div>
-              {sub && <div className="text-xs text-muted-foreground truncate">{sub}</div>}
+        {(() => {
+          const upphResult = calcSnapUPPH(snap);
+          const upphDisplay = upphResult
+            ? `${upphResult.value.toFixed(2)}${upphResult.isCalc ? " *" : ""}`
+            : "—";
+          return (
+            <div className="grid grid-cols-4 gap-3 py-2">
+              {[
+                { label: "平衡率", value: `${snap.balanceRate.toFixed(1)}%`, color: snap.balanceRate >= 85 ? "text-emerald-400" : snap.balanceRate >= 70 ? "text-cyan-400" : "text-yellow-400" },
+                { label: "瓶頸時間", value: `${snap.maxTime.toFixed(1)}s`, color: "text-orange-400", sub: snap.bottleneckName ?? undefined },
+                { label: "Takt Time", value: snap.taktTime ? `${snap.taktTime}s` : "—", color: "text-violet-400" },
+                { label: upphResult?.isCalc ? "UPPH *" : "UPPH", value: upphDisplay, color: "text-amber-400", sub: upphResult?.isCalc ? "補算值" : undefined },
+              ].map(({ label, value, color, sub }) => (
+                <div key={label} className="bg-background/40 rounded-lg p-2 text-center border border-border/50">
+                  <div className={`text-lg font-bold ${color}`}>{value}</div>
+                  <div className="text-xs text-muted-foreground">{label}</div>
+                  {sub && <div className="text-xs text-amber-400/50 truncate">{sub}</div>}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          );
+        })()}
 
         {/* 柱狀圖（與 BalanceAnalysis 完全一致格式） */}
         {chartData.length === 0 ? (
@@ -779,28 +796,41 @@ export default function SnapshotHistory() {
                         </div>
                       )}
 
-                      {/* UPPH */}
-                      {snap.upph != null && (
-                        <div className="text-center min-w-[70px]">
-                          <FormulaTooltip formulaKey="upph" liveValues={{ "UPPH": `${Number(snap.upph).toFixed(2)} 件/人/時` }}>
-                            <div className="text-xl font-bold text-amber-400 flex items-center gap-1 justify-center">
-                              {Number(snap.upph).toFixed(2)}
-                              <TrendIcon value={Number(snap.upph)} prev={prevSnap?.upph != null ? Number(prevSnap.upph) : undefined} />
+                      {/* UPPH（含補算） */}
+                      {(() => {
+                        const upphResult = calcSnapUPPH(snap);
+                        if (!upphResult) return null;
+                        const { value: upphVal, isCalc } = upphResult;
+                        const prevUpphResult = prevSnap ? calcSnapUPPH(prevSnap) : null;
+                        const prevUpphVal = prevUpphResult?.value;
+                        return (
+                          <div className="text-center min-w-[70px]">
+                            <FormulaTooltip formulaKey="upph" liveValues={{
+                              "UPPH": `${upphVal.toFixed(2)} 件/人/時`,
+                              ...(isCalc ? { "說明": "由瓶頸時間與人員數補算" } : {}),
+                            }}>
+                              <div className="text-xl font-bold text-amber-400 flex items-center gap-1 justify-center">
+                                {upphVal.toFixed(2)}
+                                {isCalc && <span className="text-xs text-amber-400/60 font-normal">*</span>}
+                                <TrendIcon value={upphVal} prev={prevUpphVal} />
+                              </div>
+                            </FormulaTooltip>
+                            <div className="text-xs text-amber-400/80 font-medium">
+                              UPPH{isCalc && <span className="text-amber-400/50"> *</span>}
                             </div>
-                          </FormulaTooltip>
-                          <div className="text-xs text-amber-400/80 font-medium">UPPH</div>
-                          {prevSnap?.upph != null && (
-                            <div className={`text-xs ${
-                              Number(snap.upph) > Number(prevSnap.upph) ? "text-emerald-400"
-                              : Number(snap.upph) < Number(prevSnap.upph) ? "text-red-400"
-                              : "text-muted-foreground"
-                            }`}>
-                              {Number(snap.upph) > Number(prevSnap.upph) ? "+" : ""}
-                              {(Number(snap.upph) - Number(prevSnap.upph)).toFixed(2)}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                            {prevUpphVal !== undefined && (
+                              <div className={`text-xs ${
+                                upphVal > prevUpphVal ? "text-emerald-400"
+                                : upphVal < prevUpphVal ? "text-red-400"
+                                : "text-muted-foreground"
+                              }`}>
+                                {upphVal > prevUpphVal ? "+" : ""}
+                                {(upphVal - prevUpphVal).toFixed(2)}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* 展開工站按鈕 */}
                       <Button

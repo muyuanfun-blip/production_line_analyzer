@@ -203,3 +203,8 @@
 - [x] SnapshotHistory.tsx：使用與分析頁相同的 CustomTooltip 格式
 - [x] SnapshotHistory.tsx：圖例改為與分析頁完全一致（含 Takt Time 有無兩種版本）
 - [x] SnapshotHistory.tsx：CartesianGrid 改為 vertical={false}，XAxis/YAxis 無 axisLine/tickLine
+
+## 舊快照 UPPH 補算顯示（新增）
+- [x] SnapshotHistory.tsx：UPPH 為 null 時，用 maxTime 與 totalManpower 在前端補算（3600 ÷ maxTime ÷ totalManpower）
+- [x] SnapshotHistory.tsx：補算的 UPPH 同樣顯示在快照卡片 KPI 區與圖表 Dialog KPI 摘要列
+- [x] SnapshotHistory.tsx：補算的 UPPH 顯示時加上「*」標記或 tooltip 說明「由快照資料補算」
