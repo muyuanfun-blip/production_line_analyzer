@@ -13,6 +13,8 @@ import {
   getSnapshotsByLine, getSnapshotById, createSnapshot, deleteSnapshot,
   getAllLinesLatestSnapshot,
   getAllLinesSnapshotHistory,
+  getHandActionsByStep, getHandActionsByStepIds,
+  upsertHandAction, deleteHandAction, deleteHandActionsByStep,
 } from "./db";
 import { ENV } from "./_core/env";
 
@@ -498,6 +500,65 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
       .query(async () => {
         const rows = await getAllLinesSnapshotHistory();
         return rows;
+      }),
+  }),
+
+  // ─── Hand Actions ────────────────────────────────────────────────────────────────────────────────────
+  handAction: router({
+    // 取得單一動作步驟的左右手記錄
+    listByStep: publicProcedure
+      .input(z.object({ actionStepId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        return getHandActionsByStep(input.actionStepId);
+      }),
+
+    // 批次取得多個動作步驟的左右手記錄（用於工站整體載入）
+    listByStepIds: publicProcedure
+      .input(z.object({ actionStepIds: z.array(z.number().int().positive()) }))
+      .query(async ({ input }) => {
+        return getHandActionsByStepIds(input.actionStepIds);
+      }),
+
+    // 新增或更新一筆手部動作記錄
+    upsert: publicProcedure
+      .input(z.object({
+        id: z.number().int().positive().optional(),
+        actionStepId: z.number().int().positive(),
+        hand: z.enum(["left", "right"]),
+        actionName: z.string().min(1),
+        duration: z.number().min(0),
+        handActionType: z.enum(["value_added", "non_value_added", "necessary_waste", "idle"]).optional(),
+        isIdle: z.boolean().optional(),
+        note: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const result = await upsertHandAction({
+          id: input.id,
+          actionStepId: input.actionStepId,
+          hand: input.hand,
+          actionName: input.actionName,
+          duration: input.duration.toString(),
+          handActionType: input.handActionType ?? "value_added",
+          isIdle: input.isIdle ? 1 : 0,
+          note: input.note ?? null,
+        });
+        return { success: true, insertId: (result as any)?.insertId };
+      }),
+
+    // 刪除單筆手部動作記錄
+    delete: publicProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteHandAction(input.id);
+        return { success: true };
+      }),
+
+    // 刪除某動作步驟的所有手部記錄（删除步驟時一並清除）
+    deleteByStep: publicProcedure
+      .input(z.object({ actionStepId: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteHandActionsByStep(input.actionStepId);
+        return { success: true };
       }),
   }),
 });

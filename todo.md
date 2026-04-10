@@ -220,3 +220,13 @@
 
 ## 快照圖表 Dialog 強制 1024px（新增）
 - [x] SnapshotHistory.tsx：DialogContent 改用 style={{ width: '1024px', maxWidth: '98vw' }} 覆蓋 shadcn 預設 sm:max-w-lg 限制
+
+## 雙手作業統計 — 方案 B（新增）
+- [ ] drizzle/schema.ts：新增 handActions 子表（id, actionStepId, hand, actionName, duration, handActionType, isIdle, note）
+- [ ] 執行 pnpm drizzle-kit generate 並套用遷移 SQL
+- [ ] server/db.ts：新增 getHandActionsByStep、upsertHandActions 查詢函式
+- [ ] server/routers.ts：新增 handAction.listByStep、handAction.upsert procedures
+- [ ] ActionAnalysis.tsx：動作步驟卡片新增「展開雙手輸入」區塊（左手/右手各自動作名稱、時間、類型、空手標記）
+- [ ] ActionAnalysis.tsx：右側分析面板新增「雙手統計」區塊（雙手同步率、左手空閒、右手空閒、工具作業時間）
+- [ ] ActionAnalysis.tsx：新增雙手甘特圖（左右手時間軸並排）
+- [x] 撰寫 handAction vitest 測試

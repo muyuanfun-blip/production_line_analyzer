@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useLocation, useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,8 @@ import { toast } from "sonner";
 import {
   ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, Save,
   Clock, Users, TrendingUp, AlertTriangle, CheckCircle2,
-  BarChart3, RefreshCw, Zap, Minus, Info, Download, Activity
+  BarChart3, RefreshCw, Zap, Minus, Info, Download, Activity,
+  Hand, ChevronRight, ChevronDown as ChevronDownIcon
 } from "lucide-react";
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
@@ -20,6 +21,21 @@ import {
 // ─── 型別定義 ─────────────────────────────────────────────────────────────────
 
 type ActionType = "value_added" | "non_value_added" | "necessary_waste";
+type HandActionType = "value_added" | "non_value_added" | "necessary_waste" | "idle";
+type Hand = "left" | "right";
+
+interface LocalHandAction {
+  id?: number;
+  tempId: string;
+  hand: Hand;
+  actionName: string;
+  duration: string;
+  handActionType: HandActionType;
+  isIdle: boolean;
+  note: string;
+  isDirty: boolean;
+  isNew: boolean;
+}
 
 interface LocalStep {
   id?: number;
@@ -31,6 +47,8 @@ interface LocalStep {
   stepOrder: number;
   isDirty: boolean;
   isNew: boolean;
+  handActions: LocalHandAction[];
+  showHands: boolean;
 }
 
 // ─── 常數 ─────────────────────────────────────────────────────────────────────
@@ -56,6 +74,13 @@ const ACTION_TYPE_CONFIG: Record<ActionType, {
   },
 };
 
+const HAND_ACTION_TYPE_CONFIG: Record<HandActionType, { label: string; color: string }> = {
+  value_added:    { label: "增值",   color: "#10b981" },
+  non_value_added:{ label: "非增值", color: "#ef4444" },
+  necessary_waste:{ label: "必要浪費", color: "#f59e0b" },
+  idle:           { label: "空手等待", color: "#6b7280" },
+};
+
 // ─── 工具函數 ─────────────────────────────────────────────────────────────────
 
 function genTempId() {
@@ -65,6 +90,112 @@ function genTempId() {
 function parseDuration(val: string): number {
   const n = parseFloat(val);
   return isNaN(n) || n < 0 ? 0 : n;
+}
+
+function defaultHandAction(hand: Hand): LocalHandAction {
+  return {
+    tempId: genTempId(),
+    hand,
+    actionName: "",
+    duration: "",
+    handActionType: hand === "left" ? "value_added" : "value_added",
+    isIdle: false,
+    note: "",
+    isDirty: true,
+    isNew: true,
+  };
+}
+
+// ─── 子元件：雙手作業輸入列 ────────────────────────────────────────────────────
+
+interface HandRowProps {
+  ha: LocalHandAction;
+  stepDuration: number;
+  onChange: (tempId: string, field: string, value: string | boolean) => void;
+  onDelete: (tempId: string) => void;
+}
+
+function HandRow({ ha, stepDuration, onChange, onDelete }: HandRowProps) {
+  const cfg = HAND_ACTION_TYPE_CONFIG[ha.handActionType];
+  const sec = parseDuration(ha.duration);
+  const pct = stepDuration > 0 ? Math.min((sec / stepDuration) * 100, 100) : 0;
+  const isLeft = ha.hand === "left";
+
+  return (
+    <div className={`flex items-center gap-2 p-2 rounded-lg border transition-all
+      ${isLeft ? "border-blue-500/20 bg-blue-500/5" : "border-violet-500/20 bg-violet-500/5"}
+      ${ha.isIdle ? "opacity-60" : ""}`}>
+
+      {/* 手別標籤 */}
+      <div className={`shrink-0 w-10 text-center text-[10px] font-bold rounded px-1 py-0.5
+        ${isLeft ? "bg-blue-500/20 text-blue-400" : "bg-violet-500/20 text-violet-400"}`}>
+        {isLeft ? "左手" : "右手"}
+      </div>
+
+      {/* 動作名稱 */}
+      <Input
+        value={ha.actionName}
+        onChange={e => onChange(ha.tempId, "actionName", e.target.value)}
+        placeholder={ha.isIdle ? "空手等待" : `${isLeft ? "左" : "右"}手動作`}
+        disabled={ha.isIdle}
+        className="h-7 text-xs flex-1 bg-background/30 border-white/8"
+      />
+
+      {/* 類型選擇 */}
+      <Select
+        value={ha.handActionType}
+        onValueChange={v => onChange(ha.tempId, "handActionType", v)}
+      >
+        <SelectTrigger className="h-7 text-xs w-[90px] bg-background/30 border-white/8">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {(Object.entries(HAND_ACTION_TYPE_CONFIG) as [HandActionType, { label: string; color: string }][]).map(([k, c]) => (
+            <SelectItem key={k} value={k}>
+              <span style={{ color: c.color }} className="text-xs">{c.label}</span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {/* 時間 */}
+      <div className="relative w-[72px] shrink-0">
+        <Input
+          type="number" min="0" step="0.1"
+          value={ha.duration}
+          onChange={e => onChange(ha.tempId, "duration", e.target.value)}
+          placeholder="0.0"
+          className="h-7 text-xs pr-5 bg-background/30 border-white/8 text-right tabular-nums"
+        />
+        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/50 pointer-events-none">s</span>
+      </div>
+
+      {/* 佔比條 */}
+      {sec > 0 && stepDuration > 0 && (
+        <div className="w-12 shrink-0">
+          <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+            <div className="h-full rounded-full transition-all"
+              style={{ width: `${pct}%`, backgroundColor: cfg.color }} />
+          </div>
+          <span className="text-[9px] text-muted-foreground/40 tabular-nums">{pct.toFixed(0)}%</span>
+        </div>
+      )}
+
+      {/* 空手勾選 */}
+      <label className="flex items-center gap-1 shrink-0 cursor-pointer">
+        <input type="checkbox" checked={ha.isIdle}
+          onChange={e => onChange(ha.tempId, "isIdle", e.target.checked)}
+          className="w-3 h-3 accent-gray-500" />
+        <span className="text-[10px] text-muted-foreground/60">空手</span>
+      </label>
+
+      {/* 刪除 */}
+      <button onClick={() => onDelete(ha.tempId)}
+        className="p-1 rounded hover:bg-red-500/20 text-muted-foreground/30 hover:text-red-400 transition-all shrink-0">
+        <Trash2 className="w-3 h-3" />
+      </button>
+    </div>
+  );
 }
 
 // ─── 子元件：單一動作列 ────────────────────────────────────────────────────────
@@ -77,103 +208,177 @@ interface StepRowProps {
   onChange: (tempId: string, field: string, value: string) => void;
   onDelete: (tempId: string) => void;
   onMove: (tempId: string, dir: "up" | "down") => void;
+  onToggleHands: (tempId: string) => void;
+  onAddHand: (tempId: string, hand: Hand) => void;
+  onHandChange: (stepTempId: string, haTempId: string, field: string, value: string | boolean) => void;
+  onHandDelete: (stepTempId: string, haTempId: string) => void;
 }
 
-function StepRow({ step, index, total, totalSec, onChange, onDelete, onMove }: StepRowProps) {
+function StepRow({
+  step, index, total, totalSec,
+  onChange, onDelete, onMove, onToggleHands,
+  onAddHand, onHandChange, onHandDelete
+}: StepRowProps) {
   const cfg = ACTION_TYPE_CONFIG[step.actionType];
   const sec = parseDuration(step.duration);
   const pct = totalSec > 0 ? (sec / totalSec) * 100 : 0;
+  const leftHands = step.handActions.filter(h => h.hand === "left");
+  const rightHands = step.handActions.filter(h => h.hand === "right");
+  const hasHands = step.handActions.length > 0;
 
   return (
-    <div className={`group relative flex items-start gap-2 p-3 rounded-xl border transition-all duration-200
+    <div className={`group relative rounded-xl border transition-all duration-200
       ${cfg.bg} ${cfg.border}
       ${step.isDirty ? "ring-1 ring-purple-500/30" : ""}
       hover:shadow-sm`}>
 
-      {/* 序號 + 排序按鈕 */}
-      <div className="flex flex-col items-center gap-0.5 pt-0.5 min-w-[26px]">
-        <span className="text-[10px] font-mono text-muted-foreground/50 leading-none tabular-nums">
-          {String(index + 1).padStart(2, "0")}
-        </span>
-        <button onClick={() => onMove(step.tempId, "up")} disabled={index === 0}
-          className="mt-1 p-0.5 rounded hover:bg-white/10 disabled:opacity-20 transition-colors">
-          <ChevronUp className="w-3 h-3 text-muted-foreground" />
-        </button>
-        <button onClick={() => onMove(step.tempId, "down")} disabled={index === total - 1}
-          className="p-0.5 rounded hover:bg-white/10 disabled:opacity-20 transition-colors">
-          <ChevronDown className="w-3 h-3 text-muted-foreground" />
-        </button>
-      </div>
+      {/* 主行 */}
+      <div className="flex items-start gap-2 p-3">
+        {/* 序號 + 排序按鈕 */}
+        <div className="flex flex-col items-center gap-0.5 pt-0.5 min-w-[26px]">
+          <span className="text-[10px] font-mono text-muted-foreground/50 leading-none tabular-nums">
+            {String(index + 1).padStart(2, "0")}
+          </span>
+          <button onClick={() => onMove(step.tempId, "up")} disabled={index === 0}
+            className="mt-1 p-0.5 rounded hover:bg-white/10 disabled:opacity-20 transition-colors">
+            <ChevronUp className="w-3 h-3 text-muted-foreground" />
+          </button>
+          <button onClick={() => onMove(step.tempId, "down")} disabled={index === total - 1}
+            className="p-0.5 rounded hover:bg-white/10 disabled:opacity-20 transition-colors">
+            <ChevronDown className="w-3 h-3 text-muted-foreground" />
+          </button>
+        </div>
 
-      {/* 動作名稱 + 備註 */}
-      <div className="flex-1 min-w-0 space-y-1.5">
-        <Input
-          value={step.stepName}
-          onChange={e => onChange(step.tempId, "stepName", e.target.value)}
-          placeholder="動作名稱（如：取料、組裝螺絲、目視檢查）"
-          className="h-8 text-sm bg-background/50 border-white/10 focus:border-purple-500/50 placeholder:text-muted-foreground/40"
-        />
-        <Input
-          value={step.description}
-          onChange={e => onChange(step.tempId, "description", e.target.value)}
-          placeholder="備註說明（選填）"
-          className="h-6 text-[11px] bg-background/20 border-white/5 focus:border-purple-500/20 text-muted-foreground placeholder:text-muted-foreground/30"
-        />
-        {/* 時間佔比進度條 */}
-        {sec > 0 && totalSec > 0 && (
-          <div className="flex items-center gap-1.5">
-            <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${pct}%`, backgroundColor: cfg.color, opacity: 0.7 }} />
-            </div>
-            <span className="text-[10px] text-muted-foreground/50 tabular-nums">{pct.toFixed(0)}%</span>
-          </div>
-        )}
-      </div>
-
-      {/* 動作類型選擇 */}
-      <div className="w-[130px] shrink-0">
-        <Select value={step.actionType} onValueChange={v => onChange(step.tempId, "actionType", v)}>
-          <SelectTrigger className="h-8 text-xs bg-background/50 border-white/10 focus:border-purple-500/50">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {(Object.entries(ACTION_TYPE_CONFIG) as [ActionType, typeof ACTION_TYPE_CONFIG[ActionType]][]).map(([key, c]) => (
-              <SelectItem key={key} value={key}>
-                <span className="flex items-center gap-1.5">
-                  <span style={{ color: c.color }}>{c.icon}</span>
-                  <span>{c.label}</span>
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* 秒數輸入 */}
-      <div className="w-[88px] shrink-0">
-        <div className="relative">
+        {/* 動作名稱 + 備註 */}
+        <div className="flex-1 min-w-0 space-y-1.5">
           <Input
-            type="number" min="0" step="0.1"
-            value={step.duration}
-            onChange={e => onChange(step.tempId, "duration", e.target.value)}
-            placeholder="0.0"
-            className="h-8 text-sm pr-7 bg-background/50 border-white/10 focus:border-purple-500/50 text-right tabular-nums"
+            value={step.stepName}
+            onChange={e => onChange(step.tempId, "stepName", e.target.value)}
+            placeholder="動作名稱（如：取料、組裝螺絲、目視檢查）"
+            className="h-8 text-sm bg-background/50 border-white/10 focus:border-purple-500/50 placeholder:text-muted-foreground/40"
           />
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground/60 pointer-events-none">秒</span>
+          <Input
+            value={step.description}
+            onChange={e => onChange(step.tempId, "description", e.target.value)}
+            placeholder="備註說明（選填）"
+            className="h-6 text-[11px] bg-background/20 border-white/5 focus:border-purple-500/20 text-muted-foreground placeholder:text-muted-foreground/30"
+          />
+          {sec > 0 && totalSec > 0 && (
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${pct}%`, backgroundColor: cfg.color, opacity: 0.7 }} />
+              </div>
+              <span className="text-[10px] text-muted-foreground/50 tabular-nums">{pct.toFixed(0)}%</span>
+            </div>
+          )}
+        </div>
+
+        {/* 動作類型選擇 */}
+        <div className="w-[130px] shrink-0">
+          <Select value={step.actionType} onValueChange={v => onChange(step.tempId, "actionType", v)}>
+            <SelectTrigger className="h-8 text-xs bg-background/50 border-white/10 focus:border-purple-500/50">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.entries(ACTION_TYPE_CONFIG) as [ActionType, typeof ACTION_TYPE_CONFIG[ActionType]][]).map(([key, c]) => (
+                <SelectItem key={key} value={key}>
+                  <span className="flex items-center gap-1.5">
+                    <span style={{ color: c.color }}>{c.icon}</span>
+                    <span>{c.label}</span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* 秒數輸入 */}
+        <div className="w-[88px] shrink-0">
+          <div className="relative">
+            <Input
+              type="number" min="0" step="0.1"
+              value={step.duration}
+              onChange={e => onChange(step.tempId, "duration", e.target.value)}
+              placeholder="0.0"
+              className="h-8 text-sm pr-7 bg-background/50 border-white/10 focus:border-purple-500/50 text-right tabular-nums"
+            />
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground/60 pointer-events-none">秒</span>
+          </div>
+        </div>
+
+        {/* 雙手展開 + 刪除 */}
+        <div className="flex items-start gap-1 pt-1">
+          <button
+            onClick={() => onToggleHands(step.tempId)}
+            title="雙手作業拆解"
+            className={`p-1 rounded transition-all ${
+              hasHands
+                ? "text-blue-400 bg-blue-500/10 hover:bg-blue-500/20"
+                : "text-muted-foreground/40 hover:text-blue-400 hover:bg-blue-500/10 opacity-0 group-hover:opacity-100"
+            }`}>
+            <Hand className="w-3.5 h-3.5" />
+          </button>
+          {step.isDirty && (
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse mt-1" title="未儲存" />
+          )}
+          <button onClick={() => onDelete(step.tempId)}
+            className="p-1 rounded hover:bg-red-500/20 text-muted-foreground/40 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
-      {/* 狀態指示 + 刪除 */}
-      <div className="flex items-start gap-1 pt-1">
-        {step.isDirty && (
-          <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse mt-1" title="未儲存" />
-        )}
-        <button onClick={() => onDelete(step.tempId)}
-          className="p-1 rounded hover:bg-red-500/20 text-muted-foreground/40 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100">
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
-      </div>
+      {/* 雙手作業展開區 */}
+      {step.showHands && (
+        <div className="px-3 pb-3 pt-0 border-t border-white/8 mt-0">
+          <div className="flex items-center gap-2 mb-2 mt-2">
+            <Hand className="w-3.5 h-3.5 text-blue-400" />
+            <span className="text-xs font-medium text-blue-400">雙手作業拆解</span>
+            <span className="text-[10px] text-muted-foreground/50">（左右手各自的動作與時間）</span>
+          </div>
+
+          {/* 左手 */}
+          <div className="space-y-1.5 mb-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-blue-400/70 font-medium uppercase tracking-wider">左手 ({leftHands.length})</span>
+              <button onClick={() => onAddHand(step.tempId, "left")}
+                className="text-[10px] text-blue-400/60 hover:text-blue-400 flex items-center gap-0.5 transition-colors">
+                <Plus className="w-2.5 h-2.5" />新增左手動作
+              </button>
+            </div>
+            {leftHands.length === 0 ? (
+              <div className="text-[10px] text-muted-foreground/30 py-1 pl-2 italic">尚無左手動作記錄</div>
+            ) : (
+              leftHands.map(ha => (
+                <HandRow key={ha.tempId} ha={ha} stepDuration={sec}
+                  onChange={(haTempId, field, val) => onHandChange(step.tempId, haTempId, field, val)}
+                  onDelete={haTempId => onHandDelete(step.tempId, haTempId)} />
+              ))
+            )}
+          </div>
+
+          {/* 右手 */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-violet-400/70 font-medium uppercase tracking-wider">右手 ({rightHands.length})</span>
+              <button onClick={() => onAddHand(step.tempId, "right")}
+                className="text-[10px] text-violet-400/60 hover:text-violet-400 flex items-center gap-0.5 transition-colors">
+                <Plus className="w-2.5 h-2.5" />新增右手動作
+              </button>
+            </div>
+            {rightHands.length === 0 ? (
+              <div className="text-[10px] text-muted-foreground/30 py-1 pl-2 italic">尚無右手動作記錄</div>
+            ) : (
+              rightHands.map(ha => (
+                <HandRow key={ha.tempId} ha={ha} stepDuration={sec}
+                  onChange={(haTempId, field, val) => onHandChange(step.tempId, haTempId, field, val)}
+                  onDelete={haTempId => onHandDelete(step.tempId, haTempId)} />
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -186,7 +391,6 @@ export default function ActionAnalysis() {
   const search = useSearch();
   const lineIdNum = parseInt(lineId ?? "0");
 
-  // 從 URL 查詢參數 ?ws=N 讀取初始工站 ID
   const initialWsId = useMemo(() => {
     const params = new URLSearchParams(search);
     const ws = params.get("ws");
@@ -214,17 +418,39 @@ export default function ActionAnalysis() {
     { enabled: selectedWsId !== null }
   );
 
-  // 使用 ref 追蹤上一次 dbSteps 的序列化值，避免陣列參考變化導致無限迴圈
+  // 取得所有步驟的手部動作（批次查詢）
+  const stepIds = useMemo(() => dbSteps.map((s: any) => s.id as number), [dbSteps]);
+  const { data: dbHandActions = [] } = trpc.handAction.listByStepIds.useQuery(
+    { actionStepIds: stepIds },
+    { enabled: stepIds.length > 0 }
+  );
+
   const prevDbStepsKeyRef = useRef<string>("");
-  // 使用 ref 儲存 selectedWsId 的最新值，避免它被加入 useEffect 依賴陣列觸發額外執行
   const selectedWsIdRef = useRef<number | null>(selectedWsId);
   useEffect(() => { selectedWsIdRef.current = selectedWsId; });
 
   useEffect(() => {
-    // 序列化 dbSteps 以穩定比較，避免每次 refetch 產生新陣列參考觸發無限更新
     const key = dbSteps.map((s: any) => `${s.id}:${s.stepOrder}:${s.stepName}:${s.duration}:${s.actionType}`).join("|");
     if (key === prevDbStepsKeyRef.current) return;
     prevDbStepsKeyRef.current = key;
+
+    // 建立 stepId -> handActions 的映射
+    const handMap: Record<number, LocalHandAction[]> = {};
+    (dbHandActions as any[]).forEach(ha => {
+      if (!handMap[ha.actionStepId]) handMap[ha.actionStepId] = [];
+      handMap[ha.actionStepId]!.push({
+        id: ha.id,
+        tempId: genTempId(),
+        hand: ha.hand as Hand,
+        actionName: ha.actionName,
+        duration: String(parseFloat(ha.duration)),
+        handActionType: ha.handActionType as HandActionType,
+        isIdle: Boolean(ha.isIdle),
+        note: ha.note ?? "",
+        isDirty: false,
+        isNew: false,
+      });
+    });
 
     setSteps(
       [...dbSteps]
@@ -239,20 +465,58 @@ export default function ActionAnalysis() {
           stepOrder: s.stepOrder,
           isDirty: false,
           isNew: false,
+          handActions: handMap[s.id] ?? [],
+          showHands: (handMap[s.id] ?? []).length > 0,
         }))
     );
     const wsId = selectedWsIdRef.current;
     if (wsId !== null) {
       setWsStepCounts(prev => ({ ...prev, [wsId]: dbSteps.length }));
     }
-  }, [dbSteps]); // 只依賴 dbSteps，selectedWsId 透過 ref 讀取避免觸發額外迴圈
+  }, [dbSteps, dbHandActions]);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
   const createStep = trpc.actionStep.create.useMutation();
   const updateStep = trpc.actionStep.update.useMutation();
   const deleteStep = trpc.actionStep.delete.useMutation();
   const updateWorkstation = trpc.workstation.update.useMutation();
+  const upsertHandAction = trpc.handAction.upsert.useMutation();
+  const deleteHandAction = trpc.handAction.delete.useMutation();
+  const deleteHandActionsByStep = trpc.handAction.deleteByStep.useMutation();
   const utils = trpc.useUtils();
+
+  // ── 雙手統計 ──────────────────────────────────────────────────────────────
+  const handStats = useMemo(() => {
+    const allHands = steps.flatMap(s => s.handActions);
+    if (allHands.length === 0) return null;
+
+    const leftHands = allHands.filter(h => h.hand === "left");
+    const rightHands = allHands.filter(h => h.hand === "right");
+
+    const leftTotal = leftHands.reduce((a, h) => a + parseDuration(h.duration), 0);
+    const rightTotal = rightHands.reduce((a, h) => a + parseDuration(h.duration), 0);
+    const leftIdle = leftHands.filter(h => h.isIdle || h.handActionType === "idle").reduce((a, h) => a + parseDuration(h.duration), 0);
+    const rightIdle = rightHands.filter(h => h.isIdle || h.handActionType === "idle").reduce((a, h) => a + parseDuration(h.duration), 0);
+
+    // 雙手同步率：左右手同時作業的時間比例（近似：取兩手中較小的有效作業時間 / 較大總時間）
+    const leftActive = leftTotal - leftIdle;
+    const rightActive = rightTotal - rightIdle;
+    const maxTotal = Math.max(leftTotal, rightTotal);
+    const syncRate = maxTotal > 0
+      ? (Math.min(leftActive, rightActive) / maxTotal) * 100
+      : 0;
+
+    // 各類型統計
+    const byType: Record<HandActionType, number> = {
+      value_added: 0, non_value_added: 0, necessary_waste: 0, idle: 0
+    };
+    allHands.forEach(h => {
+      const type = h.isIdle ? "idle" : h.handActionType;
+      byType[type] += parseDuration(h.duration);
+    });
+
+    return { leftTotal, rightTotal, leftIdle, rightIdle, leftActive, rightActive, syncRate, byType, total: allHands.length };
+  }, [steps]);
 
   // ── 計算統計 ──────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -292,6 +556,7 @@ export default function ActionAnalysis() {
     if (id === selectedWsId) return;
     setSelectedWsId(id);
     setSteps([]);
+    prevDbStepsKeyRef.current = "";
   }
 
   function handleAddStep() {
@@ -299,6 +564,7 @@ export default function ActionAnalysis() {
       tempId: genTempId(),
       stepName: "", duration: "", actionType: "value_added",
       description: "", stepOrder: prev.length, isDirty: true, isNew: true,
+      handActions: [], showHands: false,
     }]);
   }
 
@@ -310,7 +576,10 @@ export default function ActionAnalysis() {
 
   function handleDelete(tempId: string) {
     const step = steps.find(s => s.tempId === tempId);
-    if (step?.id) deleteStep.mutate({ id: step.id });
+    if (step?.id) {
+      deleteStep.mutate({ id: step.id });
+      deleteHandActionsByStep.mutate({ actionStepId: step.id });
+    }
     setSteps(prev => prev.filter(s => s.tempId !== tempId));
   }
 
@@ -326,6 +595,44 @@ export default function ActionAnalysis() {
     });
   }
 
+  function handleToggleHands(tempId: string) {
+    setSteps(prev => prev.map(s =>
+      s.tempId === tempId ? { ...s, showHands: !s.showHands } : s
+    ));
+  }
+
+  function handleAddHand(stepTempId: string, hand: Hand) {
+    setSteps(prev => prev.map(s =>
+      s.tempId === stepTempId
+        ? { ...s, handActions: [...s.handActions, defaultHandAction(hand)], showHands: true, isDirty: true }
+        : s
+    ));
+  }
+
+  function handleHandChange(stepTempId: string, haTempId: string, field: string, value: string | boolean) {
+    setSteps(prev => prev.map(s =>
+      s.tempId === stepTempId
+        ? {
+            ...s, isDirty: true,
+            handActions: s.handActions.map(ha =>
+              ha.tempId === haTempId ? { ...ha, [field]: value, isDirty: true } : ha
+            )
+          }
+        : s
+    ));
+  }
+
+  function handleHandDelete(stepTempId: string, haTempId: string) {
+    const step = steps.find(s => s.tempId === stepTempId);
+    const ha = step?.handActions.find(h => h.tempId === haTempId);
+    if (ha?.id) deleteHandAction.mutate({ id: ha.id });
+    setSteps(prev => prev.map(s =>
+      s.tempId === stepTempId
+        ? { ...s, handActions: s.handActions.filter(h => h.tempId !== haTempId), isDirty: true }
+        : s
+    ));
+  }
+
   async function handleSave() {
     if (!selectedWsId) return;
     const invalid = steps.find(s => !s.stepName.trim() || parseDuration(s.duration) <= 0);
@@ -335,31 +642,52 @@ export default function ActionAnalysis() {
     try {
       for (let i = 0; i < steps.length; i++) {
         const s = steps[i]!;
-        if (!s.isDirty) continue;
-        const payload = {
-          stepName: s.stepName.trim(),
-          stepOrder: i,
-          duration: parseDuration(s.duration),
-          actionType: s.actionType,
-          description: s.description.trim() || undefined,
-        };
-        if (s.isNew) {
-          await createStep.mutateAsync({ workstationId: selectedWsId, ...payload });
-        } else if (s.id) {
-          await updateStep.mutateAsync({ id: s.id, ...payload });
+        let stepId = s.id;
+
+        if (s.isDirty || s.isNew) {
+          const payload = {
+            stepName: s.stepName.trim(),
+            stepOrder: i,
+            duration: parseDuration(s.duration),
+            actionType: s.actionType,
+            description: s.description.trim() || undefined,
+          };
+          if (s.isNew) {
+            const res = await createStep.mutateAsync({ workstationId: selectedWsId, ...payload });
+            stepId = res.insertId;
+          } else if (s.id) {
+            await updateStep.mutateAsync({ id: s.id, ...payload });
+          }
+        }
+
+        // 儲存手部動作（只處理有 stepId 的情況）
+        if (stepId) {
+          for (const ha of s.handActions) {
+            if (!ha.isDirty) continue;
+            await upsertHandAction.mutateAsync({
+              id: ha.id,
+              actionStepId: stepId,
+              hand: ha.hand,
+              actionName: ha.isIdle ? "空手等待" : ha.actionName.trim() || "未命名",
+              duration: parseDuration(ha.duration),
+              handActionType: ha.isIdle ? "idle" : ha.handActionType,
+              isIdle: ha.isIdle,
+              note: ha.note.trim() || undefined,
+            });
+          }
         }
       }
+
       if (syncCycleTime && stats.totalSec > 0) {
         await updateWorkstation.mutateAsync({ id: selectedWsId, cycleTime: stats.totalSec });
-        // 同步刷新工站列表、工站詳細資料與平衡分析頁面的工站快取
         await utils.workstation.listByLine.invalidate({ productionLineId: lineIdNum });
         await utils.workstation.getById.invalidate({ id: selectedWsId });
-        toast.success(`工站時間已同步更新為 ${stats.totalSec.toFixed(1)}s，平衡分析將自動重新計算`);
+        toast.success(`工站時間已同步更新為 ${stats.totalSec.toFixed(1)}s`);
       }
       await refetchSteps();
-      // 刷新工站步驟列表與計數快取
       await utils.actionStep.listByWorkstation.invalidate({ workstationId: selectedWsId });
-      toast.success("動作步驟已儲存成功");
+      await utils.handAction.listByStepIds.invalidate({ actionStepIds: stepIds });
+      toast.success("動作步驟與雙手記錄已儲存成功");
     } catch {
       toast.error("儲存失敗，請稍後再試");
     } finally {
@@ -369,25 +697,32 @@ export default function ActionAnalysis() {
 
   function handleExportCSV() {
     if (!steps.length) { toast.error("尚無步驟資料"); return; }
-    const header = "序號,動作名稱,類型,時間(秒),佔比(%),備註\n";
-    const rows = steps.map((s, i) =>
-      `${i + 1},${s.stepName},${ACTION_TYPE_CONFIG[s.actionType].label},${parseDuration(s.duration).toFixed(1)},${stats.totalSec > 0 ? ((parseDuration(s.duration) / stats.totalSec) * 100).toFixed(1) : 0},${s.description}`
-    ).join("\n");
+    const header = "序號,動作名稱,類型,時間(秒),佔比(%),備註,左手動作,右手動作\n";
+    const rows = steps.map((s, i) => {
+      const leftStr = s.handActions.filter(h => h.hand === "left").map(h => `${h.actionName}(${parseDuration(h.duration).toFixed(1)}s)`).join(";");
+      const rightStr = s.handActions.filter(h => h.hand === "right").map(h => `${h.actionName}(${parseDuration(h.duration).toFixed(1)}s)`).join(";");
+      return `${i + 1},${s.stepName},${ACTION_TYPE_CONFIG[s.actionType].label},${parseDuration(s.duration).toFixed(1)},${stats.totalSec > 0 ? ((parseDuration(s.duration) / stats.totalSec) * 100).toFixed(1) : 0},${s.description},${leftStr},${rightStr}`;
+    }).join("\n");
     const blob = new Blob(["\uFEFF" + header + rows], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = `${selectedWs?.name ?? "steps"}_動作拆解.csv`; a.click();
     URL.revokeObjectURL(url);
-    toast.success("CSV 已下載");
+    toast.success("CSV 已下載（含雙手資料）");
   }
 
   function handleClearAll() {
     if (!confirm(`確定要清除「${selectedWs?.name}」的所有動作步驟嗎？`)) return;
-    steps.forEach(s => { if (s.id) deleteStep.mutate({ id: s.id }); });
+    steps.forEach(s => {
+      if (s.id) {
+        deleteStep.mutate({ id: s.id });
+        deleteHandActionsByStep.mutate({ actionStepId: s.id });
+      }
+    });
     setSteps([]);
   }
 
-  const hasDirty = steps.some(s => s.isDirty);
+  const hasDirty = steps.some(s => s.isDirty || s.handActions.some(h => h.isDirty));
 
   // ── 渲染 ──────────────────────────────────────────────────────────────────
   return (
@@ -546,11 +881,11 @@ export default function ActionAnalysis() {
                   <div className="flex-1">動作名稱 / 備註</div>
                   <div className="w-[130px] shrink-0">類型</div>
                   <div className="w-[88px] shrink-0 text-right">時間</div>
-                  <div className="w-8" />
+                  <div className="w-12" />
                 </div>
 
                 {/* 動作列表 */}
-                <div className="space-y-2 max-h-[400px] overflow-y-auto pr-0.5">
+                <div className="space-y-2 max-h-[500px] overflow-y-auto pr-0.5">
                   {steps.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 border border-dashed border-white/10 rounded-xl">
                       <Plus className="w-10 h-10 text-muted-foreground/20 mb-3" />
@@ -566,6 +901,10 @@ export default function ActionAnalysis() {
                         key={step.tempId} step={step} index={idx}
                         total={steps.length} totalSec={stats.totalSec}
                         onChange={handleChange} onDelete={handleDelete} onMove={handleMove}
+                        onToggleHands={handleToggleHands}
+                        onAddHand={handleAddHand}
+                        onHandChange={handleHandChange}
+                        onHandDelete={handleHandDelete}
                       />
                     ))
                   )}
@@ -574,7 +913,6 @@ export default function ActionAnalysis() {
                 {/* 底部：合計 + 儲存 */}
                 {steps.length > 0 && (
                   <div className="mt-4 pt-4 border-t border-white/8 space-y-3">
-                    {/* 合計資訊列 */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <span className="text-sm font-semibold text-foreground flex items-center gap-1.5">
@@ -603,7 +941,6 @@ export default function ActionAnalysis() {
                       </span>
                     </div>
 
-                    {/* 各類型時間條 */}
                     <div className="space-y-1.5">
                       {(Object.entries(ACTION_TYPE_CONFIG) as [ActionType, typeof ACTION_TYPE_CONFIG[ActionType]][]).map(([key, cfg]) => {
                         const sec = stats.byType[key];
@@ -627,7 +964,6 @@ export default function ActionAnalysis() {
                       })}
                     </div>
 
-                    {/* 同步選項 + 儲存按鈕 */}
                     <div className="flex items-center justify-between pt-1">
                       <label className="flex items-center gap-2 cursor-pointer select-none group/sync">
                         <input type="checkbox" checked={syncCycleTime}
@@ -719,6 +1055,98 @@ export default function ActionAnalysis() {
               ))}
             </CardContent>
           </Card>
+
+          {/* 雙手作業統計 */}
+          {handStats && (
+            <Card className="border-blue-500/20 bg-blue-500/5 backdrop-blur-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-medium text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Hand className="w-3.5 h-3.5" />雙手作業統計
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-3 pt-0 space-y-3">
+                {/* 雙手同步率 */}
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs text-muted-foreground">雙手同步率</span>
+                    <span className={`text-sm font-bold tabular-nums ${
+                      handStats.syncRate >= 80 ? "text-emerald-400" :
+                      handStats.syncRate >= 60 ? "text-amber-400" : "text-red-400"
+                    }`}>{handStats.syncRate.toFixed(1)}%</span>
+                  </div>
+                  <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${handStats.syncRate}%`,
+                        backgroundColor: handStats.syncRate >= 80 ? "#10b981" : handStats.syncRate >= 60 ? "#f59e0b" : "#ef4444"
+                      }} />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                    {handStats.syncRate >= 80 ? "雙手協調良好" : handStats.syncRate >= 60 ? "有改善空間" : "單手空閒過多，建議優化"}
+                  </p>
+                </div>
+
+                {/* 左右手時間 */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-blue-400 w-8 shrink-0">左手</span>
+                    <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-500 rounded-full transition-all"
+                        style={{ width: `${Math.max(handStats.leftTotal, handStats.rightTotal) > 0 ? (handStats.leftTotal / Math.max(handStats.leftTotal, handStats.rightTotal)) * 100 : 0}%` }} />
+                    </div>
+                    <span className="text-[10px] text-muted-foreground/70 tabular-nums w-10 text-right">{handStats.leftTotal.toFixed(1)}s</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-violet-400 w-8 shrink-0">右手</span>
+                    <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                      <div className="h-full bg-violet-500 rounded-full transition-all"
+                        style={{ width: `${Math.max(handStats.leftTotal, handStats.rightTotal) > 0 ? (handStats.rightTotal / Math.max(handStats.leftTotal, handStats.rightTotal)) * 100 : 0}%` }} />
+                    </div>
+                    <span className="text-[10px] text-muted-foreground/70 tabular-nums w-10 text-right">{handStats.rightTotal.toFixed(1)}s</span>
+                  </div>
+                </div>
+
+                {/* 空手等待 */}
+                {(handStats.leftIdle > 0 || handStats.rightIdle > 0) && (
+                  <div className="pt-1 border-t border-white/8 space-y-1">
+                    <p className="text-[10px] text-amber-400 font-medium">空手等待時間</p>
+                    {handStats.leftIdle > 0 && (
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-blue-400/70">左手空手</span>
+                        <span className="text-amber-400 tabular-nums">{handStats.leftIdle.toFixed(1)}s</span>
+                      </div>
+                    )}
+                    {handStats.rightIdle > 0 && (
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-violet-400/70">右手空手</span>
+                        <span className="text-amber-400 tabular-nums">{handStats.rightIdle.toFixed(1)}s</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 手部動作類型分佈 */}
+                <div className="pt-1 border-t border-white/8">
+                  <p className="text-[10px] text-muted-foreground/60 mb-1.5">手部動作類型分佈</p>
+                  {(Object.entries(HAND_ACTION_TYPE_CONFIG) as [HandActionType, { label: string; color: string }][]).map(([k, c]) => {
+                    const sec = handStats.byType[k];
+                    const total = Object.values(handStats.byType).reduce((a, b) => a + b, 0);
+                    const pct = total > 0 ? (sec / total) * 100 : 0;
+                    if (sec === 0) return null;
+                    return (
+                      <div key={k} className="flex items-center gap-1.5 mb-1">
+                        <span className="text-[9px] w-14 shrink-0" style={{ color: c.color }}>{c.label}</span>
+                        <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: c.color }} />
+                        </div>
+                        <span className="text-[9px] text-muted-foreground/50 tabular-nums w-8 text-right">{pct.toFixed(0)}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* 改善提示卡片 */}
           {steps.length > 0 && stats.byType.non_value_added > 0 && (

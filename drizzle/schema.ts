@@ -75,6 +75,28 @@ export const actionSteps = mysqlTable("action_steps", {
 export type ActionStep = typeof actionSteps.$inferSelect;
 export type InsertActionStep = typeof actionSteps.$inferInsert;
 
+// 雙手作業子表（方案 B）
+export const handActions = mysqlTable("hand_actions", {
+  id: int("id").autoincrement().primaryKey(),
+  actionStepId: int("actionStepId").notNull(),   // 對應 action_steps.id
+  hand: mysqlEnum("hand", ["left", "right"]).notNull(), // 左手 / 右手
+  actionName: varchar("actionName", { length: 255 }).notNull(), // 動作描述
+  duration: decimal("duration", { precision: 10, scale: 2 }).notNull(), // 該手動作時間（秒）
+  handActionType: mysqlEnum("handActionType", [
+    "value_added",     // 增值
+    "non_value_added", // 非增值
+    "necessary_waste", // 必要浪費
+    "idle",            // 空手等待
+  ]).default("value_added").notNull(),
+  isIdle: int("isIdle").notNull().default(0),  // 1 = 空手等待（快速標記）
+  note: text("note"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type HandAction = typeof handActions.$inferSelect;
+export type InsertHandAction = typeof handActions.$inferInsert;
+
 // 分析快照資料表
 export const analysisSnapshots = mysqlTable("analysis_snapshots", {
   id: int("id").autoincrement().primaryKey(),

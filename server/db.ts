@@ -5,6 +5,7 @@ import {
   productionLines, InsertProductionLine,
   workstations, InsertWorkstation,
   actionSteps, InsertActionStep,
+  handActions, InsertHandAction,
   analysisSnapshots, InsertAnalysisSnapshot,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -175,6 +176,48 @@ export async function bulkCreateActionSteps(data: InsertActionStep[]) {
   if (!db) throw new Error("Database not available");
   if (data.length === 0) return;
   return db.insert(actionSteps).values(data);
+}
+
+// ─── Hand Actions ──────────────────────────────────────────────────────────────────────────────────────
+
+export async function getHandActionsByStep(actionStepId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(handActions)
+    .where(eq(handActions.actionStepId, actionStepId))
+    .orderBy(asc(handActions.hand)); // left 先、right 後
+}
+
+export async function getHandActionsByStepIds(actionStepIds: number[]) {
+  if (actionStepIds.length === 0) return [];
+  const db = await getDb();
+  if (!db) return [];
+  const { inArray } = await import("drizzle-orm");
+  return db.select().from(handActions)
+    .where(inArray(handActions.actionStepId, actionStepIds))
+    .orderBy(asc(handActions.actionStepId), asc(handActions.hand));
+}
+
+export async function upsertHandAction(data: InsertHandAction & { id?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (data.id) {
+    const { id, ...rest } = data;
+    return db.update(handActions).set(rest).where(eq(handActions.id, id));
+  }
+  return db.insert(handActions).values(data);
+}
+
+export async function deleteHandAction(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(handActions).where(eq(handActions.id, id));
+}
+
+export async function deleteHandActionsByStep(actionStepId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(handActions).where(eq(handActions.actionStepId, actionStepId));
 }
 
 // ─── Analysis Snapshot Queries ──────────────────────────────────────────────────────
