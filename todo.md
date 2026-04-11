@@ -222,11 +222,21 @@
 - [x] SnapshotHistory.tsx：DialogContent 改用 style={{ width: '1024px', maxWidth: '98vw' }} 覆蓋 shadcn 預設 sm:max-w-lg 限制
 
 ## 雙手作業統計 — 方案 B（新增）
-- [ ] drizzle/schema.ts：新增 handActions 子表（id, actionStepId, hand, actionName, duration, handActionType, isIdle, note）
-- [ ] 執行 pnpm drizzle-kit generate 並套用遷移 SQL
-- [ ] server/db.ts：新增 getHandActionsByStep、upsertHandActions 查詢函式
-- [ ] server/routers.ts：新增 handAction.listByStep、handAction.upsert procedures
-- [ ] ActionAnalysis.tsx：動作步驟卡片新增「展開雙手輸入」區塊（左手/右手各自動作名稱、時間、類型、空手標記）
-- [ ] ActionAnalysis.tsx：右側分析面板新增「雙手統計」區塊（雙手同步率、左手空閒、右手空閒、工具作業時間）
+- [x] drizzle/schema.ts：新增 handActions 子表（id, actionStepId, hand, actionName, duration, handActionType, isIdle, note）
+- [x] 執行 pnpm drizzle-kit generate 並套用遷移 SQL
+- [x] server/db.ts：新增 getHandActionsByStep、upsertHandActions 查詢函式
+- [x] server/routers.ts：新增 handAction.listByStep、handAction.upsert procedures
+- [x] ActionAnalysis.tsx：動作步驟卡片新增「展開雙手輸入」區塊（左手/右手各自動作名稱、時間、類型、空手標記）
+- [x] ActionAnalysis.tsx：右側分析面板新增「雙手統計」區塊（雙手同步率、左手空閒、右手空閒、工具作業時間）
 - [ ] ActionAnalysis.tsx：新增雙手甘特圖（左右手時間軸並排）
 - [x] 撰寫 handAction vitest 測試
+
+## 內部帳號密碼管理系統（移除 OAuth）
+- [ ] drizzle/schema.ts：users 表新增 username、passwordHash 欄位
+- [ ] 執行 schema 遷移 SQL
+- [ ] server/routers.ts：新增 auth.localLogin（帳密驗證 + session cookie）
+- [ ] server/routers.ts：新增管理員帳號 CRUD（admin.createUser、admin.listUsers、admin.resetPassword、admin.toggleActive）
+- [ ] 初始化預設管理員帳號（admin / 初始密碼）
+- [ ] client/src/pages/Login.tsx：本地帳密登入頁面（取代 OAuth 跳轉）
+- [x] client/src/pages/AdminUsers.tsx：管理員帳號管理頁面
+- [ ] client/src/App.tsx：更新路由與登入流程

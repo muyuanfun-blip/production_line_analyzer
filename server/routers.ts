@@ -15,7 +15,11 @@ import {
   getAllLinesSnapshotHistory,
   getHandActionsByStep, getHandActionsByStepIds,
   upsertHandAction, deleteHandAction, deleteHandActionsByStep,
+  getUserByUsername, getAllUsers, createLocalUser,
+  updateUserPassword, toggleUserActive, updateUserRole, updateUserLastSignedIn,
 } from "./db";
+import bcrypt from "bcryptjs";
+import { sdk } from "./_core/sdk";
 import { ENV } from "./_core/env";
 
 // ─── Zod Schemas ─────────────────────────────────────────────────────────────
@@ -57,6 +61,97 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+    localLogin: publicProcedure
+      .input(z.object({
+        username: z.string().min(1),
+        password: z.string().min(1),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const user = await getUserByUsername(input.username);
+        if (!user || !user.passwordHash) {
+          throw new Error('帳號或密碼錯誤');
+        }
+        if (!user.isActive) {
+          throw new Error('帳號已停用，請聯絡管理員');
+        }
+        const valid = await bcrypt.compare(input.password, user.passwordHash);
+        if (!valid) {
+          throw new Error('帳號或密碼錯誤');
+        }
+        await updateUserLastSignedIn(user.id);
+        const token = await sdk.signSession(
+          { openId: user.openId, appId: ENV.appId, name: user.name ?? user.username ?? '' },
+          { expiresInMs: 1000 * 60 * 60 * 24 * 30 } // 30 days
+        );
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: 1000 * 60 * 60 * 24 * 30 });
+        return { success: true, role: user.role, name: user.name ?? user.username };
+      }),
+  }),
+
+  // ─── Admin: 帳號管理 ─────────────────────────────────────────────────────────
+  admin: router({
+    listUsers: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== 'admin') throw new Error('無管理員權限');
+      return getAllUsers();
+    }),
+
+    createUser: protectedProcedure
+      .input(z.object({
+        username: z.string().min(2).max(64),
+        password: z.string().min(6),
+        name: z.string().min(1),
+        role: z.enum(['user', 'admin']).default('user'),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user.role !== 'admin') throw new Error('無管理員權限');
+        const existing = await getUserByUsername(input.username);
+        if (existing) throw new Error('帳號名稱已存在');
+        const passwordHash = await bcrypt.hash(input.password, 12);
+        const user = await createLocalUser({
+          username: input.username,
+          passwordHash,
+          name: input.name,
+          role: input.role,
+        });
+        return { success: true, userId: user?.id };
+      }),
+
+    resetPassword: protectedProcedure
+      .input(z.object({
+        userId: z.number().int().positive(),
+        newPassword: z.string().min(6),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user.role !== 'admin') throw new Error('無管理員權限');
+        const passwordHash = await bcrypt.hash(input.newPassword, 12);
+        await updateUserPassword(input.userId, passwordHash);
+        return { success: true };
+      }),
+
+    toggleActive: protectedProcedure
+      .input(z.object({
+        userId: z.number().int().positive(),
+        isActive: z.boolean(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user.role !== 'admin') throw new Error('無管理員權限');
+        if (input.userId === ctx.user.id) throw new Error('不能停用自己的帳號');
+        await toggleUserActive(input.userId, input.isActive ? 1 : 0);
+        return { success: true };
+      }),
+
+    updateRole: protectedProcedure
+      .input(z.object({
+        userId: z.number().int().positive(),
+        role: z.enum(['user', 'admin']),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user.role !== 'admin') throw new Error('無管理員權限');
+        if (input.userId === ctx.user.id) throw new Error('不能修改自己的角色');
+        await updateUserRole(input.userId, input.role);
+        return { success: true };
+      }),
   }),
 
   // ─── Production Lines ───────────────────────────────────────────────────
