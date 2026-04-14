@@ -40,7 +40,7 @@ export default function AISuggestions() {
     const avgTime = totalTime / times.length;
     const balanceRate = (totalTime / (maxTime * workstations.length)) * 100;
     const bottleneck = workstations.find(w => parseFloat(w.cycleTime.toString()) === maxTime);
-    const totalManpower = workstations.reduce((s, w) => s + w.manpower, 0);
+    const totalManpower = workstations.reduce((s, w) => s + parseFloat(w.manpower.toString()), 0);
     const upph = maxTime > 0 && totalManpower > 0 ? 3600 / maxTime / totalManpower : null;
     return { totalTime, maxTime, avgTime, balanceRate, bottleneck, totalManpower, upph };
   }, [workstations]);
@@ -54,7 +54,7 @@ export default function AISuggestions() {
       workstations: workstations.map(w => ({
         name: w.name,
         cycleTime: parseFloat(w.cycleTime.toString()),
-        manpower: w.manpower,
+        manpower: parseFloat(w.manpower.toString()),
         sequenceOrder: w.sequenceOrder,
       })),
     });

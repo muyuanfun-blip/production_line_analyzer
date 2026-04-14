@@ -43,6 +43,13 @@
       "when": 1775792243713,
       "tag": "0005_fine_lucky_pierre",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1776135935793,
+      "tag": "0006_cultured_golden_guardian",
+      "breakpoints": true
     }
   ]
 }

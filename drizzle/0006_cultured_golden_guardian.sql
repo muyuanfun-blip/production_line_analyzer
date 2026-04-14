@@ -1,0 +1,1 @@
+ALTER TABLE `workstations` MODIFY COLUMN `manpower` decimal(5,1) NOT NULL DEFAULT '1.0';

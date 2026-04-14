@@ -36,7 +36,7 @@ const workstationInput = z.object({
   name: z.string().min(1),
   sequenceOrder: z.number().int().min(0).optional(),
   cycleTime: z.number().positive(),
-  manpower: z.number().int().positive().optional(),
+  manpower: z.number().min(0.5).optional(),
   description: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -221,7 +221,7 @@ export const appRouter = router({
           name: input.name,
           sequenceOrder: input.sequenceOrder ?? 0,
           cycleTime: input.cycleTime.toString(),
-          manpower: input.manpower ?? 1,
+          manpower: String(input.manpower ?? 1),
           description: input.description ?? null,
           notes: input.notes ?? null,
         });
@@ -257,7 +257,7 @@ export const appRouter = router({
           name: z.string().min(1),
           sequenceOrder: z.number().int().min(0),
           cycleTime: z.number().positive(),
-          manpower: z.number().int().positive().optional(),
+          manpower: z.number().min(0.5).optional(),
           description: z.string().optional(),
         })),
       }))
@@ -267,7 +267,7 @@ export const appRouter = router({
           name: w.name,
           sequenceOrder: w.sequenceOrder,
           cycleTime: w.cycleTime.toString(),
-          manpower: w.manpower ?? 1,
+          manpower: String(w.manpower ?? 1),
           description: w.description ?? null,
           notes: null,
         }));

@@ -49,7 +49,7 @@ export const workstations = mysqlTable("workstations", {
   name: varchar("name", { length: 255 }).notNull(),
   sequenceOrder: int("sequenceOrder").notNull().default(0), // 工站順序
   cycleTime: decimal("cycleTime", { precision: 10, scale: 2 }).notNull(), // 工序時間（秒）
-  manpower: int("manpower").notNull().default(1), // 人員配置
+  manpower: decimal("manpower", { precision: 5, scale: 1 }).notNull().default("1.0"), // 人員配置（支援小數，如 0.5）
   description: text("description"),
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

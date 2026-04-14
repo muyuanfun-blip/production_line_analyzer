@@ -168,7 +168,7 @@ export default function BalanceAnalysis() {
         id: w.id,
         name: w.name,
         cycleTime: parseFloat(w.cycleTime.toString()),
-        manpower: w.manpower,
+        manpower: parseFloat(w.manpower.toString()),
         sequenceOrder: w.sequenceOrder,
         description: w.description ?? undefined,
       })),
@@ -205,13 +205,13 @@ export default function BalanceAnalysis() {
         name: w.name.length > 8 ? w.name.substring(0, 8) + "…" : w.name,
         fullName: w.name,
         cycleTime: ct,
-        manpower: w.manpower,
+        manpower: parseFloat(w.manpower.toString()),
         status,
         color: COLORS[status],
       };
     });
 
-    const totalManpower = workstations.reduce((s, w) => s + w.manpower, 0);
+    const totalManpower = workstations.reduce((s, w) => s + parseFloat(w.manpower.toString()), 0);
     // UPPH = 3600 ÷ maxTime ÷ totalManpower
     // 意義：在瓶頸工站節拍下，每人每小時可產出的件數
     const upph = totalManpower > 0 && maxTime > 0
@@ -839,7 +839,7 @@ export default function BalanceAnalysis() {
                         <td className="px-4 py-3 text-right">
                           {/* 工站級 UPPH = 3600 ÷ ct ÷ manpower */}
                           <span className="text-sm font-mono font-bold text-amber-400">
-                            {ws.manpower > 0 && ct > 0 ? (3600 / ct / ws.manpower).toFixed(2) : "—"}
+                            {parseFloat(ws.manpower.toString()) > 0 && ct > 0 ? (3600 / ct / parseFloat(ws.manpower.toString())).toFixed(2) : "—"}
                           </span>
                           <span className="text-xs text-muted-foreground ml-1">件/人/時</span>
                         </td>

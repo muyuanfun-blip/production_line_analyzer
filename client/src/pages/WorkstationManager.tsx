@@ -124,7 +124,7 @@ export default function WorkstationManager() {
       name: form.name.trim(),
       sequenceOrder: parseInt(form.sequenceOrder) || 0,
       cycleTime: parseFloat(form.cycleTime),
-      manpower: parseInt(form.manpower) || 1,
+      manpower: parseFloat(form.manpower) || 1,
       description: form.description || undefined,
       notes: form.notes || undefined,
     };
@@ -145,7 +145,7 @@ export default function WorkstationManager() {
       if (parts.length >= 2) {
         const name = parts[0]?.trim();
         const cycleTime = parseFloat(parts[1]?.trim() ?? "0");
-        const manpower = parseInt(parts[2]?.trim() ?? "1") || 1;
+        const manpower = parseFloat(parts[2]?.trim() ?? "1") || 1;
         if (name && cycleTime > 0) {
           result.push({ name, cycleTime, manpower, sequenceOrder: idx + 1 });
         }
@@ -192,9 +192,9 @@ export default function WorkstationManager() {
     const edit = inlineEdits[wsId];
     if (!edit) return;
     const ct = parseFloat(edit.cycleTime);
-    const mp = parseInt(edit.manpower);
+    const mp = parseFloat(edit.manpower);
     if (isNaN(ct) || ct <= 0) { toast.error("請輸入有效的工序時間"); return; }
-    if (isNaN(mp) || mp < 1) { toast.error("請輸入有效的人員配置"); return; }
+    if (isNaN(mp) || mp < 0.5) { toast.error("請輸入有效的人員配置（最小 0.5 人）"); return; }
     setSavingInline(prev => ({ ...prev, [wsId]: true }));
     try {
       await updateMutation.mutateAsync({ id: wsId, cycleTime: ct, manpower: mp });
@@ -266,7 +266,7 @@ export default function WorkstationManager() {
             },
             {
               label: "總人員配置",
-              value: `${workstations.reduce((s, w) => s + w.manpower, 0)} 人`,
+              value: `${workstations.reduce((s, w) => s + parseFloat(w.manpower.toString()), 0)} 人`,
               icon: Users, color: "text-violet-400"
             },
           ].map(stat => (
@@ -364,7 +364,8 @@ export default function WorkstationManager() {
                           onChange={e => setInlineEdits(prev => ({ ...prev, [ws.id]: { ...prev[ws.id]!, manpower: e.target.value } }))}
                           onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(ws.id); if (e.key === 'Escape') cancelInlineEdit(ws.id); }}
                           className="h-7 w-16 text-right text-sm bg-input border-primary/50 ml-auto"
-                          min="1"
+                          min="0.5"
+                          step="0.5"
                         />
                       ) : (
                         <button
@@ -481,7 +482,8 @@ export default function WorkstationManager() {
                   value={form.manpower}
                   onChange={e => setForm(f => ({ ...f, manpower: e.target.value }))}
                   className="bg-input border-border"
-                  min="1"
+                  min="0.5"
+                  step="0.5"
                 />
               </div>
             </div>
