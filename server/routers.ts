@@ -10,7 +10,7 @@ import {
   updateWorkstation, deleteWorkstation, bulkCreateWorkstations,
   getActionStepsByWorkstation, createActionStep, updateActionStep,
   deleteActionStep, bulkCreateActionSteps,
-  getSnapshotsByLine, getSnapshotById, createSnapshot, deleteSnapshot,
+  getSnapshotsByLine, getSnapshotById, createSnapshot, deleteSnapshot, updateSnapshotData,
   getAllLinesLatestSnapshot,
   getAllLinesSnapshotHistory,
   getHandActionsByStep, getHandActionsByStepIds,
@@ -583,6 +583,33 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input }) => {
         await deleteSnapshot(input.id);
+        return { success: true };
+      }),
+
+    updateData: protectedProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        name: z.string().min(1).max(255).optional(),
+        note: z.string().nullable().optional(),
+        taktTime: z.number().positive().nullable().optional(),
+        workstationsData: z.array(z.object({
+          id: z.number(),
+          name: z.string().min(1),
+          cycleTime: z.number().positive(),
+          manpower: z.number().min(0.5),
+          sequenceOrder: z.number().int().min(0),
+          description: z.string().optional(),
+          actionStepCount: z.number().optional(),
+          totalStepSec: z.number().optional(),
+          valueAddedSec: z.number().optional(),
+          nonValueAddedSec: z.number().optional(),
+          necessaryWasteSec: z.number().optional(),
+          valueAddedRate: z.number().nullable().optional(),
+        })).min(1),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await updateSnapshotData(id, data);
         return { success: true };
       }),
 

@@ -320,6 +320,79 @@ export async function deleteSnapshot(id: number) {
 }
 
 /**
+ * 更新快照的工站數據並重算衍生 KPI
+ */
+export async function updateSnapshotData(
+  id: number,
+  data: {
+    name?: string;
+    note?: string | null;
+    workstationsData: Array<{
+      id: number;
+      name: string;
+      cycleTime: number;
+      manpower: number;
+      sequenceOrder: number;
+      description?: string;
+      // 保留原有動作拆解摘要
+      actionStepCount?: number;
+      totalStepSec?: number;
+      valueAddedSec?: number;
+      nonValueAddedSec?: number;
+      necessaryWasteSec?: number;
+      valueAddedRate?: number | null;
+    }>;
+    taktTime?: number | null;
+  }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const ws = data.workstationsData;
+  const times = ws.map(w => w.cycleTime);
+  const totalTime = times.reduce((s, t) => s + t, 0);
+  const maxTime = Math.max(...times);
+  const minTime = Math.min(...times);
+  const avgTime = times.length > 0 ? totalTime / times.length : 0;
+  const balanceRate = maxTime > 0 ? (totalTime / (maxTime * ws.length)) * 100 : 0;
+  const balanceLoss = 100 - balanceRate;
+  const totalManpower = ws.reduce((s, w) => s + w.manpower, 0);
+  const upph = maxTime > 0 && totalManpower > 0 ? 3600 / maxTime / totalManpower : 0;
+  const bottleneck = ws.find(w => w.cycleTime === maxTime);
+
+  const taktPassStations = data.taktTime
+    ? ws.filter(w => w.cycleTime <= data.taktTime!)
+    : [];
+  const taktPassRate = data.taktTime && ws.length > 0
+    ? (taktPassStations.length / ws.length) * 100
+    : null;
+  const taktPassCount = data.taktTime ? taktPassStations.length : null;
+
+  const updateFields: Record<string, unknown> = {
+    workstationsData: ws,
+    totalTime: String(totalTime.toFixed(2)),
+    maxTime: String(maxTime.toFixed(2)),
+    minTime: String(minTime.toFixed(2)),
+    avgTime: String(avgTime.toFixed(2)),
+    balanceRate: String(balanceRate.toFixed(2)),
+    balanceLoss: String(balanceLoss.toFixed(2)),
+    workstationCount: ws.length,
+    totalManpower: Math.round(totalManpower * 10) / 10, // 保留一位小數精度
+    upph: String(upph.toFixed(4)),
+    bottleneckName: bottleneck?.name ?? null,
+    taktTime: data.taktTime != null ? String(data.taktTime) : null,
+    taktPassRate: taktPassRate != null ? String(taktPassRate.toFixed(2)) : null,
+    taktPassCount: taktPassCount,
+  };
+  if (data.name !== undefined) updateFields.name = data.name;
+  if (data.note !== undefined) updateFields.note = data.note;
+
+  return db.update(analysisSnapshots)
+    .set(updateFields as any)
+    .where(eq(analysisSnapshots.id, id));
+}
+
+/**
  * 取得所有產線的最新快照摘要（用於首頁並排比較圖表）
  */
 export async function getAllLinesSnapshotHistory() {

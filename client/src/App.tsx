@@ -16,6 +16,7 @@ import SnapshotCompare from "./pages/SnapshotCompare";
 import UserGuide from "./pages/UserGuide";
 import Login from "./pages/Login";
 import AdminUsers from "./pages/AdminUsers";
+import DataRefinement from "./pages/DataRefinement";
 import { trpc } from "@/lib/trpc";
 import { useEffect } from "react";
 
@@ -63,6 +64,7 @@ function Router() {
               <Route path={"/lines/:id/snapshots"} component={SnapshotHistory} />
               <Route path={"/guide"} component={UserGuide} />
               <Route path={"/admin/users"} component={AdminUsers} />
+              <Route path={"/data-refinement"} component={DataRefinement} />
               <Route path={"/404"} component={NotFound} />
               <Route component={NotFound} />
             </Switch>

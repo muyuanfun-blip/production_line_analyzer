@@ -263,3 +263,10 @@
 
 ## 歷史快照下載 oklch 修復（新增）
 - [x] 修復 html2canvas 無法解析 oklch 色彩導致下載失敗的問題
+
+## 數據修整頁面（新增）
+- [x] 後端：新增 snapshot.updateData tRPC procedure（更新快照工站數據並重算 KPI）
+- [x] 後端：新增 updateSnapshotData DB helper
+- [x] 前端：建立 DataRefinement.tsx 頁面（選取產線 → 選取快照 → 編輯工站表格 → 儲存）
+- [x] 前端：在 App.tsx 注冊 /data-refinement 路由
+- [x] 前端：在側邊欄新增「數據修整」導覽項目
