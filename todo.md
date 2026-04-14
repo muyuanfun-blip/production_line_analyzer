@@ -260,3 +260,6 @@
 - [x] 前端工站管理頁面：人力輸入欄位改為支援小數（step=0.5，min=0.5）
 - [x] 後端 tRPC schema：manpower 驗證改為 z.number().min(0.5)
 - [x] 資料庫 schema：manpower 欄位改為 decimal(5,1) 並已執行 migration
+
+## 歷史快照下載 oklch 修復（新增）
+- [x] 修復 html2canvas 無法解析 oklch 色彩導致下載失敗的問題

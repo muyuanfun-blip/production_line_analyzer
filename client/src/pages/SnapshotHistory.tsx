@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import html2canvas from "html2canvas";
+// html2canvas removed – using SVG→Canvas export instead
 import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { FormulaTooltip } from "@/components/FormulaTooltip";
@@ -190,12 +190,49 @@ function SnapshotChartDialog({ snap, open, onClose }: {
         year: "numeric", month: "2-digit", day: "2-digit",
       }).replace(/\//g, "-");
 
-      const canvas = await html2canvas(chartRef.current, {
-        backgroundColor: "#ffffff",
-        scale: 2,
-        useCORS: true,
-        logging: false,
+      // 取得 Recharts 產生的 SVG
+      const svgEl = chartRef.current.querySelector("svg");
+      if (!svgEl) { toast.error("找不到圖表，請稍後再試"); return; }
+
+      const svgWidth  = svgEl.clientWidth  || 800;
+      const svgHeight = svgEl.clientHeight || 480;
+      const scale = 2;
+
+      // 將 SVG 序列化為字串，並移除 foreignObject（不支援）
+      const svgClone = svgEl.cloneNode(true) as SVGElement;
+      svgClone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      svgClone.setAttribute("width",  String(svgWidth));
+      svgClone.setAttribute("height", String(svgHeight));
+      // 移除 foreignObject（狀態圖示標簽），避免序列化失敗
+      svgClone.querySelectorAll("foreignObject").forEach(fo => fo.remove());
+
+      // 將所有 oklch 色彩屬性替換為等效 hex
+      const oklchMap: Record<string, string> = {
+        "oklch(0.25 0.015 240)": "#2d3748",
+        "oklch(0.60 0.01 240)":  "#718096",
+      };
+      const svgStr = new XMLSerializer()
+        .serializeToString(svgClone)
+        .replace(/oklch\([^)]+\)/g, (m) => oklchMap[m] ?? "#888888");
+
+      const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+      const url  = URL.createObjectURL(blob);
+      const img  = new Image();
+
+      await new Promise<void>((resolve, reject) => {
+        img.onload  = () => resolve();
+        img.onerror = reject;
+        img.src = url;
       });
+
+      const canvas = document.createElement("canvas");
+      canvas.width  = svgWidth  * scale;
+      canvas.height = svgHeight * scale;
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
 
       const link = document.createElement("a");
       link.download = `工序時間分佈圖_${snap.name}_${dateStr}.png`;
@@ -301,15 +338,15 @@ function SnapshotChartDialog({ snap, open, onClose }: {
             <div className="h-[480px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 28, right: 24, left: 0, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.25 0.015 240)" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2d3748" vertical={false} />
                   <XAxis
                     dataKey="name"
-                    tick={{ fill: "oklch(0.60 0.01 240)", fontSize: 11 }}
+                    tick={{ fill: "#718096", fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
                   />
                   <YAxis
-                    tick={{ fill: "oklch(0.60 0.01 240)", fontSize: 11 }}
+                    tick={{ fill: "#718096", fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
                     unit="s"
