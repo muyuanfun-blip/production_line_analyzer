@@ -17,6 +17,7 @@ import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ReferenceLine
 } from "recharts";
+import { HandGanttChart, type GanttStep } from "@/components/HandGanttChart";
 
 // ─── 型別定義 ─────────────────────────────────────────────────────────────────
 
@@ -1055,6 +1056,38 @@ export default function ActionAnalysis() {
               ))}
             </CardContent>
           </Card>
+
+          {/* 雙手甘特圖 */}
+          {handStats && steps.some(s => s.handActions.length > 0) && (
+            <Card className="border-white/8 bg-card/60 backdrop-blur-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5" />雙手作業甘特圖
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-3 pt-0">
+                <HandGanttChart
+                  steps={steps.map((s): GanttStep => ({
+                    tempId: s.tempId,
+                    stepName: s.stepName,
+                    duration: parseDuration(s.duration),
+                    handActions: s.handActions.map(ha => ({
+                      id: ha.id,
+                      tempId: ha.tempId,
+                      hand: ha.hand,
+                      actionName: ha.actionName,
+                      duration: parseDuration(ha.duration),
+                      handActionType: ha.handActionType,
+                      isIdle: ha.isIdle,
+                      note: ha.note,
+                    })),
+                  }))}
+                  workstationName={selectedWs?.name}
+                  taktTime={stats.taktTime > 0 ? stats.taktTime : undefined}
+                />
+              </CardContent>
+            </Card>
+          )}
 
           {/* 雙手作業統計 */}
           {handStats && (

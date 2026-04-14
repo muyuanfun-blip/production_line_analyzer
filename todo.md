@@ -228,15 +228,26 @@
 - [x] server/routers.ts：新增 handAction.listByStep、handAction.upsert procedures
 - [x] ActionAnalysis.tsx：動作步驟卡片新增「展開雙手輸入」區塊（左手/右手各自動作名稱、時間、類型、空手標記）
 - [x] ActionAnalysis.tsx：右側分析面板新增「雙手統計」區塊（雙手同步率、左手空閒、右手空閒、工具作業時間）
-- [ ] ActionAnalysis.tsx：新增雙手甘特圖（左右手時間軸並排）
+- [x] ActionAnalysis.tsx：新增雙手甘特圖（左右手時間軸並排）
 - [x] 撰寫 handAction vitest 測試
 
 ## 內部帳號密碼管理系統（移除 OAuth）
-- [ ] drizzle/schema.ts：users 表新增 username、passwordHash 欄位
-- [ ] 執行 schema 遷移 SQL
-- [ ] server/routers.ts：新增 auth.localLogin（帳密驗證 + session cookie）
-- [ ] server/routers.ts：新增管理員帳號 CRUD（admin.createUser、admin.listUsers、admin.resetPassword、admin.toggleActive）
-- [ ] 初始化預設管理員帳號（admin / 初始密碼）
-- [ ] client/src/pages/Login.tsx：本地帳密登入頁面（取代 OAuth 跳轉）
+- [x] drizzle/schema.ts：users 表新增 username、passwordHash 欄位
+- [x] 執行 schema 遷移 SQL
+- [x] server/routers.ts：新增 auth.localLogin（帳密驗證 + session cookie）
+- [x] server/routers.ts：新增管理員帳號 CRUD（admin.createUser、admin.listUsers、admin.resetPassword、admin.toggleActive）
+- [x] 初始化預設管理員帳號（admin / 初始密碼）
+- [x] client/src/pages/Login.tsx：本地帳密登入頁面（取代 OAuth 跳轉）
 - [x] client/src/pages/AdminUsers.tsx：管理員帳號管理頁面
-- [ ] client/src/App.tsx：更新路由與登入流程
+- [x] client/src/App.tsx：更新路由與登入流程
+
+## 雙手作業甘特圖（新增）
+- [x] 建立 HandGanttChart.tsx 元件（SVG 時間軸並排）
+- [x] 甘特圖支援：左右手行並排、各動作區塊依類型配色、空手等待灰色顯示
+- [x] 甘特圖支援：Hover Tooltip（動作名稱/類型/開始/持續/結束秒數）
+- [x] 甘特圖支援：步驟分隔線、步驟名稱標籤
+- [x] 甘特圖支援：Takt Time 紫色虛線參考線
+- [x] 甘特圖支援：縮放（+/-/重置）、下載 PNG
+- [x] 甘特圖底部統計摘要（總週期時間、左右手作業時間、空手時間、雙手同步率）
+- [x] 整合至 ActionAnalysis.tsx 右側分析面板（雙手統計卡片上方）
+- [x] ActionAnalysis.tsx：todo 中原有「ActionAnalysis.tsx：新增雙手甘特圖」標記為完成
