@@ -512,7 +512,7 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         minTime: z.number(),
         avgTime: z.number(),
         workstationCount: z.number().int(),
-        totalManpower: z.number().int(),
+        totalManpower: z.number().min(0),
         taktTime: z.number().optional(),
         taktPassRate: z.number().optional(),
         taktPassCount: z.number().int().optional(),

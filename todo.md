@@ -270,3 +270,6 @@
 - [x] 前端：建立 DataRefinement.tsx 頁面（選取產線 → 選取快照 → 編輯工站表格 → 儲存）
 - [x] 前端：在 App.tsx 注冊 /data-refinement 路由
 - [x] 前端：在側邊欄新增「數據修整」導覽項目
+
+## 平衡分析頁面 API 錯誤修復（新增）
+- [x] 修復 /lines/:id/balance 頁面 mutation 回傳 HTML 而非 JSON 的錯誤（snapshot.create totalManpower 移除 .int() 限制）
