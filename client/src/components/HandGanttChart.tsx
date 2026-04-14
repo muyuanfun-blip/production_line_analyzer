@@ -135,39 +135,71 @@ export function HandGanttChart({ steps, workstationName, taktTime }: HandGanttCh
 
   const handleMouseLeave = useCallback(() => setTooltip(null), []);
 
-  // 下載 PNG
+  // 下載 PNG（白色背景）
   function handleDownload() {
     const svg = svgRef.current;
     if (!svg) return;
     try {
+      const svgWidth  = svg.clientWidth  || parseInt(svg.getAttribute("width") ?? "700");
+      const svgHeight = svg.clientHeight || parseInt(svg.getAttribute("height") ?? "400");
+
       const clone = svg.cloneNode(true) as SVGSVGElement;
+      clone.setAttribute("width", String(svgWidth));
+      clone.setAttribute("height", String(svgHeight));
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+      // 白色背景
       const ns = "http://www.w3.org/2000/svg";
       const bg = document.createElementNS(ns, "rect");
       bg.setAttribute("width", "100%");
       bg.setAttribute("height", "100%");
-      bg.setAttribute("fill", "#0f0f1a");
+      bg.setAttribute("fill", "#ffffff");
       clone.insertBefore(bg, clone.firstChild);
+
+      // 將深色文字改為深色（白底可見）
+      clone.querySelectorAll("text").forEach(t => {
+        const fill = t.getAttribute("fill") ?? "";
+        if (!fill || fill === "transparent" || fill === "none") return;
+        // 將半透明白色文字改為深灰
+        if (fill.startsWith("rgba(255,255,255") || fill === "white") {
+          t.setAttribute("fill", "#1f2937");
+        }
+      });
+      // 將白色半透明線條改為深灰
+      clone.querySelectorAll("line, path").forEach(el => {
+        const stroke = el.getAttribute("stroke") ?? "";
+        if (stroke.startsWith("rgba(255,255,255")) {
+          el.setAttribute("stroke", "rgba(0,0,0,0.15)");
+        }
+      });
 
       const serializer = new XMLSerializer();
       const svgStr = serializer.serializeToString(clone);
-      const blob = new Blob([svgStr], { type: "image/svg+xml" });
+      const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
       const url = URL.createObjectURL(blob);
 
       const img = new Image();
       img.onload = () => {
+        const scale = 2;
         const canvas = document.createElement("canvas");
-        canvas.width  = svg.clientWidth  * 2;
-        canvas.height = svg.clientHeight * 2;
+        canvas.width  = svgWidth  * scale;
+        canvas.height = svgHeight * scale;
         const ctx = canvas.getContext("2d")!;
-        ctx.scale(2, 2);
-        ctx.drawImage(img, 0, 0);
+        ctx.scale(scale, scale);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, svgWidth, svgHeight);
+        ctx.drawImage(img, 0, 0, svgWidth, svgHeight);
         URL.revokeObjectURL(url);
         const pngUrl = canvas.toDataURL("image/png");
         const a = document.createElement("a");
         a.href = pngUrl;
         a.download = `雙手甘特圖_${workstationName ?? "工站"}.png`;
         a.click();
-        toast.success("甘特圖已下載");
+        toast.success("甘特圖已下載（白色背景）");
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        toast.error("下載失敗，請稍後再試");
       };
       img.src = url;
     } catch {
