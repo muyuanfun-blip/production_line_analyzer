@@ -18,6 +18,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ReferenceLine
 } from "recharts";
 import { HandGanttChart, type GanttStep } from "@/components/HandGanttChart";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 // ─── 型別定義 ─────────────────────────────────────────────────────────────────
 
@@ -403,6 +404,7 @@ export default function ActionAnalysis() {
   const [isSaving, setIsSaving] = useState(false);
   const [syncCycleTime, setSyncCycleTime] = useState(false);
   const [wsStepCounts, setWsStepCounts] = useState<Record<number, number>>({});
+  const [ganttOpen, setGanttOpen] = useState(false);
 
   // ── 查詢 ──────────────────────────────────────────────────────────────────
   const { data: line } = trpc.productionLine.getById.useQuery(
@@ -1057,34 +1059,23 @@ export default function ActionAnalysis() {
             </CardContent>
           </Card>
 
-          {/* 雙手甘特圖 */}
+          {/* 雙手甘特圖入口按鈕 */}
           {handStats && steps.some(s => s.handActions.length > 0) && (
-            <Card className="border-white/8 bg-card/60 backdrop-blur-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                  <Activity className="w-3.5 h-3.5" />雙手作業甘特圖
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-3 pt-0">
-                <HandGanttChart
-                  steps={steps.map((s): GanttStep => ({
-                    tempId: s.tempId,
-                    stepName: s.stepName,
-                    duration: parseDuration(s.duration),
-                    handActions: s.handActions.map(ha => ({
-                      id: ha.id,
-                      tempId: ha.tempId,
-                      hand: ha.hand,
-                      actionName: ha.actionName,
-                      duration: parseDuration(ha.duration),
-                      handActionType: ha.handActionType,
-                      isIdle: ha.isIdle,
-                      note: ha.note,
-                    })),
-                  }))}
-                  workstationName={selectedWs?.name}
-                  taktTime={stats.taktTime > 0 ? stats.taktTime : undefined}
-                />
+            <Card
+              className="border-purple-500/30 bg-purple-500/5 backdrop-blur-sm cursor-pointer hover:bg-purple-500/10 transition-colors"
+              onClick={() => setGanttOpen(true)}
+            >
+              <CardContent className="p-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-purple-500/20 flex items-center justify-center shrink-0">
+                    <Activity className="w-3.5 h-3.5 text-purple-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-purple-300">雙手作業甘特圖</p>
+                    <p className="text-[10px] text-muted-foreground/60 mt-0.5">點擊全螢幕檢視</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-purple-400/60 shrink-0" />
               </CardContent>
             </Card>
           )}
@@ -1211,6 +1202,42 @@ export default function ActionAnalysis() {
           )}
         </div>
       </div>
+
+      {/* 雙手甘特圖全螢幕 Modal */}
+      <Dialog open={ganttOpen} onOpenChange={setGanttOpen}>
+        <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] flex flex-col p-0 gap-0 bg-background border-white/10">
+          <DialogHeader className="px-6 py-4 border-b border-white/8 shrink-0">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Activity className="w-4 h-4 text-purple-400" />
+              雙手作業甘特圖
+              {selectedWs && (
+                <span className="text-sm font-normal text-muted-foreground ml-1">— {selectedWs.name}</span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto p-6">
+            <HandGanttChart
+              steps={steps.map((s): GanttStep => ({
+                tempId: s.tempId,
+                stepName: s.stepName,
+                duration: parseDuration(s.duration),
+                handActions: s.handActions.map(ha => ({
+                  id: ha.id,
+                  tempId: ha.tempId,
+                  hand: ha.hand,
+                  actionName: ha.actionName,
+                  duration: parseDuration(ha.duration),
+                  handActionType: ha.handActionType,
+                  isIdle: ha.isIdle,
+                  note: ha.note,
+                })),
+              }))}
+              workstationName={selectedWs?.name}
+              taktTime={stats.taktTime > 0 ? stats.taktTime : undefined}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

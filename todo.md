@@ -273,3 +273,7 @@
 
 ## 平衡分析頁面 API 錯誤修復（新增）
 - [x] 修復 /lines/:id/balance 頁面 mutation 回傳 HTML 而非 JSON 的錯誤（snapshot.create totalManpower 移除 .int() 限制）
+
+## 動作分析甘特圖版面重構（新增）
+- [x] 右側面板甘特圖改為入口按鈕（方案二 Modal）
+- [x] 新增全螢幕 Dialog Modal 顯示甘特圖
