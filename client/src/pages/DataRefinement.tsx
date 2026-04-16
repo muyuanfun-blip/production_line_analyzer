@@ -96,6 +96,7 @@ export default function DataRefinement() {
   const [newWsName, setNewWsName] = useState("");
   const [newWsCt, setNewWsCt] = useState("");
   const [newWsManpower, setNewWsManpower] = useState("1");
+  const [newWsInsertAfter, setNewWsInsertAfter] = useState<string>("last"); // "last" or workstation id string
 
   // ─── 查詢 ──────────────────────────────────────────────────────────────
   const { data: lines = [] } = trpc.productionLine.list.useQuery();
@@ -134,28 +135,43 @@ export default function DataRefinement() {
     if (!name) { toast.error("請輸入工站名稱"); return; }
     if (isNaN(ct) || ct <= 0) { toast.error("請輸入有效的週期時間"); return; }
     if (isNaN(mp) || mp <= 0) { toast.error("請輸入有效的人力"); return; }
-    const maxOrder = editRows.length > 0 ? Math.max(...editRows.map(r => r.sequenceOrder)) : 0;
-    const tempId = -(Date.now()); // 負數 id 代表新增（尚未持久化）
+    const tempId = -(Date.now());
     const newRow: EditRow = {
       id: tempId,
       name,
       cycleTime: ct,
       manpower: mp,
-      sequenceOrder: maxOrder + 1,
+      sequenceOrder: 0, // 暫定，插入後重算
       description: "",
       _origCycleTime: ct,
       _origManpower: mp,
       _origName: name,
       _dirty: true,
     };
-    setEditRows(prev => [...prev, newRow]);
+    setEditRows(prev => {
+      let next: EditRow[];
+      if (newWsInsertAfter === "last") {
+        next = [...prev, newRow];
+      } else {
+        const afterId = parseInt(newWsInsertAfter, 10);
+        const idx = prev.findIndex(r => r.id === afterId);
+        if (idx === -1) {
+          next = [...prev, newRow];
+        } else {
+          next = [...prev.slice(0, idx + 1), newRow, ...prev.slice(idx + 1)];
+        }
+      }
+      // 重新排列 sequenceOrder
+      return next.map((r, i) => ({ ...r, sequenceOrder: i + 1 }));
+    });
     setIsDirty(true);
     setNewWsName("");
     setNewWsCt("");
     setNewWsManpower("1");
+    setNewWsInsertAfter("last");
     setShowAddForm(false);
     toast.success(`已新增工站「${name}」，請記得按「儲存變更」`);
-  }, [newWsName, newWsCt, newWsManpower, editRows]);
+  }, [newWsName, newWsCt, newWsManpower, newWsInsertAfter, editRows]);
 
   // ─── 刪除工站（僅限新增的暫存列） ─────────────────────────────────────
   const handleRemoveRow = useCallback((idx: number) => {
@@ -500,6 +516,22 @@ export default function DataRefinement() {
                         onKeyDown={e => e.key === "Enter" && handleAddWorkstation()}
                       />
                     </div>
+                    <div className="space-y-1.5 w-48">
+                      <Label className="text-xs text-muted-foreground">插入位置</Label>
+                      <Select value={newWsInsertAfter} onValueChange={setNewWsInsertAfter}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="選擇插入位置" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="last">加在最後（第 {editRows.length + 1} 站）</SelectItem>
+                          {editRows.map((row, idx) => (
+                            <SelectItem key={row.id} value={String(row.id)}>
+                              第 {idx + 1} 站之後（{row.name}）
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <div className="flex gap-2">
                       <Button
                         size="sm"
@@ -511,7 +543,7 @@ export default function DataRefinement() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => { setShowAddForm(false); setNewWsName(""); setNewWsCt(""); setNewWsManpower("1"); }}
+                        onClick={() => { setShowAddForm(false); setNewWsName(""); setNewWsCt(""); setNewWsManpower("1"); setNewWsInsertAfter("last"); }}
                         className="h-9"
                       >
                         取消
