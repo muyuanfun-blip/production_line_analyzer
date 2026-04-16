@@ -239,6 +239,34 @@ export default function FloorPlanSimulator() {
   const [newWsMcTime, setNewWsMcTime] = useState("0");
   const [newWsManpower, setNewWsManpower] = useState("1");
 
+  // ── 右側面板寬度調整 ──
+  const [rightPanelWidth, setRightPanelWidth] = useState(288); // 預設 288px (w-72)
+  const [kpiCollapsed, setKpiCollapsed] = useState(false);
+  const [balanceCollapsed, setBalanceCollapsed] = useState(false);
+  const isResizingPanel = useRef(false);
+  const resizeStartX = useRef(0);
+  const resizeStartW = useRef(0);
+
+  const handlePanelResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingPanel.current = true;
+    resizeStartX.current = e.clientX;
+    resizeStartW.current = rightPanelWidth;
+    const onMove = (ev: MouseEvent) => {
+      if (!isResizingPanel.current) return;
+      const delta = resizeStartX.current - ev.clientX; // 從右往左拖就變寬
+      const newW = Math.min(480, Math.max(200, resizeStartW.current + delta));
+      setRightPanelWidth(newW);
+    };
+    const onUp = () => {
+      isResizingPanel.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [rightPanelWidth]);
+
   // ── Mutations ──
   const createMutation = trpc.simulation.create.useMutation({
     onSuccess: (data) => {
@@ -927,11 +955,26 @@ export default function FloorPlanSimulator() {
         </div>
 
         {/* ── 右側面板 ── */}
-        <div className="w-72 border-l border-border bg-card/50 flex flex-col overflow-hidden shrink-0">
+        <div className="relative border-l border-border bg-card/50 flex flex-col overflow-hidden shrink-0"
+          style={{ width: rightPanelWidth }}>
+          {/* Resize Handle */}
+          <div
+            className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-cyan-400/40 active:bg-cyan-400/60 transition-colors z-20"
+            onMouseDown={handlePanelResizeStart}
+            title="拖曳調整寬度"
+          />
           {/* KPI 儀表板 */}
           {kpi && (
-            <div className="border-b border-border p-3 space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">即時 KPI</p>
+            <div className="border-b border-border">
+              {/* KPI 標題列 */}
+              <div className="flex items-center justify-between px-3 py-2 cursor-pointer select-none hover:bg-muted/30 transition-colors"
+                onClick={() => setKpiCollapsed(v => !v)}>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">即時 KPI</p>
+                <span className={`text-muted-foreground transition-transform duration-200 ${kpiCollapsed ? '' : 'rotate-180'}`}
+                  style={{ fontSize: 10 }}>&#9650;</span>
+              </div>
+              {!kpiCollapsed && (
+              <div className="px-3 pb-3 space-y-2">
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { icon: BarChart3, label: "平衡率", value: `${kpi.balanceRate.toFixed(1)}%`, color: kpi.balanceRate >= 85 ? "text-emerald-400" : kpi.balanceRate >= 70 ? "text-amber-400" : "text-red-400" },
@@ -1049,8 +1092,16 @@ export default function FloorPlanSimulator() {
                 const gap = Math.max(2, Math.floor((chartW - 16 - barW * barData.length) / Math.max(barData.length - 1, 1)));
                 const hasTransport = barData.some(d => d.transportT > 0);
                 return (
-                  <div className="bg-background/50 rounded-lg p-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">平衡圖</p>
+                  <div className="bg-background/50 rounded-lg overflow-hidden">
+                    {/* 平衡圖標題列 */}
+                    <div className="flex items-center justify-between px-2 py-1.5 cursor-pointer select-none hover:bg-muted/30 transition-colors"
+                      onClick={() => setBalanceCollapsed(v => !v)}>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">平衡圖</p>
+                      <span className={`text-muted-foreground transition-transform duration-200 ${balanceCollapsed ? '' : 'rotate-180'}`}
+                        style={{ fontSize: 10 }}>&#9650;</span>
+                    </div>
+                    {!balanceCollapsed && (
+                    <div className="px-2 pb-2">
                     <svg width={chartW} height={chartH + 20} className="w-full">
                       {/* Takt Time 參考線 */}
                       {taktTime && taktTime > 0 && (
@@ -1094,6 +1145,8 @@ export default function FloorPlanSimulator() {
                       {hasTransport && <span className="flex items-center gap-0.5"><span className="inline-block w-2 h-2 rounded-sm bg-amber-400/60"></span>搜運時間</span>}
                       {taktTime && <span className="flex items-center gap-0.5"><span className="inline-block w-2 h-2 rounded-sm bg-violet-400/60"></span>Takt</span>}
                     </div>
+                    </div>
+                    )}
                   </div>
                 );
               })()}
@@ -1111,6 +1164,8 @@ export default function FloorPlanSimulator() {
                   </div>
                 </div>
               </div>
+              </div>
+              )}
             </div>
           )}
 
