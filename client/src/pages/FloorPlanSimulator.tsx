@@ -37,12 +37,20 @@ export type FloorWs = {
   description?: string;
 };
 
+export type ConveyorType = 'manual' | 'conveyor' | 'agv';
+export const CONVEYOR_META: Record<ConveyorType, { label: string; speed: number; color: string; dash: string; markerSuffix: string }> = {
+  manual:   { label: '人工搬運', speed: 30,  color: '#64748b', dash: '5 4',  markerSuffix: 'gray' },
+  conveyor: { label: '輸送帶',   speed: 20,  color: '#38bdf8', dash: 'none', markerSuffix: 'cyan' },
+  agv:      { label: 'AGV',      speed: 60,  color: '#fb923c', dash: '8 2',  markerSuffix: 'amber' },
+};
 export type FloorConnection = {
   id: string;
   fromId: number;
   toId: number;
-  distance?: number;    // 搬運距離（公尺）
-  transportTime?: number; // 搬運時間（秒）
+  conveyorType: ConveyorType;  // 輸送帶類型
+  speed: number;               // 搬運速度（公尺/分鐘）
+  distance?: number;           // 搬運距離（公尺，由座標自動計算）
+  transportTime?: number;      // 搬運時間（秒）
   label?: string;
 };
 
@@ -51,12 +59,13 @@ export type FloorLayout = {
   connections: FloorConnection[];
 };
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+/// ─── Constants ───────────────────────────────────────────────────────────
 const WS_W = 140;
 const WS_H = 80;
 const GRID = 20;
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 2.5;
+const DEFAULT_SCALE_PX_PER_M = 10; // 預設比例尺：10 px = 1 公尺
 
 // ─── Color Helpers ────────────────────────────────────────────────────────────
 function getWsColor(ws: FloorWs, maxCt: number, taktTime?: number): {
@@ -108,8 +117,27 @@ function ArrowDefs() {
   );
 }
 
+// ─── Pixel distance between two workstation centers ──────────────────────────────
+function pixelDist(a: FloorWs, b: FloorWs): number {
+  const dx = (b.x + b.width / 2) - (a.x + a.width / 2);
+  const dy = (b.y + b.height / 2) - (a.y + a.height / 2);
+  return Math.sqrt(dx * dx + dy * dy);
+}
+// ─── Compute connection distance & transport time from layout ────────────────────────
+function computeConnMetrics(
+  conn: FloorConnection,
+  workstations: FloorWs[],
+  scalePxPerM: number
+): { distance: number; transportTime: number } {
+  const from = workstations.find(w => w.id === conn.fromId);
+  const to   = workstations.find(w => w.id === conn.toId);
+  if (!from || !to || scalePxPerM <= 0) return { distance: 0, transportTime: 0 };
+  const dist = pixelDist(from, to) / scalePxPerM;  // 公尺
+  const time = conn.speed > 0 ? (dist / conn.speed) * 60 : 0; // 秒
+  return { distance: parseFloat(dist.toFixed(2)), transportTime: parseFloat(time.toFixed(2)) };
+}
 // ─── KPI Calculator ───────────────────────────────────────────────────────────
-function calcKPI(workstations: FloorWs[], taktTime?: number) {
+function calcKPI(workstations: FloorWs[], connections: FloorConnection[], scalePxPerM: number, taktTime?: number) {
   if (!workstations.length) return null;
   const cts = workstations.map(w => Math.max(w.operatorTime, w.machineTime));
   const totalCt = cts.reduce((s, t) => s + t, 0);
@@ -125,7 +153,13 @@ function calcKPI(workstations: FloorWs[], taktTime?: number) {
     passCount: cts.filter(ct => ct <= taktTime).length,
     exceedCount: cts.filter(ct => ct > taktTime).length,
   } : null;
-  return { totalCt, maxCt, avgCt, bottleneck, balanceRate, totalManpower, upph, capacity, taktStats };
+  // 搬運時間統計
+  const transportTimes = connections.map(c => computeConnMetrics(c, workstations, scalePxPerM).transportTime).filter(t => t > 0);
+  const totalTransportTime = transportTimes.reduce((s, t) => s + t, 0);
+  const avgTransportTime = transportTimes.length > 0 ? totalTransportTime / transportTimes.length : 0;
+  const logisticsWaitRatio = (totalCt + totalTransportTime) > 0
+    ? (totalTransportTime / (totalCt + totalTransportTime)) * 100 : 0;
+  return { totalCt, maxCt, avgCt, bottleneck, balanceRate, totalManpower, upph, capacity, taktStats, avgTransportTime, logisticsWaitRatio };
 }
 
 // ─── Animation Dot ────────────────────────────────────────────────────────────
@@ -258,6 +292,8 @@ export default function FloorPlanSimulator() {
         id: `conn-${w.id}-${converted[i + 1].id}`,
         fromId: w.id,
         toId: converted[i + 1].id,
+        conveyorType: 'manual' as ConveyorType,
+        speed: CONVEYOR_META.manual.speed,
       }));
       setLayout({ workstations: converted, connections: conns });
     }
@@ -286,6 +322,8 @@ export default function FloorPlanSimulator() {
       id: `conn-${w.id}-${wsArr[i + 1].id}`,
       fromId: w.id,
       toId: wsArr[i + 1].id,
+      conveyorType: 'manual' as ConveyorType,
+      speed: CONVEYOR_META.manual.speed,
     }));
     setLayout({ workstations: wsArr, connections: conns });
     setIsDirty(true);
@@ -371,7 +409,13 @@ export default function FloorPlanSimulator() {
       if (exists) { toast.warning("此連線已存在"); setConnectFrom(null); return; }
       setLayout(prev => ({
         ...prev,
-        connections: [...prev.connections, { id: connId, fromId: connectFrom, toId: wsId }],
+        connections: [...prev.connections, {
+          id: connId,
+          fromId: connectFrom,
+          toId: wsId,
+          conveyorType: 'manual' as ConveyorType,
+          speed: CONVEYOR_META.manual.speed,
+        }],
       }));
       setIsDirty(true);
       setConnectFrom(null);
@@ -466,8 +510,13 @@ export default function FloorPlanSimulator() {
     setZoom(z => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z * delta)));
   }, []);
 
+  // ── 比例尺（px/m）
+  const [scalePxPerM, setScalePxPerM] = useState(DEFAULT_SCALE_PX_PER_M);
   // ── KPI ──
-  const kpi = useMemo(() => calcKPI(layout.workstations, taktTime), [layout.workstations, taktTime]);
+  const kpi = useMemo(
+    () => calcKPI(layout.workstations, layout.connections, scalePxPerM, taktTime),
+    [layout.workstations, layout.connections, scalePxPerM, taktTime]
+  );
   const maxCt = kpi?.maxCt ?? 0;
 
   const selectedWs = layout.workstations.find(w => w.id === selectedWsId);
@@ -659,31 +708,47 @@ export default function FloorPlanSimulator() {
                 if (!fromWs || !toWs) return null;
                 const pathD = makePath(fromWs, toWs);
                 const fromCt = Math.max(fromWs.operatorTime, fromWs.machineTime);
-                const animDur = Math.max(0.5, fromCt / 10);
+                // 輸送帶類型樣式
+                const ctype = conn.conveyorType ?? 'manual';
+                const cmeta = CONVEYOR_META[ctype];
+                const animDur = Math.max(0.3, fromCt / (conn.speed > 0 ? conn.speed : 10));
                 const midX = (fromWs.x + fromWs.width / 2 + toWs.x + toWs.width / 2) / 2;
                 const midY = (fromWs.y + fromWs.height / 2 + toWs.y + toWs.height / 2) / 2;
+                // 即時計算距離與搬運時間
+                const metrics = computeConnMetrics(conn, layout.workstations, scalePxPerM);
+                const isSelected = editingConn?.id === conn.id;
                 return (
                   <g key={conn.id}>
                     {/* 底部寬路徑（點擊區域） */}
-                    <path d={pathD} fill="none" stroke="transparent" strokeWidth="12"
+                    <path d={pathD} fill="none" stroke="transparent" strokeWidth="14"
                       className="cursor-pointer"
                       onClick={() => { setEditingConn(conn); setShowConnDialog(true); }} />
-                    {/* 可見路徑 */}
-                    <path d={pathD} fill="none" stroke="#22d3ee" strokeWidth="1.5"
-                      strokeDasharray="6 3" opacity="0.6" markerEnd="url(#arrow-cyan)" />
-                    {/* 搬運時間標籤 */}
-                    {conn.transportTime && (
-                      <text x={midX} y={midY - 8} textAnchor="middle" fill="#64748b" fontSize="10">
-                        {conn.transportTime}s
-                      </text>
+                    {/* 選取光暈 */}
+                    {isSelected && (
+                      <path d={pathD} fill="none" stroke={cmeta.color} strokeWidth="5" opacity="0.3" />
                     )}
-                    {conn.distance && (
-                      <text x={midX} y={midY + 14} textAnchor="middle" fill="#64748b" fontSize="10">
-                        {conn.distance}m
-                      </text>
+                    {/* 可見路徑 */}
+                    <path d={pathD} fill="none"
+                      stroke={cmeta.color}
+                      strokeWidth={ctype === 'conveyor' ? 2.5 : 1.5}
+                      strokeDasharray={cmeta.dash}
+                      opacity="0.75"
+                      markerEnd={`url(#arrow-${cmeta.markerSuffix})`} />
+                    {/* 距離與搬運時間標籤 */}
+                    {metrics.distance > 0 && (
+                      <>
+                        <rect x={midX - 26} y={midY - 22} width={52} height={28} rx={4}
+                          fill="#0d1117" stroke={cmeta.color} strokeWidth="0.5" opacity="0.85" />
+                        <text x={midX} y={midY - 10} textAnchor="middle" fill={cmeta.color} fontSize="9" fontWeight="600">
+                          {cmeta.label}
+                        </text>
+                        <text x={midX} y={midY + 2} textAnchor="middle" fill="#94a3b8" fontSize="9">
+                          {metrics.distance.toFixed(1)}m / {metrics.transportTime.toFixed(1)}s
+                        </text>
+                      </>
                     )}
                     {/* 動畫小點 */}
-                    {animating && <AnimDot path={pathD} duration={animDur} color="#22d3ee" />}
+                    {animating && <AnimDot path={pathD} duration={animDur} color={cmeta.color} />}
                   </g>
                 );
               })}
@@ -803,10 +868,44 @@ export default function FloorPlanSimulator() {
               )}
               {kpi.bottleneck && (
                 <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-2">
-                  <p className="text-xs text-orange-400 font-medium">⚠ 瓶頸：{kpi.bottleneck.name}</p>
-                  <p className="text-xs text-muted-foreground">CT {kpi.maxCt.toFixed(1)}s（均值 {kpi.avgCt.toFixed(1)}s）</p>
+                  <p className="text-xs text-orange-400 font-medium">⚠ 瓶頃：{kpi.bottleneck.name}</p>
+                  <p className="text-xs text-muted-foreground">CT {kpi.maxCt.toFixed(1)}s（均値 {kpi.avgCt.toFixed(1)}s）</p>
                 </div>
               )}
+              {/* 搜運指標 */}
+              {kpi.avgTransportTime > 0 && (
+                <div className="bg-background/50 rounded-lg p-2 space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">物流搜運</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-xs text-muted-foreground">平均搜運時間</p>
+                      <p className="text-sm font-bold text-sky-400">{kpi.avgTransportTime.toFixed(1)}s</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">物流等待佔比</p>
+                      <p className={`text-sm font-bold ${kpi.logisticsWaitRatio > 20 ? 'text-red-400' : kpi.logisticsWaitRatio > 10 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                        {kpi.logisticsWaitRatio.toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-sky-400" style={{ width: `${Math.min(kpi.logisticsWaitRatio, 100)}%` }} />
+                  </div>
+                </div>
+              )}
+              {/* 比例尺設定 */}
+              <div className="bg-background/50 rounded-lg p-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">畫布比例尺</p>
+                  <div className="flex items-center gap-1">
+                    <Input type="number" min="1" max="100" step="1"
+                      value={scalePxPerM}
+                      className="h-6 w-14 text-xs px-1"
+                      onChange={e => setScalePxPerM(Math.max(1, parseInt(e.target.value) || 10))} />
+                    <span className="text-xs text-muted-foreground">px/m</span>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1052,37 +1151,76 @@ export default function FloorPlanSimulator() {
               </DialogDescription>
             )}
           </DialogHeader>
-          {editingConn && (
-            <div className="space-y-3">
+          {editingConn && (() => {
+            const metrics = computeConnMetrics(editingConn, layout.workstations, scalePxPerM);
+            return (
+            <div className="space-y-4">
+              {/* 輸送帶類型 */}
               <div>
-                <Label>搬運距離（公尺）</Label>
-                <Input type="number" min="0" step="0.1"
-                  value={editingConn.distance ?? ""}
-                  placeholder="選填"
-                  className="mt-1"
-                  onChange={e => {
-                    const v = parseFloat(e.target.value);
-                    setEditingConn(prev => prev ? { ...prev, distance: isNaN(v) ? undefined : v } : null);
-                  }} />
+                <Label className="text-sm font-medium">輸送帶類型</Label>
+                <div className="grid grid-cols-3 gap-2 mt-2">
+                  {(Object.entries(CONVEYOR_META) as [ConveyorType, typeof CONVEYOR_META[ConveyorType]][]).map(([key, meta]) => (
+                    <button key={key}
+                      className={`rounded-lg border p-2 text-xs font-medium transition-all ${
+                        (editingConn.conveyorType ?? 'manual') === key
+                          ? 'border-2 bg-background/80'
+                          : 'border-border/40 bg-background/30 opacity-60 hover:opacity-100'
+                      }`}
+                      style={{
+                        borderColor: (editingConn.conveyorType ?? 'manual') === key ? meta.color : undefined,
+                        color: meta.color,
+                      }}
+                      onClick={() => setEditingConn(prev => prev ? {
+                        ...prev,
+                        conveyorType: key,
+                        speed: meta.speed,
+                      } : null)}>
+                      {meta.label}
+                    </button>
+                  ))}
+                </div>
               </div>
+              {/* 速度設定 */}
               <div>
-                <Label>搬運時間（秒）</Label>
-                <Input type="number" min="0" step="0.1"
-                  value={editingConn.transportTime ?? ""}
-                  placeholder="選填"
-                  className="mt-1"
-                  onChange={e => {
-                    const v = parseFloat(e.target.value);
-                    setEditingConn(prev => prev ? { ...prev, transportTime: isNaN(v) ? undefined : v } : null);
-                  }} />
+                <Label className="text-sm font-medium">搬運速度（公尺/分鐘）</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <Input type="number" min="1" step="1"
+                    value={editingConn.speed ?? CONVEYOR_META[editingConn.conveyorType ?? 'manual'].speed}
+                    className="h-8 text-sm w-24"
+                    onChange={e => {
+                      const v = parseFloat(e.target.value);
+                      setEditingConn(prev => prev ? { ...prev, speed: isNaN(v) ? 30 : v } : null);
+                    }} />
+                  <span className="text-xs text-muted-foreground">m/min</span>
+                </div>
               </div>
+              {/* 距離與搬運時間（唯讀，由座標自動計算） */}
+              <div className="bg-background/50 rounded-lg p-3 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">距離（自動計算）</p>
+                  <p className="text-lg font-bold text-foreground mt-0.5">
+                    {metrics.distance.toFixed(1)}<span className="text-xs font-normal text-muted-foreground ml-1">m</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">搬運時間</p>
+                  <p className="text-lg font-bold text-foreground mt-0.5">
+                    {metrics.transportTime.toFixed(1)}<span className="text-xs font-normal text-muted-foreground ml-1">s</span>
+                  </p>
+                </div>
+                <p className="col-span-2 text-xs text-muted-foreground">
+                  距離依畫布座標自動計算，拖曳工站即時更新。比例尺: {scalePxPerM} px/m
+                </p>
+              </div>
+              {/* 標籤 */}
               <div>
-                <Label>標籤</Label>
-                <Input value={editingConn.label ?? ""} placeholder="選填" className="mt-1"
+                <Label className="text-sm font-medium">標籤（選填）</Label>
+                <Input value={editingConn.label ?? ""} placeholder="例：主線輸送" className="mt-1 h-8 text-sm"
                   onChange={e => setEditingConn(prev => prev ? { ...prev, label: e.target.value } : null)} />
               </div>
             </div>
-          )}
+            );
+          })()}
           <DialogFooter>
             <Button variant="destructive" size="sm" onClick={() => {
               if (editingConn) { handleDeleteConn(editingConn.id); setShowConnDialog(false); }
@@ -1092,9 +1230,9 @@ export default function FloorPlanSimulator() {
             <Button variant="outline" onClick={() => setShowConnDialog(false)}>取消</Button>
             <Button onClick={() => {
               if (editingConn) {
-                handleUpdateConn(editingConn.id, "distance", editingConn.distance);
-                handleUpdateConn(editingConn.id, "transportTime", editingConn.transportTime);
-                handleUpdateConn(editingConn.id, "label", editingConn.label);
+                handleUpdateConn(editingConn.id, 'conveyorType', editingConn.conveyorType ?? 'manual');
+                handleUpdateConn(editingConn.id, 'speed', editingConn.speed ?? CONVEYOR_META[editingConn.conveyorType ?? 'manual'].speed);
+                handleUpdateConn(editingConn.id, 'label', editingConn.label);
                 setShowConnDialog(false);
                 toast.success("連線屬性已更新");
               }
