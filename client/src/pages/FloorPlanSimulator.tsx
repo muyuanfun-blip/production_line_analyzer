@@ -1003,6 +1003,74 @@ export default function FloorPlanSimulator() {
                   </div>
                 )}
               </div>
+              {/* 平衡圖（堆疊柱狀圖） */}
+              {layout.workstations.length > 0 && (() => {
+                const sorted = [...layout.workstations].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
+                const barData = sorted.map(ws => {
+                  const ct = Math.max(ws.operatorTime, ws.machineTime);
+                  const incomingConns = layout.connections.filter(c => c.toId === ws.id);
+                  const transportT = incomingConns.reduce((s, c) => {
+                    const m = computeConnMetrics(c, layout.workstations, scalePxPerM);
+                    return s + m.transportTime;
+                  }, 0);
+                  return { name: ws.name, ct, transportT, total: ct + transportT };
+                });
+                const maxTotal = Math.max(...barData.map(d => d.total), taktTime ?? 0, 1);
+                const chartW = 220;
+                const chartH = 100;
+                const barW = Math.max(6, Math.floor((chartW - 16) / barData.length) - 2);
+                const gap = Math.max(2, Math.floor((chartW - 16 - barW * barData.length) / Math.max(barData.length - 1, 1)));
+                const hasTransport = barData.some(d => d.transportT > 0);
+                return (
+                  <div className="bg-background/50 rounded-lg p-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">平衡圖</p>
+                    <svg width={chartW} height={chartH + 20} className="w-full">
+                      {/* Takt Time 參考線 */}
+                      {taktTime && taktTime > 0 && (
+                        <line
+                          x1={8} y1={chartH - (taktTime / maxTotal) * (chartH - 8)}
+                          x2={chartW - 8} y2={chartH - (taktTime / maxTotal) * (chartH - 8)}
+                          stroke="#a78bfa" strokeWidth="1" strokeDasharray="4 2" opacity="0.8" />
+                      )}
+                      {/* 柱狀圖 */}
+                      {barData.map((d, i) => {
+                        const x = 8 + i * (barW + gap);
+                        const ctH = (d.ct / maxTotal) * (chartH - 8);
+                        const tH = (d.transportT / maxTotal) * (chartH - 8);
+                        const totalH = ctH + tH;
+                        const isBottleneck = d.ct === kpi.maxCt;
+                        const ctColor = isBottleneck ? '#fb923c' : d.ct > (taktTime ?? Infinity) ? '#f87171' : '#38bdf8';
+                        return (
+                          <g key={i}>
+                            {/* CT 區塊 */}
+                            <rect x={x} y={chartH - totalH} width={barW} height={ctH}
+                              fill={ctColor} opacity={0.8} rx={isBottleneck ? 2 : 1} />
+                            {/* 搜運時間區塊 */}
+                            {tH > 0 && (
+                              <rect x={x} y={chartH - tH} width={barW} height={tH}
+                                fill="#f59e0b" opacity={0.6} rx={1} />
+                            )}
+                            {/* 工站名稱 */}
+                            <text x={x + barW / 2} y={chartH + 14}
+                              textAnchor="middle" fill="#64748b" fontSize="7"
+                              style={{ userSelect: 'none' }}>
+                              {d.name.length > 4 ? d.name.substring(0, 4) + '…' : d.name}
+                            </text>
+                          </g>
+                        );
+                      })}
+                      {/* Y 軸最大値 */}
+                      <text x={6} y={10} fill="#64748b" fontSize="7" textAnchor="middle">{maxTotal.toFixed(0)}s</text>
+                    </svg>
+                    <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground/60">
+                      <span className="flex items-center gap-0.5"><span className="inline-block w-2 h-2 rounded-sm bg-sky-400/80"></span>CT</span>
+                      {hasTransport && <span className="flex items-center gap-0.5"><span className="inline-block w-2 h-2 rounded-sm bg-amber-400/60"></span>搜運時間</span>}
+                      {taktTime && <span className="flex items-center gap-0.5"><span className="inline-block w-2 h-2 rounded-sm bg-violet-400/60"></span>Takt</span>}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* 比例尺設定 */}
               <div className="bg-background/50 rounded-lg p-2">
                 <div className="flex items-center justify-between">
@@ -1174,21 +1242,72 @@ export default function FloorPlanSimulator() {
                           const other = layout.workstations.find(w =>
                             w.id === (conn.fromId === selectedWs.id ? conn.toId : conn.fromId)
                           );
+                          const isIncoming = conn.toId === selectedWs.id;
+                          const metrics = computeConnMetrics(conn, layout.workstations, scalePxPerM);
+                          const ctype = conn.conveyorType ?? 'manual';
+                          const meta = CONVEYOR_META[ctype];
                           return (
-                            <div key={conn.id} className="flex items-center justify-between bg-background/50 rounded p-1.5 text-xs">
-                              <span className="text-muted-foreground">
-                                {conn.fromId === selectedWs.id ? "→" : "←"} {other?.name ?? "?"}
-                                {conn.distance ? ` (${conn.distance}m)` : ""}
-                                {conn.transportTime ? ` ${conn.transportTime}s` : ""}
-                              </span>
-                              <Button size="icon" variant="ghost" className="h-5 w-5 text-red-400"
-                                onClick={() => handleDeleteConn(conn.id)}>
-                                <X className="w-3 h-3" />
-                              </Button>
+                            <div key={conn.id} className="bg-background/50 rounded p-1.5 text-xs">
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground flex items-center gap-1">
+                                  <span style={{ color: meta.color }}>{isIncoming ? "←" : "→"}</span>
+                                  <span className="font-medium text-foreground">{other?.name ?? "?"}</span>
+                                  <span className="text-muted-foreground/60">({meta.label})</span>
+                                </span>
+                                <Button size="icon" variant="ghost" className="h-5 w-5 text-red-400"
+                                  onClick={() => handleDeleteConn(conn.id)}>
+                                  <X className="w-3 h-3" />
+                                </Button>
+                              </div>
+                              {metrics.distance > 0 && (
+                                <div className="mt-0.5 flex items-center gap-2">
+                                  <span className="text-muted-foreground/80">{metrics.distance.toFixed(1)}m</span>
+                                  <span className="text-muted-foreground/40">/</span>
+                                  <span className={`font-medium ${isIncoming ? 'text-amber-400' : 'text-muted-foreground/80'}`}>
+                                    {metrics.transportTime.toFixed(1)}s
+                                  </span>
+                                  {isIncoming && (
+                                    <span className="text-amber-400/60 text-[10px]">↑上游搜運</span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
                     </div>
+                    {/* 上游搜運時間小計 */}
+                    {(() => {
+                      const incomingConns = layout.connections.filter(c => c.toId === selectedWs.id);
+                      if (incomingConns.length === 0) return null;
+                      const totalIncoming = incomingConns.reduce((s, c) => {
+                        const m = computeConnMetrics(c, layout.workstations, scalePxPerM);
+                        return s + m.transportTime;
+                      }, 0);
+                      const ct = Math.max(selectedWs.operatorTime, selectedWs.machineTime);
+                      const totalWithTransport = ct + totalIncoming;
+                      return (
+                        <div className="mt-2 bg-amber-500/10 border border-amber-500/20 rounded p-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-amber-400 font-medium">上游搜運時間</span>
+                            <span className="text-amber-400 font-bold">{totalIncoming.toFixed(1)}s</span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs mt-1">
+                            <span className="text-muted-foreground/70">CT + 搜運合計</span>
+                            <span className="text-foreground font-medium">{totalWithTransport.toFixed(1)}s</span>
+                          </div>
+                          <div className="mt-1.5 h-1.5 bg-background rounded-full overflow-hidden">
+                            <div className="h-full flex">
+                              <div className="h-full bg-sky-500/70 rounded-l-full" style={{ width: `${ct / totalWithTransport * 100}%` }} />
+                              <div className="h-full bg-amber-500/70 rounded-r-full" style={{ width: `${totalIncoming / totalWithTransport * 100}%` }} />
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground/60">
+                            <span className="flex items-center gap-0.5"><span className="inline-block w-2 h-2 rounded-sm bg-sky-500/70"></span>CT {(ct / totalWithTransport * 100).toFixed(0)}%</span>
+                            <span className="flex items-center gap-0.5"><span className="inline-block w-2 h-2 rounded-sm bg-amber-500/70"></span>搜運 {(totalIncoming / totalWithTransport * 100).toFixed(0)}%</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
