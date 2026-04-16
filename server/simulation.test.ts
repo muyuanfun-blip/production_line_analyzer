@@ -232,3 +232,68 @@ describe("情境比較差異計算", () => {
     expect(changes.find(c => c.type === "remove")?.name).toBe("ST-03");
   });
 });
+
+// ─── FloorPlanSimulator 距離計算邏輯測試 ─────────────────────────────────────
+// 複製前端 pixelDist 邏輯（bounding-box 邊緣距離）進行驗證
+
+type FloorWsLite = { x: number; y: number; width: number; height: number };
+
+function pixelDistTest(a: FloorWsLite, b: FloorWsLite): number {
+  const aRight = a.x + a.width;  const aBottom = a.y + a.height;
+  const bRight = b.x + b.width;  const bBottom = b.y + b.height;
+  const gapX = Math.max(0, Math.max(a.x, b.x) - Math.min(aRight, bRight));
+  const gapY = Math.max(0, Math.max(a.y, b.y) - Math.min(aBottom, bBottom));
+  return Math.sqrt(gapX * gapX + gapY * gapY);
+}
+
+describe("FloorPlanSimulator 距離計算（bounding-box 邊緣距離）", () => {
+  const WS_W = 140;
+  const WS_H = 80;
+  const GRID = 20;
+  const SCALE = 40; // 40px = 1m，每格 20px = 0.5m
+
+  it("相鄰工站（緊靠）距離應為 0px", () => {
+    const a: FloorWsLite = { x: 0, y: 0, width: WS_W, height: WS_H };
+    const b: FloorWsLite = { x: WS_W, y: 0, width: WS_W, height: WS_H };
+    expect(pixelDistTest(a, b)).toBe(0);
+  });
+
+  it("水平間隔一格（20px）應為 20px = 0.5m", () => {
+    const a: FloorWsLite = { x: 0, y: 0, width: WS_W, height: WS_H };
+    const b: FloorWsLite = { x: WS_W + GRID, y: 0, width: WS_W, height: WS_H };
+    expect(pixelDistTest(a, b)).toBe(GRID);
+    expect(pixelDistTest(a, b) / SCALE).toBeCloseTo(0.5);
+  });
+
+  it("水平間隔兩格（40px）應為 40px = 1.0m", () => {
+    const a: FloorWsLite = { x: 0, y: 0, width: WS_W, height: WS_H };
+    const b: FloorWsLite = { x: WS_W + GRID * 2, y: 0, width: WS_W, height: WS_H };
+    expect(pixelDistTest(a, b)).toBe(GRID * 2);
+    expect(pixelDistTest(a, b) / SCALE).toBeCloseTo(1.0);
+  });
+
+  it("垂直間隔一格（20px）應為 20px = 0.5m", () => {
+    const a: FloorWsLite = { x: 0, y: 0, width: WS_W, height: WS_H };
+    const b: FloorWsLite = { x: 0, y: WS_H + GRID, width: WS_W, height: WS_H };
+    expect(pixelDistTest(a, b)).toBe(GRID);
+    expect(pixelDistTest(a, b) / SCALE).toBeCloseTo(0.5);
+  });
+
+  it("垂直相鄰（緊靠）距離應為 0px", () => {
+    const a: FloorWsLite = { x: 0, y: 0, width: WS_W, height: WS_H };
+    const b: FloorWsLite = { x: 0, y: WS_H, width: WS_W, height: WS_H };
+    expect(pixelDistTest(a, b)).toBe(0);
+  });
+
+  it("對角間隔一格（gapX=20, gapY=20）應為 sqrt(800) ≈ 28.28px", () => {
+    const a: FloorWsLite = { x: 0, y: 0, width: WS_W, height: WS_H };
+    const b: FloorWsLite = { x: WS_W + GRID, y: WS_H + GRID, width: WS_W, height: WS_H };
+    expect(pixelDistTest(a, b)).toBeCloseTo(Math.sqrt(GRID * GRID + GRID * GRID), 5);
+  });
+
+  it("重疊工站距離應為 0px", () => {
+    const a: FloorWsLite = { x: 0, y: 0, width: WS_W, height: WS_H };
+    const b: FloorWsLite = { x: 10, y: 10, width: WS_W, height: WS_H };
+    expect(pixelDistTest(a, b)).toBe(0);
+  });
+});

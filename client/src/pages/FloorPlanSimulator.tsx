@@ -67,7 +67,7 @@ const WS_H = 80;
 const GRID = 20;
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 2.5;
-const DEFAULT_SCALE_PX_PER_M = 10; // 預設比例尺：10 px = 1 公尺
+const DEFAULT_SCALE_PX_PER_M = 40; // 預設比例尺：40 px = 1 公尺（每格 20px = 0.5m）
 
 // ─── Color Helpers ────────────────────────────────────────────────────────────
 function getWsColor(ws: FloorWs, maxCt: number, taktTime?: number): {
@@ -119,11 +119,14 @@ function ArrowDefs() {
   );
 }
 
-// ─── Pixel distance between two workstation centers ──────────────────────────────
+// ─── Bounding-box edge distance (相鄰 = 0，水平/垂直/對角均正確) ──────────────────────────────────────────────
 function pixelDist(a: FloorWs, b: FloorWs): number {
-  const dx = (b.x + b.width / 2) - (a.x + a.width / 2);
-  const dy = (b.y + b.height / 2) - (a.y + a.height / 2);
-  return Math.sqrt(dx * dx + dy * dy);
+  // 計算兩工站 bounding box 在 X 軸與 Y 軸方向的間隔（相鄰或重疊 = 0）
+  const aRight = a.x + a.width;  const aBottom = a.y + a.height;
+  const bRight = b.x + b.width;  const bBottom = b.y + b.height;
+  const gapX = Math.max(0, Math.max(a.x, b.x) - Math.min(aRight, bRight));
+  const gapY = Math.max(0, Math.max(a.y, b.y) - Math.min(aBottom, bBottom));
+  return Math.sqrt(gapX * gapX + gapY * gapY);
 }
 // ─── Compute connection distance & transport time from layout ────────────────────────
 function computeConnMetrics(
@@ -761,19 +764,6 @@ export default function FloorPlanSimulator() {
                       strokeDasharray={cmeta.dash}
                       opacity="0.75"
                       markerEnd={`url(#arrow-${cmeta.markerSuffix})`} />
-                    {/* 距離與搬運時間標籤 */}
-                    {metrics.distance > 0 && (
-                      <>
-                        <rect x={midX - 26} y={midY - 22} width={52} height={28} rx={4}
-                          fill="#0d1117" stroke={cmeta.color} strokeWidth="0.5" opacity="0.85" />
-                        <text x={midX} y={midY - 10} textAnchor="middle" fill={cmeta.color} fontSize="9" fontWeight="600">
-                          {cmeta.label}
-                        </text>
-                        <text x={midX} y={midY + 2} textAnchor="middle" fill="#94a3b8" fontSize="9">
-                          {metrics.distance.toFixed(1)}m / {metrics.transportTime.toFixed(1)}s
-                        </text>
-                      </>
-                    )}
                     {/* 動畫小點 */}
                     {animating && <AnimDot path={pathD} duration={animDur} color={cmeta.color} />}
                   </g>
@@ -883,6 +873,31 @@ export default function FloorPlanSimulator() {
                       fill={colors.badgeText} fontSize="9" fontWeight="700"
                       style={{ userSelect: "none" }}>
                       {ws.sequenceOrder + 1}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* 連線標籤層（最上層，在工站節點之後渲染） */}
+              {layout.connections.map(conn => {
+                const fromWs = layout.workstations.find(w => w.id === conn.fromId);
+                const toWs = layout.workstations.find(w => w.id === conn.toId);
+                if (!fromWs || !toWs) return null;
+                const ctype = conn.conveyorType ?? 'manual';
+                const cmeta = CONVEYOR_META[ctype];
+                const midX = (fromWs.x + fromWs.width / 2 + toWs.x + toWs.width / 2) / 2;
+                const midY = (fromWs.y + fromWs.height / 2 + toWs.y + toWs.height / 2) / 2;
+                const metrics = computeConnMetrics(conn, layout.workstations, scalePxPerM);
+                if (metrics.distance <= 0) return null;
+                return (
+                  <g key={`label-${conn.id}`} style={{ pointerEvents: 'none' }}>
+                    <rect x={midX - 28} y={midY - 23} width={56} height={30} rx={5}
+                      fill="#0d1117" stroke={cmeta.color} strokeWidth="0.8" opacity="0.95" />
+                    <text x={midX} y={midY - 11} textAnchor="middle" fill={cmeta.color} fontSize="9" fontWeight="700">
+                      {cmeta.label}
+                    </text>
+                    <text x={midX} y={midY + 2} textAnchor="middle" fill="#cbd5e1" fontSize="9">
+                      {metrics.distance.toFixed(1)}m / {metrics.transportTime.toFixed(1)}s
                     </text>
                   </g>
                 );
