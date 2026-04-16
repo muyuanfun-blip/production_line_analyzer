@@ -98,9 +98,8 @@ function makePath(from: FloorWs, to: FloorWs): string {
   return `M ${fx} ${fy} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${tx} ${ty}`;
 }
 
-// ─── Arrow Marker ─────────────────────────────────────────────────────────────
-function ArrowDefs() {
-  return (
+// ─── Arrow Marker ─────────────────────────────────────────────────────────────────────────────────
+function ArrowDefs() { return (
     <defs>
       <marker id="arrow-cyan" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
         <path d="M0,0 L0,6 L8,3 z" fill="#22d3ee" />
@@ -115,11 +114,50 @@ function ArrowDefs() {
         <feGaussianBlur stdDeviation="2" result="blur" />
         <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
       </filter>
+      {/* 輸送帶滾輪動畫 */}
+      <style>{`
+        @keyframes conveyor-roll {
+          from { stroke-dashoffset: 0; }
+          to   { stroke-dashoffset: -24; }
+        }
+        .conveyor-roll-fast  { animation: conveyor-roll 0.4s linear infinite; }
+        .conveyor-roll-med   { animation: conveyor-roll 0.8s linear infinite; }
+        .conveyor-roll-slow  { animation: conveyor-roll 1.6s linear infinite; }
+      `}</style>
     </defs>
   );
 }
 
-// ─── Bounding-box edge distance (相鄰 = 0，水平/垂直/對角均正確) ──────────────────────────────────────────────
+// ─── Conveyor Belt Visual ──────────────────────────────────────────────────────────────────────────────
+function ConveyorBelt({ pathD, speed, isSelected }: { pathD: string; speed: number; isSelected: boolean }) {
+  // 依速度選擇滾輪動畫速度類別
+  const rollClass = speed >= 15 ? 'conveyor-roll-fast' : speed >= 8 ? 'conveyor-roll-med' : 'conveyor-roll-slow';
+  return (
+    <g>
+      {/* 選取光暈 */}
+      {isSelected && (
+        <path d={pathD} fill="none" stroke="#38bdf8" strokeWidth="18" opacity="0.25" />
+      )}
+      {/* 輸送帶底帶（深色本體） */}
+      <path d={pathD} fill="none" stroke="#0f2a3a" strokeWidth="14" strokeLinecap="butt" />
+      {/* 輸送帶邊框（上邊） */}
+      <path d={pathD} fill="none" stroke="#38bdf8" strokeWidth="14"
+        strokeDasharray="1 13" strokeLinecap="butt" opacity="0.4" />
+      {/* 滾輪紋路（流動動畫） */}
+      <path d={pathD} fill="none" stroke="#1e6a8a" strokeWidth="10"
+        strokeDasharray="4 8" strokeLinecap="butt"
+        className={rollClass} />
+      {/* 輸送帶中心方向線 */}
+      <path d={pathD} fill="none" stroke="#38bdf8" strokeWidth="1.5"
+        opacity="0.9"
+        markerEnd="url(#arrow-cyan)" />
+      {/* 點擊區域（透明，擴大點擊範圍） */}
+      <path d={pathD} fill="none" stroke="transparent" strokeWidth="18" className="cursor-pointer" />
+    </g>
+  );
+}
+
+// ─── Bounding-box edge distance ───────────────────────────────────────────────────────────────────────────────
 function pixelDist(a: FloorWs, b: FloorWs): number {
   // 計算兩工站 bounding box 在 X 軸與 Y 軸方向的間隔（相鄰或重疊 = 0）
   const aRight = a.x + a.width;  const aBottom = a.y + a.height;
@@ -776,22 +814,26 @@ export default function FloorPlanSimulator() {
                 const metrics = computeConnMetrics(conn, layout.workstations, scalePxPerM);
                 const isSelected = editingConn?.id === conn.id;
                 return (
-                  <g key={conn.id}>
-                    {/* 底部寬路徑（點擊區域） */}
-                    <path d={pathD} fill="none" stroke="transparent" strokeWidth="14"
-                      className="cursor-pointer"
-                      onClick={() => { setEditingConn(conn); setShowConnDialog(true); }} />
-                    {/* 選取光暈 */}
-                    {isSelected && (
-                      <path d={pathD} fill="none" stroke={cmeta.color} strokeWidth="5" opacity="0.3" />
+                  <g key={conn.id} onClick={() => { setEditingConn(conn); setShowConnDialog(true); }}>
+                    {ctype === 'conveyor' ? (
+                      <ConveyorBelt pathD={pathD} speed={conn.speed} isSelected={isSelected} />
+                    ) : (
+                      <>
+                        {/* 底部寬路徑（點擊區域） */}
+                        <path d={pathD} fill="none" stroke="transparent" strokeWidth="14" className="cursor-pointer" />
+                        {/* 選取光暈 */}
+                        {isSelected && (
+                          <path d={pathD} fill="none" stroke={cmeta.color} strokeWidth="5" opacity="0.3" />
+                        )}
+                        {/* 可見路徑 */}
+                        <path d={pathD} fill="none"
+                          stroke={cmeta.color}
+                          strokeWidth={1.5}
+                          strokeDasharray={cmeta.dash}
+                          opacity="0.75"
+                          markerEnd={`url(#arrow-${cmeta.markerSuffix})`} />
+                      </>
                     )}
-                    {/* 可見路徑 */}
-                    <path d={pathD} fill="none"
-                      stroke={cmeta.color}
-                      strokeWidth={ctype === 'conveyor' ? 2.5 : 1.5}
-                      strokeDasharray={cmeta.dash}
-                      opacity="0.75"
-                      markerEnd={`url(#arrow-${cmeta.markerSuffix})`} />
                   </g>
                 );
               })}
@@ -830,6 +872,8 @@ export default function FloorPlanSimulator() {
                 const fromCt = Math.max(fromWs.operatorTime, fromWs.machineTime);
                 const ctype = conn.conveyorType ?? 'manual';
                 const cmeta = CONVEYOR_META[ctype];
+                // 輸送帶已有滾輪動畫，不需要額外的動畫小點
+                if (ctype === 'conveyor') return null;
                 const animDur = Math.max(0.3, fromCt / (conn.speed > 0 ? conn.speed : 10));
                 return <AnimDot key={`anim-${conn.id}`} path={pathD} duration={animDur} color={cmeta.color} />;
               })}
@@ -1532,17 +1576,58 @@ export default function FloorPlanSimulator() {
               </div>
               {/* 速度設定 */}
               <div>
-                <Label className="text-sm font-medium">搬運速度（公尺/分鐘）</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <Input type="number" min="1" step="1"
-                    value={editingConn.speed ?? CONVEYOR_META[editingConn.conveyorType ?? 'manual'].speed}
-                    className="h-8 text-sm w-24"
-                    onChange={e => {
-                      const v = parseFloat(e.target.value);
-                      setEditingConn(prev => prev ? { ...prev, speed: isNaN(v) ? 30 : v } : null);
-                    }} />
-                  <span className="text-xs text-muted-foreground">m/min</span>
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">搬運速度（m/min）</Label>
+                  <div className="flex items-center gap-1.5">
+                    <Input type="number" min="1" max="120" step="1"
+                      value={editingConn.speed ?? CONVEYOR_META[editingConn.conveyorType ?? 'manual'].speed}
+                      className="h-7 text-sm w-20 text-right"
+                      onChange={e => {
+                        const v = parseFloat(e.target.value);
+                        setEditingConn(prev => prev ? { ...prev, speed: isNaN(v) ? 30 : Math.max(1, Math.min(120, v)) } : null);
+                      }} />
+                    <span className="text-xs text-muted-foreground">m/min</span>
+                  </div>
                 </div>
+                <Slider
+                  min={1} max={120} step={1}
+                  value={[editingConn.speed ?? CONVEYOR_META[editingConn.conveyorType ?? 'manual'].speed]}
+                  onValueChange={([v]) => setEditingConn(prev => prev ? { ...prev, speed: v } : null)}
+                  className="mt-2"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                  <span>1 m/min (慢)</span>
+                  <span>60 m/min (一般)</span>
+                  <span>120 m/min (高速)</span>
+                </div>
+                {/* 輸送帶視覺預覽 + 即時搬運時間 */}
+                {(editingConn.conveyorType ?? 'manual') === 'conveyor' && (
+                  <div className="mt-3 rounded-lg overflow-hidden border border-border/40">
+                    <svg width="100%" height="28" viewBox="0 0 200 28">
+                      <rect x="0" y="4" width="200" height="20" fill="#0f2a3a" />
+                      <rect x="0" y="4" width="200" height="20" fill="#1e6a8a"
+                        strokeDasharray="4 8"
+                        style={{ stroke: '#1e6a8a', strokeWidth: 10, strokeDashoffset: 0,
+                          animation: `conveyor-roll ${
+                            (editingConn.speed ?? 30) >= 15 ? '0.4' :
+                            (editingConn.speed ?? 30) >= 8  ? '0.8' : '1.6'
+                          }s linear infinite` }} />
+                      <line x1="0" y1="14" x2="200" y2="14" stroke="#38bdf8" strokeWidth="1.5" opacity="0.9" />
+                      <text x="100" y="18" textAnchor="middle" fill="#38bdf8" fontSize="8" fontWeight="600">
+                        {editingConn.speed ?? 30} m/min →
+                      </text>
+                    </svg>
+                  </div>
+                )}
+                {/* 即時搬運時間預覽 */}
+                {metrics.distance > 0 && (
+                  <div className="mt-2 flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">{metrics.distance.toFixed(1)} m ÷ {editingConn.speed ?? 30} m/min</span>
+                    <span className="font-bold" style={{ color: '#38bdf8' }}>
+                      ≈ {metrics.transportTime.toFixed(1)} s 搬運時間
+                    </span>
+                  </div>
+                )}
               </div>
               {/* 距離與搬運時間（唯讀，由座標自動計算） */}
               <div className="bg-background/50 rounded-lg p-3 grid grid-cols-2 gap-3">
