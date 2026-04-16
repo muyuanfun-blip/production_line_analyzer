@@ -7,6 +7,7 @@ import {
   Maximize2, Download, Upload, GitCompare, Loader2, Link2, Link2Off,
   LayoutGrid, ChevronRight, X, Check, Users, Cpu, Clock, BarChart3,
   Target, Zap, AlertTriangle, TrendingUp, RotateCcw, FlaskConical,
+  MoveHorizontal, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,9 +57,19 @@ export type FloorConnection = {
   label?: string;
 };
 
+export type ConveyorObject = {
+  id: string;
+  x1: number; y1: number;  // 起點
+  x2: number; y2: number;  // 終點
+  speed: number;           // 公尺/分鐘
+  name: string;
+  color: string;           // 輸送帶顏色
+};
+
 export type FloorLayout = {
   workstations: FloorWs[];
   connections: FloorConnection[];
+  conveyors?: ConveyorObject[];
 };
 
 /// ─── Constants ───────────────────────────────────────────────────────────
@@ -264,6 +275,13 @@ export default function FloorPlanSimulator() {
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
   const svgRef = useRef<SVGSVGElement>(null);
+
+  // ── 輸送帶獨立物件狀態 ──
+  const [selectedConveyorId, setSelectedConveyorId] = useState<string | null>(null);
+  const [draggingConveyor, setDraggingConveyor] = useState<{ id: string; handle: 'body' | 'p1' | 'p2' } | null>(null);
+  const conveyorDragStart = useRef({ mx: 0, my: 0, x1: 0, y1: 0, x2: 0, y2: 0 });
+  const [showConveyorDialog, setShowConveyorDialog] = useState(false);
+  const [editingConveyor, setEditingConveyor] = useState<ConveyorObject | null>(null);
 
   // ── Dialogs ──
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -527,10 +545,35 @@ export default function FloorPlanSimulator() {
   };
 
   const handleUpdateConn = (connId: string, field: keyof FloorConnection, value: any) => {
-    setLayout(prev => ({
-      ...prev,
-      connections: prev.connections.map(c => c.id === connId ? { ...c, [field]: value } : c),
-    }));
+    setLayout(prev => {
+      let extraUpdates: Partial<FloorConnection> = {};
+      // 當切換為輸送帶類型時，自動採用最近輸送帶物件的速度
+      if (field === 'conveyorType' && value === 'conveyor' && (prev.conveyors ?? []).length > 0) {
+        const conn = prev.connections.find(c => c.id === connId);
+        if (conn) {
+          const fromWs = prev.workstations.find(w => w.id === conn.fromId);
+          const toWs = prev.workstations.find(w => w.id === conn.toId);
+          if (fromWs && toWs) {
+            const midX = (fromWs.x + fromWs.width / 2 + toWs.x + toWs.width / 2) / 2;
+            const midY = (fromWs.y + fromWs.height / 2 + toWs.y + toWs.height / 2) / 2;
+            // 找最近的輸送帶物件
+            let minDist = Infinity;
+            let nearestSpeed = CONVEYOR_META.conveyor.speed;
+            for (const cv of prev.conveyors ?? []) {
+              const cvMidX = (cv.x1 + cv.x2) / 2;
+              const cvMidY = (cv.y1 + cv.y2) / 2;
+              const d = Math.hypot(midX - cvMidX, midY - cvMidY);
+              if (d < minDist) { minDist = d; nearestSpeed = cv.speed; }
+            }
+            extraUpdates = { speed: nearestSpeed };
+          }
+        }
+      }
+      return {
+        ...prev,
+        connections: prev.connections.map(c => c.id === connId ? { ...c, [field]: value, ...extraUpdates } : c),
+      };
+    });
     setIsDirty(true);
   };
 
@@ -578,9 +621,77 @@ export default function FloorPlanSimulator() {
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
   }, [draggingId, svgPoint]);
 
+  // ── 輸送帶物件操作 ──
+  const handleAddConveyor = useCallback(() => {
+    const cx = snap(pan.x > 0 ? 200 : 200);
+    const cy = snap(200);
+    const newConveyor: ConveyorObject = {
+      id: `cv-${Date.now()}`,
+      x1: snap(100), y1: snap(200),
+      x2: snap(340), y2: snap(200),
+      speed: 20,
+      name: `輸送帶 ${(layout.conveyors?.length ?? 0) + 1}`,
+      color: '#38bdf8',
+    };
+    setLayout(prev => ({ ...prev, conveyors: [...(prev.conveyors ?? []), newConveyor] }));
+    setSelectedConveyorId(newConveyor.id);
+    setSelectedWsId(null);
+    setIsDirty(true);
+  }, [layout.conveyors, pan]);
+
+  const handleConveyorMouseDown = useCallback((e: React.MouseEvent, cvId: string, handle: 'body' | 'p1' | 'p2') => {
+    e.stopPropagation();
+    setSelectedConveyorId(cvId);
+    setSelectedWsId(null);
+    const cv = (layout.conveyors ?? []).find(c => c.id === cvId);
+    if (!cv) return;
+    const pt = svgPoint(e);
+    conveyorDragStart.current = { mx: pt.x, my: pt.y, x1: cv.x1, y1: cv.y1, x2: cv.x2, y2: cv.y2 };
+    setDraggingConveyor({ id: cvId, handle });
+  }, [layout.conveyors, svgPoint]);
+
+  useEffect(() => {
+    if (!draggingConveyor) return;
+    const onMove = (e: MouseEvent) => {
+      const pt = svgPoint(e);
+      const dx = pt.x - conveyorDragStart.current.mx;
+      const dy = pt.y - conveyorDragStart.current.my;
+      setLayout(prev => ({
+        ...prev,
+        conveyors: (prev.conveyors ?? []).map(cv => {
+          if (cv.id !== draggingConveyor.id) return cv;
+          if (draggingConveyor.handle === 'body') {
+            return { ...cv,
+              x1: snap(conveyorDragStart.current.x1 + dx),
+              y1: snap(conveyorDragStart.current.y1 + dy),
+              x2: snap(conveyorDragStart.current.x2 + dx),
+              y2: snap(conveyorDragStart.current.y2 + dy),
+            };
+          } else if (draggingConveyor.handle === 'p1') {
+            return { ...cv, x1: snap(conveyorDragStart.current.x1 + dx), y1: snap(conveyorDragStart.current.y1 + dy) };
+          } else {
+            return { ...cv, x2: snap(conveyorDragStart.current.x2 + dx), y2: snap(conveyorDragStart.current.y2 + dy) };
+          }
+        }),
+      }));
+    };
+    const onUp = () => { setDraggingConveyor(null); setIsDirty(true); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [draggingConveyor, svgPoint]);
+
+  const handleDeleteConveyor = useCallback((cvId: string) => {
+    setLayout(prev => ({ ...prev, conveyors: (prev.conveyors ?? []).filter(c => c.id !== cvId) }));
+    setSelectedConveyorId(null);
+    setIsDirty(true);
+  }, []);
+
   // ── 畫布平移 ──
   const handleSvgMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.target !== svgRef.current && (e.target as Element).tagName !== "rect") return;
+    // 點擊空白處清除輸送帶選取
+    setSelectedConveyorId(null);
     setIsPanning(true);
     panStart.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
   }, [pan]);
@@ -732,6 +843,10 @@ export default function FloorPlanSimulator() {
             onClick={() => setShowAddWsDialog(true)}>
             <Plus className="w-4 h-4" />
           </Button>
+          <Button size="icon" variant="ghost" className="h-9 w-9" title="新增輸送帶"
+            onClick={handleAddConveyor}>
+            <MoveHorizontal className="w-4 h-4" />
+          </Button>
           <Button size="icon" variant="ghost" className="h-9 w-9" title="自動排列"
             onClick={handleAutoLayout}>
             <LayoutGrid className="w-4 h-4" />
@@ -815,25 +930,19 @@ export default function FloorPlanSimulator() {
                 const isSelected = editingConn?.id === conn.id;
                 return (
                   <g key={conn.id} onClick={() => { setEditingConn(conn); setShowConnDialog(true); }}>
-                    {ctype === 'conveyor' ? (
-                      <ConveyorBelt pathD={pathD} speed={conn.speed} isSelected={isSelected} />
-                    ) : (
-                      <>
-                        {/* 底部寬路徑（點擊區域） */}
-                        <path d={pathD} fill="none" stroke="transparent" strokeWidth="14" className="cursor-pointer" />
-                        {/* 選取光暈 */}
-                        {isSelected && (
-                          <path d={pathD} fill="none" stroke={cmeta.color} strokeWidth="5" opacity="0.3" />
-                        )}
-                        {/* 可見路徑 */}
-                        <path d={pathD} fill="none"
-                          stroke={cmeta.color}
-                          strokeWidth={1.5}
-                          strokeDasharray={cmeta.dash}
-                          opacity="0.75"
-                          markerEnd={`url(#arrow-${cmeta.markerSuffix})`} />
-                      </>
+                    {/* 底部寬路徑（點擊區域） */}
+                    <path d={pathD} fill="none" stroke="transparent" strokeWidth="14" className="cursor-pointer" />
+                    {/* 選取光暈 */}
+                    {isSelected && (
+                      <path d={pathD} fill="none" stroke={cmeta.color} strokeWidth="5" opacity="0.3" />
                     )}
+                    {/* 可見路徑 */}
+                    <path d={pathD} fill="none"
+                      stroke={cmeta.color}
+                      strokeWidth={1.5}
+                      strokeDasharray={cmeta.dash}
+                      opacity="0.75"
+                      markerEnd={`url(#arrow-${cmeta.markerSuffix})`} />
                   </g>
                 );
               })}
@@ -879,6 +988,68 @@ export default function FloorPlanSimulator() {
               })}
 
               {/* 工站節點 */}
+              {/* ── 輸送帶獨立物件層 ── */}
+              {(layout.conveyors ?? []).map(cv => {
+                const isSelCV = selectedConveyorId === cv.id;
+                const len = Math.hypot(cv.x2 - cv.x1, cv.y2 - cv.y1);
+                const angle = Math.atan2(cv.y2 - cv.y1, cv.x2 - cv.x1) * 180 / Math.PI;
+                const cx = (cv.x1 + cv.x2) / 2;
+                const cy = (cv.y1 + cv.y2) / 2;
+                const animSpeed = cv.speed >= 30 ? '0.4' : cv.speed >= 12 ? '0.8' : '1.6';
+                return (
+                  <g key={cv.id}
+                    onMouseDown={e => handleConveyorMouseDown(e, cv.id, 'body')}
+                    onClick={e => { e.stopPropagation(); setSelectedConveyorId(cv.id); setSelectedWsId(null); }}
+                    style={{ cursor: draggingConveyor?.id === cv.id ? 'grabbing' : 'grab' }}>
+                    {/* 選取光暈 */}
+                    {isSelCV && (
+                      <line x1={cv.x1} y1={cv.y1} x2={cv.x2} y2={cv.y2}
+                        stroke={cv.color} strokeWidth="22" opacity="0.2" strokeLinecap="round" />
+                    )}
+                    {/* 輸送帶底帶（深色本體） */}
+                    <line x1={cv.x1} y1={cv.y1} x2={cv.x2} y2={cv.y2}
+                      stroke="#0f2a3a" strokeWidth="16" strokeLinecap="round" />
+                    {/* 滾輪紋路動畫 */}
+                    <line x1={cv.x1} y1={cv.y1} x2={cv.x2} y2={cv.y2}
+                      stroke={cv.color} strokeWidth="12" strokeLinecap="round"
+                      strokeDasharray="4 8" opacity="0.7"
+                      style={{ animation: `conveyor-roll ${animSpeed}s linear infinite` }} />
+                    {/* 上邊框 */}
+                    <line x1={cv.x1} y1={cv.y1} x2={cv.x2} y2={cv.y2}
+                      stroke={cv.color} strokeWidth="1.5" strokeLinecap="round" opacity="0.9"
+                      transform={`translate(${Math.sin(angle * Math.PI / 180) * -7},${-Math.cos(angle * Math.PI / 180) * -7})`} />
+                    {/* 下邊框 */}
+                    <line x1={cv.x1} y1={cv.y1} x2={cv.x2} y2={cv.y2}
+                      stroke={cv.color} strokeWidth="1.5" strokeLinecap="round" opacity="0.9"
+                      transform={`translate(${Math.sin(angle * Math.PI / 180) * 7},${Math.cos(angle * Math.PI / 180) * -7})`} />
+                    {/* 方向筭頭 */}
+                    <line x1={cv.x1} y1={cv.y1} x2={cv.x2} y2={cv.y2}
+                      stroke={cv.color} strokeWidth="1.5" strokeLinecap="round" opacity="0.9"
+                      markerEnd={`url(#arrow-cyan)`} />
+                    {/* 名稱標籤 */}
+                    <text x={cx} y={cy - 12} textAnchor="middle"
+                      fill={cv.color} fontSize="10" fontWeight="700"
+                      style={{ userSelect: 'none', pointerEvents: 'none' }}>
+                      {cv.name}
+                    </text>
+                    <text x={cx} y={cy + 22} textAnchor="middle"
+                      fill="#94a3b8" fontSize="9"
+                      style={{ userSelect: 'none', pointerEvents: 'none' }}>
+                      {cv.speed} m/min · {(len / scalePxPerM).toFixed(1)} m
+                    </text>
+                    {/* 端點調整把手 */}
+                    <circle cx={cv.x1} cy={cv.y1} r={7} fill={isSelCV ? cv.color : '#1e293b'}
+                      stroke={cv.color} strokeWidth="2"
+                      style={{ cursor: 'nwse-resize' }}
+                      onMouseDown={e => handleConveyorMouseDown(e, cv.id, 'p1')} />
+                    <circle cx={cv.x2} cy={cv.y2} r={7} fill={isSelCV ? cv.color : '#1e293b'}
+                      stroke={cv.color} strokeWidth="2"
+                      style={{ cursor: 'nwse-resize' }}
+                      onMouseDown={e => handleConveyorMouseDown(e, cv.id, 'p2')} />
+                  </g>
+                );
+              })}
+
               {layout.workstations.map(ws => {
                 const ct = Math.max(ws.operatorTime, ws.machineTime);
                 const colors = getWsColor(ws, maxCt, taktTime);
@@ -1215,6 +1386,114 @@ export default function FloorPlanSimulator() {
 
           {/* 工站屬性面板 */}
           <div className="flex-1 overflow-y-auto p-3">
+            {/* 輸送帶屬性面板 */}
+            {selectedConveyorId && !selectedWsId && (() => {
+              const cv = (layout.conveyors ?? []).find(c => c.id === selectedConveyorId);
+              if (!cv) return null;
+              const len = Math.hypot(cv.x2 - cv.x1, cv.y2 - cv.y1);
+              const updateCv = (field: keyof ConveyorObject, value: any) => {
+                setLayout(prev => ({
+                  ...prev,
+                  conveyors: (prev.conveyors ?? []).map(c => c.id === cv.id ? { ...c, [field]: value } : c),
+                }));
+                setIsDirty(true);
+              };
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold" style={{ color: cv.color }}>輸送帶屬性</p>
+                    <div className="flex gap-1">
+                      <Button size="icon" variant="ghost" className="h-6 w-6 text-red-400"
+                        onClick={() => { if (confirm(`確定刪除「${cv.name}」？`)) handleDeleteConveyor(cv.id); }}>
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-6 w-6"
+                        onClick={() => setSelectedConveyorId(null)}>
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                  {/* 名稱 */}
+                  <div>
+                    <Label className="text-xs text-muted-foreground">輸送帶名稱</Label>
+                    <Input value={cv.name} className="mt-1 h-8 text-sm"
+                      onChange={e => updateCv('name', e.target.value)} />
+                  </div>
+                  {/* 速度 */}
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium">輸送速度（m/min）</Label>
+                      <div className="flex items-center gap-1.5">
+                        <Input type="number" min="1" max="120" step="1"
+                          value={cv.speed}
+                          className="h-7 text-sm w-20 text-right"
+                          onChange={e => updateCv('speed', Math.max(1, Math.min(120, parseInt(e.target.value) || 1)))} />
+                      </div>
+                    </div>
+                    <Slider
+                      min={1} max={120} step={1}
+                      value={[cv.speed]}
+                      onValueChange={([v]) => updateCv('speed', v)}
+                      className="mt-2" />
+                    <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                      <span>1 m/min (慢)</span>
+                      <span>60 m/min (一般)</span>
+                      <span>120 m/min (高速)</span>
+                    </div>
+                  </div>
+                  {/* 顏色選擇 */}
+                  <div>
+                    <Label className="text-xs text-muted-foreground">輸送帶顏色</Label>
+                    <div className="flex gap-2 mt-1">
+                      {['#38bdf8', '#4ade80', '#fb923c', '#a78bfa', '#f472b6'].map(c => (
+                        <button key={c} className="w-7 h-7 rounded-full border-2 transition-transform"
+                          style={{ background: c, borderColor: cv.color === c ? '#fff' : 'transparent',
+                            transform: cv.color === c ? 'scale(1.2)' : 'scale(1)' }}
+                          onClick={() => updateCv('color', c)} />
+                      ))}
+                    </div>
+                  </div>
+                  {/* 資訊卡片 */}
+                  <div className="bg-background/50 rounded-lg p-3 grid grid-cols-3 gap-2">
+                    <div>
+                      <p className="text-xs text-muted-foreground">長度</p>
+                      <p className="text-base font-bold" style={{ color: cv.color }}>
+                        {(len / scalePxPerM).toFixed(1)}<span className="text-xs font-normal text-muted-foreground ml-0.5">m</span>
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">過境時間</p>
+                      <p className="text-base font-bold" style={{ color: cv.color }}>
+                        {((len / scalePxPerM) / cv.speed * 60).toFixed(1)}<span className="text-xs font-normal text-muted-foreground ml-0.5">s</span>
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">角度</p>
+                      <p className="text-base font-bold" style={{ color: cv.color }}>
+                        {Math.round(Math.atan2(cv.y2 - cv.y1, cv.x2 - cv.x1) * 180 / Math.PI)}<span className="text-xs font-normal text-muted-foreground ml-0.5">°</span>
+                      </p>
+                    </div>
+                  </div>
+                  {/* 輸送帶預覽 SVG */}
+                  <div className="rounded-lg overflow-hidden border border-border/40">
+                    <svg width="100%" height="28" viewBox="0 0 200 28">
+                      <rect x="0" y="4" width="200" height="20" fill="#0f2a3a" />
+                      <rect x="0" y="4" width="200" height="20" fill={cv.color}
+                        strokeDasharray="4 8"
+                        style={{ stroke: cv.color, strokeWidth: 10, strokeDashoffset: 0,
+                          animation: `conveyor-roll ${
+                            cv.speed >= 30 ? '0.4' : cv.speed >= 12 ? '0.8' : '1.6'
+                          }s linear infinite` }} />
+                      <line x1="0" y1="14" x2="200" y2="14" stroke={cv.color} strokeWidth="1.5" opacity="0.9" />
+                      <text x="100" y="18" textAnchor="middle" fill={cv.color} fontSize="8" fontWeight="600">
+                        {cv.speed} m/min →
+                      </text>
+                    </svg>
+                  </div>
+                </div>
+              );
+            })()}
+
             {selectedWs ? (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
