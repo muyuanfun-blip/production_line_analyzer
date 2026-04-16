@@ -7,6 +7,7 @@ import {
   actionSteps, InsertActionStep,
   handActions, InsertHandAction,
   analysisSnapshots, InsertAnalysisSnapshot,
+  simulationScenarios, InsertSimulationScenario,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -472,4 +473,44 @@ export async function getAllLinesLatestSnapshot() {
     })
   );
   return results;
+}
+
+// ─── Simulation Scenarios ─────────────────────────────────────────────────────
+
+export async function listSimulations(productionLineId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(simulationScenarios)
+    .where(eq(simulationScenarios.productionLineId, productionLineId))
+    .orderBy(desc(simulationScenarios.updatedAt));
+}
+
+export async function getSimulationById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(simulationScenarios)
+    .where(eq(simulationScenarios.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createSimulation(data: InsertSimulationScenario) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(simulationScenarios).values(data);
+  const insertId = (result as any)[0]?.insertId ?? (result as any).insertId;
+  if (!insertId) throw new Error("Failed to get insertId");
+  return getSimulationById(Number(insertId));
+}
+
+export async function updateSimulation(id: number, data: Partial<InsertSimulationScenario>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(simulationScenarios).set(data).where(eq(simulationScenarios.id, id));
+  return getSimulationById(id);
+}
+
+export async function deleteSimulation(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(simulationScenarios).where(eq(simulationScenarios.id, id));
 }

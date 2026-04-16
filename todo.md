@@ -286,3 +286,21 @@
 ## 數據修整：新增工站插入位置（新增）
 - [x] 新增工站表單加入「插入位置」下拉選單（加在最後 / 加在第 N 站之後）
 - [x] 確認後按照選擇的位置插入，並重新排列後續工站的 sequenceOrder
+
+## 生產線配置模擬頁面（新增）
+- [x] 資料庫：新增 simulation_scenarios 表（id, name, productionLineId, baseSnapshotId, workstationsData JSON, notes, createdBy, createdAt, updatedAt）
+- [x] 資料庫：執行 migration
+- [x] 後端：新增 simulation.list / getById / create / update / delete / applyToLine procedures
+- [x] 後端：新增 DB helpers（listSimulations, getSimulation, createSimulation, updateSimulation, deleteSimulation）
+- [x] 前端：建立 LineSimulator.tsx 頁面
+- [x] 前端：情境管理面板（建立、複製、删除、命名情境）
+- [x] 前端：工站配置編輯器（行內編輯 CT、人力、新增、删除工站）
+- [x] 前端：合併工站功能（選取兩相鄰工站，自動加總 CT 與人力）
+- [x] 前端：拆分工站功能（輸入比例，自動分配 CT）
+- [x] 前端：即時 KPI 儀表板（平衡率、瓶頃工站、UPPH、Takt 達標率、總人力、預估產能）
+- [x] 前端：平衡圖視覺化（橫條圖 + Takt Time 紅線 + 瓶頃高亮）
+- [x] 前端：情境並排比較圖（模擬 vs 基準，顏色標示改善/惡化工站）
+- [x] 前端：套用至產線功能（確認 Dialog + 寫回實際工站資料）
+- [x] 前端：在 App.tsx 注冊 /simulator 路由
+- [x] 前端：在側邊欄新增「配置模擬」導覽項目
+- [x] 撰寫 simulation procedures 的 Vitest 測試（17 項全通過）

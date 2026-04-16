@@ -21,7 +21,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { BookOpen, Factory, Home, LogOut, PanelLeft, PencilLine, ShieldCheck, Users } from "lucide-react";
+import { BookOpen, Factory, Home, LogOut, PanelLeft, PencilLine, ShieldCheck, Users, FlaskConical } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -30,6 +30,7 @@ const menuItems = [
   { icon: Home, label: "首頁總覽", path: "/" },
   { icon: Factory, label: "生產線管理", path: "/lines" },
   { icon: PencilLine, label: "數據修整", path: "/data-refinement" },
+  { icon: FlaskConical, label: "配置模擬", path: "/simulator" },
   { icon: BookOpen, label: "使用指南", path: "/guide" },
 ];
 

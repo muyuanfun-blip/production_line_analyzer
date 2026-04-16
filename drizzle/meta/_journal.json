@@ -50,6 +50,13 @@
       "when": 1776135935793,
       "tag": "0006_cultured_golden_guardian",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1776306192212,
+      "tag": "0007_funny_hellion",
+      "breakpoints": true
     }
   ]
 }

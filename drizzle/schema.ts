@@ -130,3 +130,19 @@ export const analysisSnapshots = mysqlTable("analysis_snapshots", {
 
 export type AnalysisSnapshot = typeof analysisSnapshots.$inferSelect;
 export type InsertAnalysisSnapshot = typeof analysisSnapshots.$inferInsert;
+
+// 配置模擬情境資料表
+export const simulationScenarios = mysqlTable("simulation_scenarios", {
+  id: int("id").autoincrement().primaryKey(),
+  productionLineId: int("productionLineId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  baseSnapshotId: int("baseSnapshotId"),          // 基準快照（可選）
+  workstationsData: json("workstationsData").notNull(), // 模擬工站數據（與快照格式相同）
+  notes: text("notes"),
+  createdBy: int("createdBy"),                     // 建立者 userId
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SimulationScenario = typeof simulationScenarios.$inferSelect;
+export type InsertSimulationScenario = typeof simulationScenarios.$inferInsert;

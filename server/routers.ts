@@ -17,6 +17,7 @@ import {
   upsertHandAction, deleteHandAction, deleteHandActionsByStep,
   getUserByUsername, getAllUsers, createLocalUser,
   updateUserPassword, toggleUserActive, updateUserRole, updateUserLastSignedIn,
+  listSimulations, getSimulationById, createSimulation, updateSimulation, deleteSimulation,
 } from "./db";
 import bcrypt from "bcryptjs";
 import { sdk } from "./_core/sdk";
@@ -683,5 +684,193 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         return { success: true };
       }),
   }),
+
+  // ─── Simulation Scenarios ──────────────────────────────────────────────
+  simulation: router({
+    // 列出指定產線的所有情境
+    list: publicProcedure
+      .input(z.object({ productionLineId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const rows = await listSimulations(input.productionLineId);
+        return rows.map(r => ({
+          ...r,
+          workstationsData: r.workstationsData as SimWorkstation[],
+        }));
+      }),
+
+    // 取得單一情境
+    getById: publicProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const row = await getSimulationById(input.id);
+        if (!row) throw new Error("Simulation not found");
+        return { ...row, workstationsData: row.workstationsData as SimWorkstation[] };
+      }),
+
+    // 建立新情境（從產線工站或快照載入基準數據）
+    create: publicProcedure
+      .input(z.object({
+        productionLineId: z.number().int().positive(),
+        name: z.string().min(1).max(255),
+        baseSnapshotId: z.number().int().positive().optional(),
+        workstationsData: z.array(z.object({
+          id: z.number(),
+          name: z.string().min(1),
+          cycleTime: z.number().positive(),
+          manpower: z.number().min(0.5),
+          sequenceOrder: z.number().int().min(0),
+          description: z.string().optional(),
+        })),
+        notes: z.string().optional(),
+        createdBy: z.number().int().positive().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const scenario = await createSimulation({
+          productionLineId: input.productionLineId,
+          name: input.name,
+          baseSnapshotId: input.baseSnapshotId ?? null,
+          workstationsData: input.workstationsData,
+          notes: input.notes ?? null,
+          createdBy: input.createdBy ?? null,
+        });
+        return { success: true, scenario };
+      }),
+
+    // 更新情境（工站數據、名稱、備註）
+    update: publicProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        name: z.string().min(1).max(255).optional(),
+        notes: z.string().optional(),
+        workstationsData: z.array(z.object({
+          id: z.number(),
+          name: z.string().min(1),
+          cycleTime: z.number().positive(),
+          manpower: z.number().min(0.5),
+          sequenceOrder: z.number().int().min(0),
+          description: z.string().optional(),
+        })).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        const updateData: Record<string, unknown> = {};
+        if (data.name !== undefined) updateData.name = data.name;
+        if (data.notes !== undefined) updateData.notes = data.notes;
+        if (data.workstationsData !== undefined) updateData.workstationsData = data.workstationsData;
+        const scenario = await updateSimulation(id, updateData as any);
+        return { success: true, scenario };
+      }),
+
+    // 删除情境
+    delete: publicProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteSimulation(input.id);
+        return { success: true };
+      }),
+
+    // 複製情境
+    duplicate: publicProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        newName: z.string().min(1).max(255),
+      }))
+      .mutation(async ({ input }) => {
+        const original = await getSimulationById(input.id);
+        if (!original) throw new Error("Simulation not found");
+        const scenario = await createSimulation({
+          productionLineId: original.productionLineId,
+          name: input.newName,
+          baseSnapshotId: original.baseSnapshotId ?? null,
+          workstationsData: original.workstationsData,
+          notes: original.notes ? `複製自「${original.name}」` : null,
+          createdBy: original.createdBy ?? null,
+        });
+        return { success: true, scenario };
+      }),
+
+    // 將情境工站數據寫回實際 workstations 表
+    applyToLine: protectedProcedure
+      .input(z.object({
+        scenarioId: z.number().int().positive(),
+      }))
+      .mutation(async ({ input }) => {
+        const scenario = await getSimulationById(input.scenarioId);
+        if (!scenario) throw new Error("Simulation not found");
+        const wsData = scenario.workstationsData as SimWorkstation[];
+
+        // 取得產線現有工站
+        const existingWs = await getWorkstationsByLine(scenario.productionLineId);
+
+        // 對比情境工站 vs 現有工站，建立變更清單
+        const changes: Array<{ type: 'update' | 'add' | 'remove'; ws: SimWorkstation | any }> = [];
+
+        // 找出需要更新的工站（按 id 對比）
+        for (const simWs of wsData) {
+          if (simWs.id > 0) {
+            const existing = existingWs.find(w => w.id === simWs.id);
+            if (existing) {
+              changes.push({ type: 'update', ws: simWs });
+            } else {
+              changes.push({ type: 'add', ws: simWs });
+            }
+          } else {
+            // id <= 0 表示新工站
+            changes.push({ type: 'add', ws: simWs });
+          }
+        }
+
+        // 找出需要刪除的工站（現有工站中不在情境工站列表的）
+        const simIds = new Set(wsData.filter(w => w.id > 0).map(w => w.id));
+        for (const ew of existingWs) {
+          if (!simIds.has(ew.id)) {
+            changes.push({ type: 'remove', ws: ew });
+          }
+        }
+
+        // 執行變更
+        for (const change of changes) {
+          if (change.type === 'update') {
+            await updateWorkstation(change.ws.id, {
+              name: change.ws.name,
+              cycleTime: change.ws.cycleTime.toString(),
+              manpower: change.ws.manpower.toString(),
+              sequenceOrder: change.ws.sequenceOrder,
+              description: change.ws.description ?? null,
+            });
+          } else if (change.type === 'add') {
+            await createWorkstation({
+              productionLineId: scenario.productionLineId,
+              name: change.ws.name,
+              cycleTime: change.ws.cycleTime.toString(),
+              manpower: change.ws.manpower.toString(),
+              sequenceOrder: change.ws.sequenceOrder,
+              description: change.ws.description ?? null,
+              notes: null,
+            });
+          } else if (change.type === 'remove') {
+            await deleteWorkstation(change.ws.id);
+          }
+        }
+
+        return {
+          success: true,
+          applied: changes.length,
+          updated: changes.filter(c => c.type === 'update').length,
+          added: changes.filter(c => c.type === 'add').length,
+          removed: changes.filter(c => c.type === 'remove').length,
+        };
+      }),
+  }),
 });
 export type AppRouter = typeof appRouter;
+
+// 工站資料型別（情境用）
+type SimWorkstation = {
+  id: number;
+  name: string;
+  cycleTime: number;
+  manpower: number;
+  sequenceOrder: number;
+  description?: string;
+};

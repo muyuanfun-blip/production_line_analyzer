@@ -17,6 +17,7 @@ import UserGuide from "./pages/UserGuide";
 import Login from "./pages/Login";
 import AdminUsers from "./pages/AdminUsers";
 import DataRefinement from "./pages/DataRefinement";
+import SimulationPage from "./pages/SimulationPage";
 import { trpc } from "@/lib/trpc";
 import { useEffect } from "react";
 
@@ -65,6 +66,7 @@ function Router() {
               <Route path={"/guide"} component={UserGuide} />
               <Route path={"/admin/users"} component={AdminUsers} />
               <Route path={"/data-refinement"} component={DataRefinement} />
+              <Route path={"/simulator"} component={SimulationPage} />
               <Route path={"/404"} component={NotFound} />
               <Route component={NotFound} />
             </Switch>
