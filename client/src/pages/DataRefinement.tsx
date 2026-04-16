@@ -36,6 +36,8 @@ import {
   CheckCircle2,
   ChevronRight,
   Info,
+  Plus,
+  Trash2,
 } from "lucide-react";
 
 // ─── 型別 ──────────────────────────────────────────────────────────────────
@@ -90,6 +92,10 @@ export default function DataRefinement() {
   const [snapNote, setSnapNote] = useState("");
   const [taktTimeInput, setTaktTimeInput] = useState("");
   const [isDirty, setIsDirty] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newWsName, setNewWsName] = useState("");
+  const [newWsCt, setNewWsCt] = useState("");
+  const [newWsManpower, setNewWsManpower] = useState("1");
 
   // ─── 查詢 ──────────────────────────────────────────────────────────────
   const { data: lines = [] } = trpc.productionLine.list.useQuery();
@@ -119,6 +125,48 @@ export default function DataRefinement() {
     setTaktTimeInput(snapDetail.taktTime ? String(snapDetail.taktTime) : "");
     setIsDirty(false);
   }, [snapDetail]);
+
+  // ─── 新增工站 ──────────────────────────────────────────────────────────
+  const handleAddWorkstation = useCallback(() => {
+    const name = newWsName.trim();
+    const ct = parseFloat(newWsCt);
+    const mp = parseFloat(newWsManpower);
+    if (!name) { toast.error("請輸入工站名稱"); return; }
+    if (isNaN(ct) || ct <= 0) { toast.error("請輸入有效的週期時間"); return; }
+    if (isNaN(mp) || mp <= 0) { toast.error("請輸入有效的人力"); return; }
+    const maxOrder = editRows.length > 0 ? Math.max(...editRows.map(r => r.sequenceOrder)) : 0;
+    const tempId = -(Date.now()); // 負數 id 代表新增（尚未持久化）
+    const newRow: EditRow = {
+      id: tempId,
+      name,
+      cycleTime: ct,
+      manpower: mp,
+      sequenceOrder: maxOrder + 1,
+      description: "",
+      _origCycleTime: ct,
+      _origManpower: mp,
+      _origName: name,
+      _dirty: true,
+    };
+    setEditRows(prev => [...prev, newRow]);
+    setIsDirty(true);
+    setNewWsName("");
+    setNewWsCt("");
+    setNewWsManpower("1");
+    setShowAddForm(false);
+    toast.success(`已新增工站「${name}」，請記得按「儲存變更」`);
+  }, [newWsName, newWsCt, newWsManpower, editRows]);
+
+  // ─── 刪除工站（僅限新增的暫存列） ─────────────────────────────────────
+  const handleRemoveRow = useCallback((idx: number) => {
+    setEditRows(prev => {
+      const next = [...prev];
+      next.splice(idx, 1);
+      // 重新排序
+      return next.map((r, i) => ({ ...r, sequenceOrder: i + 1 }));
+    });
+    setIsDirty(true);
+  }, []);
 
   // ─── 更新 mutation ─────────────────────────────────────────────────────
   const utils = trpc.useUtils();
@@ -379,6 +427,15 @@ export default function DataRefinement() {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={() => setShowAddForm(v => !v)}
+                  className="gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  新增工站
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={handleReset}
                   disabled={!isDirty || updateMutation.isPending}
                   className="gap-1.5"
@@ -398,10 +455,77 @@ export default function DataRefinement() {
               </div>
             </div>
 
+            {/* 新增工站表單 */}
+            {showAddForm && (
+              <Card className="border-emerald-500/30 bg-emerald-500/5">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-emerald-400 flex items-center gap-2">
+                    <Plus className="h-4 w-4" />新增工站至快照
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-3 items-end">
+                    <div className="space-y-1.5 flex-1 min-w-[160px]">
+                      <Label className="text-xs text-muted-foreground">工站名稱 <span className="text-red-400">*</span></Label>
+                      <Input
+                        value={newWsName}
+                        onChange={e => setNewWsName(e.target.value)}
+                        placeholder="例：WS-05"
+                        className="h-9"
+                        onKeyDown={e => e.key === "Enter" && handleAddWorkstation()}
+                      />
+                    </div>
+                    <div className="space-y-1.5 w-36">
+                      <Label className="text-xs text-muted-foreground">週期時間（秒）<span className="text-red-400">*</span></Label>
+                      <Input
+                        type="number"
+                        min="0.1"
+                        step="0.1"
+                        value={newWsCt}
+                        onChange={e => setNewWsCt(e.target.value)}
+                        placeholder="例：45"
+                        className="h-9"
+                        onKeyDown={e => e.key === "Enter" && handleAddWorkstation()}
+                      />
+                    </div>
+                    <div className="space-y-1.5 w-28">
+                      <Label className="text-xs text-muted-foreground">人力（人）<span className="text-red-400">*</span></Label>
+                      <Input
+                        type="number"
+                        min="0.5"
+                        step="0.5"
+                        value={newWsManpower}
+                        onChange={e => setNewWsManpower(e.target.value)}
+                        className="h-9"
+                        onKeyDown={e => e.key === "Enter" && handleAddWorkstation()}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={handleAddWorkstation}
+                        className="h-9 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                      >
+                        <Plus className="h-3.5 w-3.5" />確認新增
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { setShowAddForm(false); setNewWsName(""); setNewWsCt(""); setNewWsManpower("1"); }}
+                        className="h-9"
+                      >
+                        取消
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* 提示 */}
             <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300">
               <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-              <span>直接點擊工站名稱、CT 或人力欄位即可編輯。修改後按「儲存變更」，系統將自動重算平衡率、UPPH 等所有 KPI。此操作不可逆，建議修改前先記錄原始數據。</span>
+              <span>直接點擊工站名稱、CT 或人力欄位即可編輯；點擊「新增工站」可在快照中增加工站。修改後按「儲存變更」，系統將自動重算平衡率、UPPH 等所有 KPI。此操作不可逆，建議修改前先記錄原始數據。</span>
             </div>
 
             {/* 工站表格 */}
@@ -416,6 +540,7 @@ export default function DataRefinement() {
                       <TableHead className="text-xs text-muted-foreground w-28">人力（人）</TableHead>
                       <TableHead className="text-xs text-muted-foreground w-24">增值率</TableHead>
                       <TableHead className="text-xs text-muted-foreground w-20">狀態</TableHead>
+                      <TableHead className="text-xs text-muted-foreground w-12"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -476,6 +601,19 @@ export default function DataRefinement() {
                             )}
                             {taktOk === null && (
                               <span className="text-muted-foreground/50 text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {row.id < 0 && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-red-400/60 hover:text-red-400 hover:bg-red-400/10"
+                                onClick={() => handleRemoveRow(idx)}
+                                title="移除此新增工站"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
                             )}
                           </TableCell>
                         </TableRow>
