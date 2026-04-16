@@ -30,7 +30,7 @@ const menuItems = [
   { icon: Home, label: "首頁總覽", path: "/" },
   { icon: Factory, label: "生產線管理", path: "/lines" },
   { icon: PencilLine, label: "數據修整", path: "/data-refinement" },
-  { icon: FlaskConical, label: "配置模擬", path: "/simulator" },
+  { icon: FlaskConical, label: "配置模擬", path: "/floor-simulator" },
   { icon: BookOpen, label: "使用指南", path: "/guide" },
 ];
 

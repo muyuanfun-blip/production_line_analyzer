@@ -18,6 +18,7 @@ import Login from "./pages/Login";
 import AdminUsers from "./pages/AdminUsers";
 import DataRefinement from "./pages/DataRefinement";
 import SimulationPage from "./pages/SimulationPage";
+import FloorPlanSimulator from "./pages/FloorPlanSimulator";
 import { trpc } from "@/lib/trpc";
 import { useEffect } from "react";
 
@@ -51,6 +52,11 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={Login} />
+      <Route path="/floor-simulator">
+        <AuthGuard>
+          <FloorPlanSimulator />
+        </AuthGuard>
+      </Route>
       <Route>
         <AuthGuard>
           <DashboardLayout>

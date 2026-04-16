@@ -685,7 +685,7 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
       }),
   }),
 
-  // ─── Simulation Scenarios ──────────────────────────────────────────────
+  // ─── Simulation Scenarios ────────────────────────────────────────────────────────
   simulation: router({
     // 列出指定產線的所有情境
     list: publicProcedure
@@ -713,14 +713,14 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         productionLineId: z.number().int().positive(),
         name: z.string().min(1).max(255),
         baseSnapshotId: z.number().int().positive().optional(),
-        workstationsData: z.array(z.object({
-          id: z.number(),
-          name: z.string().min(1),
-          cycleTime: z.number().positive(),
-          manpower: z.number().min(0.5),
-          sequenceOrder: z.number().int().min(0),
-          description: z.string().optional(),
-        })),
+        // 支援舊格式（陣列）和新格式（FloorLayout 物件）
+        workstationsData: z.union([
+          z.array(z.any()),
+          z.object({
+            workstations: z.array(z.any()),
+            connections: z.array(z.any()),
+          }),
+        ]),
         notes: z.string().optional(),
         createdBy: z.number().int().positive().optional(),
       }))
@@ -729,7 +729,7 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
           productionLineId: input.productionLineId,
           name: input.name,
           baseSnapshotId: input.baseSnapshotId ?? null,
-          workstationsData: input.workstationsData,
+          workstationsData: input.workstationsData as any,
           notes: input.notes ?? null,
           createdBy: input.createdBy ?? null,
         });
@@ -742,14 +742,14 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         id: z.number().int().positive(),
         name: z.string().min(1).max(255).optional(),
         notes: z.string().optional(),
-        workstationsData: z.array(z.object({
-          id: z.number(),
-          name: z.string().min(1),
-          cycleTime: z.number().positive(),
-          manpower: z.number().min(0.5),
-          sequenceOrder: z.number().int().min(0),
-          description: z.string().optional(),
-        })).optional(),
+        // 支援舊格式（陣列）和新格式（FloorLayout 物件）
+        workstationsData: z.union([
+          z.array(z.any()),
+          z.object({
+            workstations: z.array(z.any()),
+            connections: z.array(z.any()),
+          }),
+        ]).optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -797,7 +797,23 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
       .mutation(async ({ input }) => {
         const scenario = await getSimulationById(input.scenarioId);
         if (!scenario) throw new Error("Simulation not found");
-        const wsData = scenario.workstationsData as SimWorkstation[];
+        const rawData = scenario.workstationsData as any;
+
+        // 支援舊格式（陣列）和新格式（FloorLayout 物件）
+        const wsArray: any[] = Array.isArray(rawData)
+          ? rawData
+          : (rawData?.workstations ?? []);
+
+        // 將 FloorWs 格式轉換為 SimWorkstation 格式
+        const wsData: SimWorkstation[] = wsArray.map((w: any) => ({
+          id: w.id,
+          name: w.name,
+          // 新格式：工序時間 = max(operatorTime, machineTime)
+          cycleTime: w.cycleTime ?? Math.max(w.operatorTime ?? 0, w.machineTime ?? 0),
+          manpower: w.manpower,
+          sequenceOrder: w.sequenceOrder,
+          description: w.description,
+        }));
 
         // 取得產線現有工站
         const existingWs = await getWorkstationsByLine(scenario.productionLineId);

@@ -1,0 +1,1140 @@
+import {
+  useState, useRef, useEffect, useCallback, useMemo, useReducer,
+} from "react";
+import { useLocation } from "wouter";
+import {
+  ArrowLeft, Plus, Save, Play, Pause, Trash2, Settings2, ZoomIn, ZoomOut,
+  Maximize2, Download, Upload, GitCompare, Loader2, Link2, Link2Off,
+  LayoutGrid, ChevronRight, X, Check, Users, Cpu, Clock, BarChart3,
+  Target, Zap, AlertTriangle, TrendingUp, RotateCcw, FlaskConical,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+export type FloorWs = {
+  id: number;           // 正數=已存在工站, 負數=新增
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  operatorTime: number; // 人員作業時間（秒）
+  machineTime: number;  // 設備作業時間（秒）
+  manpower: number;
+  sequenceOrder: number;
+  description?: string;
+};
+
+export type FloorConnection = {
+  id: string;
+  fromId: number;
+  toId: number;
+  distance?: number;    // 搬運距離（公尺）
+  transportTime?: number; // 搬運時間（秒）
+  label?: string;
+};
+
+export type FloorLayout = {
+  workstations: FloorWs[];
+  connections: FloorConnection[];
+};
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const WS_W = 140;
+const WS_H = 80;
+const GRID = 20;
+const MIN_ZOOM = 0.3;
+const MAX_ZOOM = 2.5;
+
+// ─── Color Helpers ────────────────────────────────────────────────────────────
+function getWsColor(ws: FloorWs, maxCt: number, taktTime?: number): {
+  bg: string; border: string; text: string; badge: string; badgeText: string;
+} {
+  const ct = Math.max(ws.operatorTime, ws.machineTime);
+  if (taktTime && ct > taktTime) return { bg: "#3f1212", border: "#ef4444", text: "#fca5a5", badge: "#ef4444", badgeText: "#fff" };
+  if (ct === maxCt && maxCt > 0) return { bg: "#3f2a0a", border: "#f97316", text: "#fdba74", badge: "#f97316", badgeText: "#fff" };
+  if (taktTime && ct / taktTime >= 0.8) return { bg: "#3f3a0a", border: "#eab308", text: "#fde047", badge: "#eab308", badgeText: "#000" };
+  return { bg: "#0a2a3f", border: "#22d3ee", text: "#a5f3fc", badge: "#22d3ee", badgeText: "#000" };
+}
+
+// ─── Snap to Grid ─────────────────────────────────────────────────────────────
+function snap(v: number): number { return Math.round(v / GRID) * GRID; }
+
+// ─── Bezier Path between two nodes ───────────────────────────────────────────
+function makePath(from: FloorWs, to: FloorWs): string {
+  const fx = from.x + from.width / 2;
+  const fy = from.y + from.height / 2;
+  const tx = to.x + to.width / 2;
+  const ty = to.y + to.height / 2;
+  const dx = tx - fx;
+  const dy = ty - fy;
+  const cx1 = fx + dx * 0.4;
+  const cy1 = fy;
+  const cx2 = tx - dx * 0.4;
+  const cy2 = ty;
+  return `M ${fx} ${fy} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${tx} ${ty}`;
+}
+
+// ─── Arrow Marker ─────────────────────────────────────────────────────────────
+function ArrowDefs() {
+  return (
+    <defs>
+      <marker id="arrow-cyan" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#22d3ee" />
+      </marker>
+      <marker id="arrow-amber" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#f59e0b" />
+      </marker>
+      <marker id="arrow-gray" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#64748b" />
+      </marker>
+      <filter id="glow">
+        <feGaussianBlur stdDeviation="2" result="blur" />
+        <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+      </filter>
+    </defs>
+  );
+}
+
+// ─── KPI Calculator ───────────────────────────────────────────────────────────
+function calcKPI(workstations: FloorWs[], taktTime?: number) {
+  if (!workstations.length) return null;
+  const cts = workstations.map(w => Math.max(w.operatorTime, w.machineTime));
+  const totalCt = cts.reduce((s, t) => s + t, 0);
+  const maxCt = Math.max(...cts);
+  const avgCt = totalCt / cts.length;
+  const bottleneck = workstations.find(w => Math.max(w.operatorTime, w.machineTime) === maxCt);
+  const balanceRate = (totalCt / (maxCt * cts.length)) * 100;
+  const totalManpower = workstations.reduce((s, w) => s + w.manpower, 0);
+  const upph = totalManpower > 0 && maxCt > 0 ? 3600 / maxCt / totalManpower : 0;
+  const capacity = maxCt > 0 ? 3600 / maxCt : 0;
+  const taktStats = taktTime ? {
+    passRate: (cts.filter(ct => ct <= taktTime).length / cts.length) * 100,
+    passCount: cts.filter(ct => ct <= taktTime).length,
+    exceedCount: cts.filter(ct => ct > taktTime).length,
+  } : null;
+  return { totalCt, maxCt, avgCt, bottleneck, balanceRate, totalManpower, upph, capacity, taktStats };
+}
+
+// ─── Animation Dot ────────────────────────────────────────────────────────────
+function AnimDot({ path, duration, color }: { path: string; duration: number; color: string }) {
+  return (
+    <circle r="5" fill={color} opacity="0.9" filter="url(#glow)">
+      <animateMotion dur={`${duration}s`} repeatCount="indefinite" path={path} />
+    </circle>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function FloorPlanSimulator() {
+  const [, setLocation] = useLocation();
+
+  // ── 產線選擇 ──
+  const [selectedLineId, setSelectedLineId] = useState<number | null>(null);
+  const { data: lines } = trpc.productionLine.list.useQuery();
+  const { data: lineDetail } = trpc.productionLine.getById.useQuery(
+    { id: selectedLineId! }, { enabled: !!selectedLineId }
+  );
+  const { data: lineWorkstations } = trpc.workstation.listByLine.useQuery(
+    { productionLineId: selectedLineId! }, { enabled: !!selectedLineId }
+  );
+  const { data: scenarios, refetch: refetchScenarios } = trpc.simulation.list.useQuery(
+    { productionLineId: selectedLineId! }, { enabled: !!selectedLineId }
+  );
+
+  const taktTime = lineDetail?.targetCycleTime
+    ? parseFloat(lineDetail.targetCycleTime.toString()) : undefined;
+
+  // ── 情境管理 ──
+  const [selectedScenarioId, setSelectedScenarioId] = useState<number | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+
+  // ── 佈局狀態 ──
+  const [layout, setLayout] = useState<FloorLayout>({ workstations: [], connections: [] });
+  const [selectedWsId, setSelectedWsId] = useState<number | null>(null);
+  const [connectMode, setConnectMode] = useState(false);
+  const [connectFrom, setConnectFrom] = useState<number | null>(null);
+  const [animating, setAnimating] = useState(true);
+  const [showGrid, setShowGrid] = useState(true);
+
+  // ── 畫布視圖狀態 ──
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 40, y: 40 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStart = useRef({ x: 0, y: 0, px: 0, py: 0 });
+
+  // ── 拖曳狀態 ──
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  // ── Dialogs ──
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showAddWsDialog, setShowAddWsDialog] = useState(false);
+  const [showApplyDialog, setShowApplyDialog] = useState(false);
+  const [showConnDialog, setShowConnDialog] = useState(false);
+  const [editingConn, setEditingConn] = useState<FloorConnection | null>(null);
+  const [newScenarioName, setNewScenarioName] = useState("");
+  const [newWsName, setNewWsName] = useState("");
+  const [newWsOpTime, setNewWsOpTime] = useState("30");
+  const [newWsMcTime, setNewWsMcTime] = useState("0");
+  const [newWsManpower, setNewWsManpower] = useState("1");
+
+  // ── Mutations ──
+  const createMutation = trpc.simulation.create.useMutation({
+    onSuccess: (data) => {
+      toast.success("情境已建立");
+      setShowCreateDialog(false);
+      refetchScenarios();
+      if (data.scenario) {
+        setSelectedScenarioId(data.scenario.id);
+        const saved = data.scenario.workstationsData as any;
+        if (saved?.workstations) {
+          setLayout(saved as FloorLayout);
+        } else {
+          setLayout({ workstations: [], connections: [] });
+        }
+        setIsDirty(false);
+      }
+    },
+    onError: (e) => toast.error(`建立失敗：${e.message}`),
+  });
+
+  const updateMutation = trpc.simulation.update.useMutation({
+    onSuccess: () => {
+      toast.success("佈局已儲存");
+      setIsDirty(false);
+      refetchScenarios();
+    },
+    onError: (e) => toast.error(`儲存失敗：${e.message}`),
+  });
+
+  const applyMutation = trpc.simulation.applyToLine.useMutation({
+    onSuccess: (data) => {
+      toast.success(`已套用！更新 ${data.updated} 站、新增 ${data.added} 站、移除 ${data.removed} 站`);
+      setShowApplyDialog(false);
+    },
+    onError: (e) => toast.error(`套用失敗：${e.message}`),
+  });
+
+  // ── 選取情境 ──
+  const handleSelectScenario = useCallback((id: number) => {
+    if (isDirty && !confirm("有未儲存的變更，確定要切換情境嗎？")) return;
+    const scenario = scenarios?.find(s => s.id === id);
+    if (!scenario) return;
+    setSelectedScenarioId(id);
+    const saved = scenario.workstationsData as any;
+    if (saved?.workstations) {
+      setLayout(saved as FloorLayout);
+    } else {
+      // 舊格式：轉換為平面圖格式
+      const wsArr = Array.isArray(saved) ? saved : [];
+      const converted: FloorWs[] = wsArr.map((w: any, i: number) => ({
+        id: w.id,
+        name: w.name,
+        x: snap(80 + (i % 5) * (WS_W + 60)),
+        y: snap(80 + Math.floor(i / 5) * (WS_H + 80)),
+        width: WS_W,
+        height: WS_H,
+        operatorTime: w.cycleTime ?? 30,
+        machineTime: 0,
+        manpower: w.manpower ?? 1,
+        sequenceOrder: w.sequenceOrder ?? i,
+        description: w.description,
+      }));
+      const conns: FloorConnection[] = converted.slice(0, -1).map((w, i) => ({
+        id: `conn-${w.id}-${converted[i + 1].id}`,
+        fromId: w.id,
+        toId: converted[i + 1].id,
+      }));
+      setLayout({ workstations: converted, connections: conns });
+    }
+    setIsDirty(false);
+    setSelectedWsId(null);
+  }, [isDirty, scenarios]);
+
+  // ── 從產線載入 ──
+  const handleLoadFromLine = useCallback(() => {
+    if (!lineWorkstations?.length) { toast.error("此產線尚無工站"); return; }
+    if (isDirty && !confirm("有未儲存的變更，確定要重新載入？")) return;
+    const wsArr: FloorWs[] = lineWorkstations.map((w, i) => ({
+      id: w.id,
+      name: w.name,
+      x: snap(80 + (i % 5) * (WS_W + 60)),
+      y: snap(80 + Math.floor(i / 5) * (WS_H + 80)),
+      width: WS_W,
+      height: WS_H,
+      operatorTime: parseFloat(w.cycleTime.toString()),
+      machineTime: 0,
+      manpower: parseFloat(w.manpower.toString()),
+      sequenceOrder: w.sequenceOrder,
+      description: w.description ?? undefined,
+    }));
+    const conns: FloorConnection[] = wsArr.slice(0, -1).map((w, i) => ({
+      id: `conn-${w.id}-${wsArr[i + 1].id}`,
+      fromId: w.id,
+      toId: wsArr[i + 1].id,
+    }));
+    setLayout({ workstations: wsArr, connections: conns });
+    setIsDirty(true);
+    toast.success(`已載入 ${wsArr.length} 個工站`);
+  }, [lineWorkstations, isDirty]);
+
+  // ── 建立新情境 ──
+  const handleCreateScenario = () => {
+    if (!selectedLineId || !newScenarioName.trim()) return;
+    createMutation.mutate({
+      productionLineId: selectedLineId,
+      name: newScenarioName.trim(),
+      workstationsData: layout as any,
+    });
+  };
+
+  // ── 儲存佈局 ──
+  const handleSave = () => {
+    if (!selectedScenarioId) return;
+    updateMutation.mutate({
+      id: selectedScenarioId,
+      workstationsData: layout as any,
+    });
+  };
+
+  // ── 新增工站 ──
+  const handleAddWorkstation = () => {
+    const opTime = parseFloat(newWsOpTime);
+    const mcTime = parseFloat(newWsMcTime);
+    const mp = parseFloat(newWsManpower);
+    if (!newWsName.trim() || isNaN(opTime) || opTime < 0) {
+      toast.error("請填寫正確的工站名稱與作業時間");
+      return;
+    }
+    const newId = -(Date.now());
+    const newWs: FloorWs = {
+      id: newId,
+      name: newWsName.trim(),
+      x: snap(80 + (layout.workstations.length % 5) * (WS_W + 60)),
+      y: snap(80 + Math.floor(layout.workstations.length / 5) * (WS_H + 80)),
+      width: WS_W,
+      height: WS_H,
+      operatorTime: opTime,
+      machineTime: isNaN(mcTime) ? 0 : mcTime,
+      manpower: isNaN(mp) || mp < 0.5 ? 1 : mp,
+      sequenceOrder: layout.workstations.length,
+    };
+    setLayout(prev => ({ ...prev, workstations: [...prev.workstations, newWs] }));
+    setIsDirty(true);
+    setNewWsName(""); setNewWsOpTime("30"); setNewWsMcTime("0"); setNewWsManpower("1");
+    setShowAddWsDialog(false);
+    toast.success(`已新增工站「${newWs.name}」`);
+  };
+
+  // ── 刪除工站 ──
+  const handleDeleteWs = (id: number) => {
+    setLayout(prev => ({
+      workstations: prev.workstations.filter(w => w.id !== id),
+      connections: prev.connections.filter(c => c.fromId !== id && c.toId !== id),
+    }));
+    if (selectedWsId === id) setSelectedWsId(null);
+    setIsDirty(true);
+  };
+
+  // ── 更新工站屬性 ──
+  const updateWsProp = (id: number, field: keyof FloorWs, value: number | string) => {
+    setLayout(prev => ({
+      ...prev,
+      workstations: prev.workstations.map(w => w.id === id ? { ...w, [field]: value } : w),
+    }));
+    setIsDirty(true);
+  };
+
+  // ── 連線操作 ──
+  const handleConnectClick = (wsId: number) => {
+    if (!connectMode) return;
+    if (connectFrom === null) {
+      setConnectFrom(wsId);
+      toast.info("請點擊目標工站完成連線");
+    } else if (connectFrom !== wsId) {
+      const connId = `conn-${connectFrom}-${wsId}-${Date.now()}`;
+      const exists = layout.connections.some(c => c.fromId === connectFrom && c.toId === wsId);
+      if (exists) { toast.warning("此連線已存在"); setConnectFrom(null); return; }
+      setLayout(prev => ({
+        ...prev,
+        connections: [...prev.connections, { id: connId, fromId: connectFrom, toId: wsId }],
+      }));
+      setIsDirty(true);
+      setConnectFrom(null);
+      toast.success("連線已建立");
+    } else {
+      setConnectFrom(null);
+    }
+  };
+
+  const handleDeleteConn = (connId: string) => {
+    setLayout(prev => ({ ...prev, connections: prev.connections.filter(c => c.id !== connId) }));
+    setIsDirty(true);
+  };
+
+  const handleUpdateConn = (connId: string, field: keyof FloorConnection, value: any) => {
+    setLayout(prev => ({
+      ...prev,
+      connections: prev.connections.map(c => c.id === connId ? { ...c, [field]: value } : c),
+    }));
+    setIsDirty(true);
+  };
+
+  // ── SVG 座標轉換 ──
+  const svgPoint = useCallback((e: React.MouseEvent | MouseEvent): { x: number; y: number } => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return {
+      x: (e.clientX - rect.left - pan.x) / zoom,
+      y: (e.clientY - rect.top - pan.y) / zoom,
+    };
+  }, [pan, zoom]);
+
+  // ── 拖曳 ──
+  const handleWsMouseDown = useCallback((e: React.MouseEvent, wsId: number) => {
+    if (connectMode) { handleConnectClick(wsId); return; }
+    e.stopPropagation();
+    setSelectedWsId(wsId);
+    const ws = layout.workstations.find(w => w.id === wsId);
+    if (!ws) return;
+    const pt = svgPoint(e);
+    dragOffset.current = { x: pt.x - ws.x, y: pt.y - ws.y };
+    setDraggingId(wsId);
+  }, [connectMode, layout.workstations, svgPoint]);
+
+  useEffect(() => {
+    if (draggingId === null) return;
+    const onMove = (e: MouseEvent) => {
+      const pt = svgPoint(e);
+      const nx = snap(pt.x - dragOffset.current.x);
+      const ny = snap(pt.y - dragOffset.current.y);
+      setLayout(prev => ({
+        ...prev,
+        workstations: prev.workstations.map(w =>
+          w.id === draggingId ? { ...w, x: Math.max(0, nx), y: Math.max(0, ny) } : w
+        ),
+      }));
+    };
+    const onUp = () => {
+      setDraggingId(null);
+      setIsDirty(true);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, [draggingId, svgPoint]);
+
+  // ── 畫布平移 ──
+  const handleSvgMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.target !== svgRef.current && (e.target as Element).tagName !== "rect") return;
+    setIsPanning(true);
+    panStart.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
+  }, [pan]);
+
+  useEffect(() => {
+    if (!isPanning) return;
+    const onMove = (e: MouseEvent) => {
+      setPan({
+        x: panStart.current.px + (e.clientX - panStart.current.x),
+        y: panStart.current.py + (e.clientY - panStart.current.y),
+      });
+    };
+    const onUp = () => setIsPanning(false);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, [isPanning]);
+
+  // ── 滾輪縮放 ──
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setZoom(z => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z * delta)));
+  }, []);
+
+  // ── KPI ──
+  const kpi = useMemo(() => calcKPI(layout.workstations, taktTime), [layout.workstations, taktTime]);
+  const maxCt = kpi?.maxCt ?? 0;
+
+  const selectedWs = layout.workstations.find(w => w.id === selectedWsId);
+
+  // ── 套用至產線的變更清單 ──
+  const applyChanges = useMemo(() => {
+    if (!layout.workstations.length || !lineWorkstations) return [];
+    const changes: Array<{ type: string; name: string; detail: string }> = [];
+    for (const simWs of layout.workstations) {
+      const ct = Math.max(simWs.operatorTime, simWs.machineTime);
+      if (simWs.id > 0) {
+        const existing = lineWorkstations.find(w => w.id === simWs.id);
+        if (existing) {
+          const diffs: string[] = [];
+          if (Math.abs(parseFloat(existing.cycleTime.toString()) - ct) > 0.01) diffs.push(`CT: ${parseFloat(existing.cycleTime.toString()).toFixed(1)}→${ct.toFixed(1)}s`);
+          if (Math.abs(parseFloat(existing.manpower.toString()) - simWs.manpower) > 0.01) diffs.push(`人力: ${parseFloat(existing.manpower.toString())}→${simWs.manpower}人`);
+          if (existing.name !== simWs.name) diffs.push(`名稱: ${existing.name}→${simWs.name}`);
+          if (diffs.length > 0) changes.push({ type: "update", name: simWs.name, detail: diffs.join("、") });
+        } else {
+          changes.push({ type: "add", name: simWs.name, detail: `CT: ${ct}s，人力: ${simWs.manpower}人` });
+        }
+      } else {
+        changes.push({ type: "add", name: simWs.name, detail: `CT: ${ct}s，人力: ${simWs.manpower}人` });
+      }
+    }
+    const simIds = new Set(layout.workstations.filter(w => w.id > 0).map(w => w.id));
+    for (const ew of lineWorkstations) {
+      if (!simIds.has(ew.id)) changes.push({ type: "remove", name: ew.name, detail: "從產線移除" });
+    }
+    return changes;
+  }, [layout.workstations, lineWorkstations]);
+
+  // ── 自動排列 ──
+  const handleAutoLayout = () => {
+    const sorted = [...layout.workstations].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
+    const cols = Math.ceil(Math.sqrt(sorted.length));
+    const updated = sorted.map((w, i) => ({
+      ...w,
+      x: snap(80 + (i % cols) * (WS_W + 60)),
+      y: snap(80 + Math.floor(i / cols) * (WS_H + 80)),
+    }));
+    setLayout(prev => ({ ...prev, workstations: updated }));
+    setIsDirty(true);
+    toast.success("已自動排列工站");
+  };
+
+  // ── 重置視圖 ──
+  const handleResetView = () => { setZoom(1); setPan({ x: 40, y: 40 }); };
+
+  return (
+    <div className="flex flex-col h-screen bg-background overflow-hidden">
+      {/* ── Header ── */}
+      <div className="border-b border-border bg-card/80 backdrop-blur px-4 py-2.5 flex items-center gap-3 shrink-0 z-10">
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLocation("/lines")}>
+          <ArrowLeft className="w-4 h-4" />
+        </Button>
+        <FlaskConical className="w-5 h-5 text-primary" />
+        <span className="font-bold text-foreground">產線平面圖模擬器</span>
+        {isDirty && <Badge variant="outline" className="text-amber-400 border-amber-400/40 text-xs">未儲存</Badge>}
+
+        <div className="flex-1" />
+
+        {/* 產線選擇 */}
+        <Select value={selectedLineId?.toString() ?? ""} onValueChange={v => {
+          setSelectedLineId(parseInt(v));
+          setSelectedScenarioId(null);
+          setLayout({ workstations: [], connections: [] });
+          setIsDirty(false);
+        }}>
+          <SelectTrigger className="w-44 h-8 text-sm">
+            <SelectValue placeholder="選擇產線..." />
+          </SelectTrigger>
+          <SelectContent>
+            {lines?.map(l => <SelectItem key={l.id} value={l.id.toString()}>{l.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
+        {/* 情境選擇 */}
+        {selectedLineId && (
+          <Select value={selectedScenarioId?.toString() ?? ""} onValueChange={v => handleSelectScenario(parseInt(v))}>
+            <SelectTrigger className="w-44 h-8 text-sm">
+              <SelectValue placeholder="選擇情境..." />
+            </SelectTrigger>
+            <SelectContent>
+              {scenarios?.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+
+        {selectedLineId && (
+          <>
+            <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={handleLoadFromLine}>
+              <Upload className="w-3.5 h-3.5" />套用產線參數
+            </Button>
+            <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => setShowCreateDialog(true)}>
+              <Plus className="w-3.5 h-3.5" />新建情境
+            </Button>
+          </>
+        )}
+        {isDirty && selectedScenarioId && (
+          <Button size="sm" className="h-8 gap-1 text-xs" onClick={handleSave} disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            儲存
+          </Button>
+        )}
+      </div>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* ── 左側工具列 ── */}
+        <div className="w-12 border-r border-border bg-card/50 flex flex-col items-center py-3 gap-2 shrink-0">
+          <Button size="icon" variant={connectMode ? "default" : "ghost"} className="h-9 w-9"
+            title={connectMode ? "退出連線模式" : "連線模式"}
+            onClick={() => { setConnectMode(v => !v); setConnectFrom(null); }}>
+            {connectMode ? <Link2Off className="w-4 h-4" /> : <Link2 className="w-4 h-4" />}
+          </Button>
+          <Button size="icon" variant="ghost" className="h-9 w-9" title="新增工站"
+            onClick={() => setShowAddWsDialog(true)}>
+            <Plus className="w-4 h-4" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-9 w-9" title="自動排列"
+            onClick={handleAutoLayout}>
+            <LayoutGrid className="w-4 h-4" />
+          </Button>
+          <div className="flex-1" />
+          <Button size="icon" variant="ghost" className="h-9 w-9" title="縮小"
+            onClick={() => setZoom(z => Math.max(MIN_ZOOM, z * 0.8))}>
+            <ZoomOut className="w-4 h-4" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-9 w-9" title="放大"
+            onClick={() => setZoom(z => Math.min(MAX_ZOOM, z * 1.25))}>
+            <ZoomIn className="w-4 h-4" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-9 w-9" title="重置視圖"
+            onClick={handleResetView}>
+            <Maximize2 className="w-4 h-4" />
+          </Button>
+          <Button size="icon" variant={animating ? "default" : "ghost"} className="h-9 w-9"
+            title={animating ? "暫停動畫" : "播放動畫"}
+            onClick={() => setAnimating(v => !v)}>
+            {animating ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+          </Button>
+          <Button size="icon" variant={showGrid ? "default" : "ghost"} className="h-9 w-9"
+            title="格線" onClick={() => setShowGrid(v => !v)}>
+            <LayoutGrid className="w-3.5 h-3.5 opacity-60" />
+          </Button>
+        </div>
+
+        {/* ── 主畫布 ── */}
+        <div className="flex-1 relative overflow-hidden bg-[#0d1117]"
+          style={{ cursor: connectMode ? "crosshair" : isPanning ? "grabbing" : draggingId ? "grabbing" : "grab" }}>
+
+          {/* 連線模式提示 */}
+          {connectMode && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-primary/90 text-primary-foreground text-xs px-3 py-1.5 rounded-full shadow-lg">
+              {connectFrom === null ? "點擊起始工站" : "點擊目標工站完成連線（再次點擊起始站取消）"}
+            </div>
+          )}
+
+          {/* 縮放比例 */}
+          <div className="absolute bottom-3 left-3 z-10 text-xs text-muted-foreground bg-card/80 px-2 py-1 rounded">
+            {Math.round(zoom * 100)}%
+          </div>
+
+          <svg
+            ref={svgRef}
+            className="w-full h-full select-none"
+            onMouseDown={handleSvgMouseDown}
+            onWheel={handleWheel}
+          >
+            <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
+              {/* 格線 */}
+              {showGrid && (
+                <g opacity="0.15">
+                  {Array.from({ length: 80 }, (_, i) => (
+                    <line key={`v${i}`} x1={i * GRID} y1={0} x2={i * GRID} y2={3000} stroke="#334155" strokeWidth="0.5" />
+                  ))}
+                  {Array.from({ length: 80 }, (_, i) => (
+                    <line key={`h${i}`} x1={0} y1={i * GRID} x2={3000} y2={i * GRID} stroke="#334155" strokeWidth="0.5" />
+                  ))}
+                </g>
+              )}
+
+              <ArrowDefs />
+
+              {/* 物流動線 */}
+              {layout.connections.map(conn => {
+                const fromWs = layout.workstations.find(w => w.id === conn.fromId);
+                const toWs = layout.workstations.find(w => w.id === conn.toId);
+                if (!fromWs || !toWs) return null;
+                const pathD = makePath(fromWs, toWs);
+                const fromCt = Math.max(fromWs.operatorTime, fromWs.machineTime);
+                const animDur = Math.max(0.5, fromCt / 10);
+                const midX = (fromWs.x + fromWs.width / 2 + toWs.x + toWs.width / 2) / 2;
+                const midY = (fromWs.y + fromWs.height / 2 + toWs.y + toWs.height / 2) / 2;
+                return (
+                  <g key={conn.id}>
+                    {/* 底部寬路徑（點擊區域） */}
+                    <path d={pathD} fill="none" stroke="transparent" strokeWidth="12"
+                      className="cursor-pointer"
+                      onClick={() => { setEditingConn(conn); setShowConnDialog(true); }} />
+                    {/* 可見路徑 */}
+                    <path d={pathD} fill="none" stroke="#22d3ee" strokeWidth="1.5"
+                      strokeDasharray="6 3" opacity="0.6" markerEnd="url(#arrow-cyan)" />
+                    {/* 搬運時間標籤 */}
+                    {conn.transportTime && (
+                      <text x={midX} y={midY - 8} textAnchor="middle" fill="#64748b" fontSize="10">
+                        {conn.transportTime}s
+                      </text>
+                    )}
+                    {conn.distance && (
+                      <text x={midX} y={midY + 14} textAnchor="middle" fill="#64748b" fontSize="10">
+                        {conn.distance}m
+                      </text>
+                    )}
+                    {/* 動畫小點 */}
+                    {animating && <AnimDot path={pathD} duration={animDur} color="#22d3ee" />}
+                  </g>
+                );
+              })}
+
+              {/* 工站節點 */}
+              {layout.workstations.map(ws => {
+                const ct = Math.max(ws.operatorTime, ws.machineTime);
+                const colors = getWsColor(ws, maxCt, taktTime);
+                const isSelected = selectedWsId === ws.id;
+                const isConnFrom = connectFrom === ws.id;
+                const ctRatio = maxCt > 0 ? ct / maxCt : 0;
+                const barW = (ws.width - 16) * ctRatio;
+
+                return (
+                  <g key={ws.id}
+                    transform={`translate(${ws.x},${ws.y})`}
+                    onMouseDown={e => handleWsMouseDown(e, ws.id)}
+                    style={{ cursor: connectMode ? "pointer" : draggingId === ws.id ? "grabbing" : "grab" }}>
+                    {/* 選取光暈 */}
+                    {(isSelected || isConnFrom) && (
+                      <rect x={-4} y={-4} width={ws.width + 8} height={ws.height + 8}
+                        rx={12} fill="none"
+                        stroke={isConnFrom ? "#a78bfa" : "#38bdf8"}
+                        strokeWidth="2" strokeDasharray={isConnFrom ? "6 3" : "none"}
+                        opacity="0.8" />
+                    )}
+                    {/* 主體 */}
+                    <rect x={0} y={0} width={ws.width} height={ws.height}
+                      rx={8} fill={colors.bg} stroke={colors.border} strokeWidth="1.5" />
+                    {/* CT 進度條 */}
+                    <rect x={8} y={ws.height - 12} width={ws.width - 16} height={6} rx={3} fill="#1e293b" />
+                    <rect x={8} y={ws.height - 12} width={barW} height={6} rx={3} fill={colors.border} opacity="0.8" />
+                    {/* 工站名稱 */}
+                    <text x={ws.width / 2} y={22} textAnchor="middle"
+                      fill={colors.text} fontSize="12" fontWeight="600"
+                      style={{ userSelect: "none" }}>
+                      {ws.name.length > 14 ? ws.name.substring(0, 14) + "…" : ws.name}
+                    </text>
+                    {/* CT 值 */}
+                    <text x={ws.width / 2} y={40} textAnchor="middle"
+                      fill={colors.border} fontSize="13" fontWeight="700"
+                      style={{ userSelect: "none" }}>
+                      {ct.toFixed(1)}s
+                    </text>
+                    {/* 人員/設備圖示 */}
+                    <text x={10} y={58} fill="#64748b" fontSize="10" style={{ userSelect: "none" }}>
+                      👤{ws.manpower}
+                    </text>
+                    {ws.machineTime > 0 && (
+                      <text x={ws.width / 2 + 4} y={58} fill="#64748b" fontSize="10" style={{ userSelect: "none" }}>
+                        ⚙️{ws.machineTime.toFixed(0)}s
+                      </text>
+                    )}
+                    {/* 序號徽章 */}
+                    <rect x={ws.width - 22} y={4} width={18} height={16} rx={4} fill={colors.badge} />
+                    <text x={ws.width - 13} y={15} textAnchor="middle"
+                      fill={colors.badgeText} fontSize="9" fontWeight="700"
+                      style={{ userSelect: "none" }}>
+                      {ws.sequenceOrder + 1}
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
+          </svg>
+
+          {/* 空畫布提示 */}
+          {!layout.workstations.length && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <FlaskConical className="w-16 h-16 text-muted-foreground/20 mb-4" />
+              <p className="text-muted-foreground/50 text-sm">請選擇產線並點擊「套用產線參數」，或手動新增工站</p>
+            </div>
+          )}
+        </div>
+
+        {/* ── 右側面板 ── */}
+        <div className="w-72 border-l border-border bg-card/50 flex flex-col overflow-hidden shrink-0">
+          {/* KPI 儀表板 */}
+          {kpi && (
+            <div className="border-b border-border p-3 space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">即時 KPI</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { icon: BarChart3, label: "平衡率", value: `${kpi.balanceRate.toFixed(1)}%`, color: kpi.balanceRate >= 85 ? "text-emerald-400" : kpi.balanceRate >= 70 ? "text-amber-400" : "text-red-400" },
+                  { icon: AlertTriangle, label: "瓶頸 CT", value: `${kpi.maxCt.toFixed(1)}s`, color: "text-orange-400" },
+                  { icon: Zap, label: "UPPH", value: kpi.upph.toFixed(2), color: "text-amber-400" },
+                  { icon: TrendingUp, label: "產能", value: `${kpi.capacity.toFixed(0)}/h`, color: "text-cyan-400" },
+                ].map(({ icon: Icon, label, value, color }) => (
+                  <div key={label} className="bg-background/50 rounded-lg p-2">
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <Icon className={`w-3 h-3 ${color}`} />
+                      <span className="text-xs text-muted-foreground">{label}</span>
+                    </div>
+                    <p className={`text-base font-bold ${color}`}>{value}</p>
+                  </div>
+                ))}
+              </div>
+              {kpi.taktStats && (
+                <div className="bg-background/50 rounded-lg p-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Target className="w-3 h-3 text-violet-400" />Takt 達標率
+                    </span>
+                    <span className={`text-sm font-bold ${kpi.taktStats.passRate >= 80 ? "text-emerald-400" : "text-red-400"}`}>
+                      {kpi.taktStats.passRate.toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${kpi.taktStats.passRate >= 80 ? "bg-emerald-400" : "bg-red-400"}`}
+                      style={{ width: `${kpi.taktStats.passRate}%` }} />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {kpi.taktStats.passCount} 站達標 / {kpi.taktStats.exceedCount} 站超出
+                    {taktTime && ` (Takt: ${taktTime}s)`}
+                  </p>
+                </div>
+              )}
+              {kpi.bottleneck && (
+                <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-2">
+                  <p className="text-xs text-orange-400 font-medium">⚠ 瓶頸：{kpi.bottleneck.name}</p>
+                  <p className="text-xs text-muted-foreground">CT {kpi.maxCt.toFixed(1)}s（均值 {kpi.avgCt.toFixed(1)}s）</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 工站屬性面板 */}
+          <div className="flex-1 overflow-y-auto p-3">
+            {selectedWs ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-foreground">工站屬性</p>
+                  <div className="flex gap-1">
+                    <Button size="icon" variant="ghost" className="h-6 w-6 text-red-400"
+                      onClick={() => { if (confirm(`確定刪除「${selectedWs.name}」？`)) handleDeleteWs(selectedWs.id); }}>
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-6 w-6"
+                      onClick={() => setSelectedWsId(null)}>
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* 名稱 */}
+                <div>
+                  <Label className="text-xs text-muted-foreground">工站名稱</Label>
+                  <Input value={selectedWs.name} className="mt-1 h-8 text-sm"
+                    onChange={e => updateWsProp(selectedWs.id, "name", e.target.value)} />
+                </div>
+
+                {/* 人員作業時間 */}
+                <div className="bg-background/50 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-blue-400" />
+                    <Label className="text-xs font-medium text-blue-400">人員作業時間</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input type="number" min="0" step="0.1"
+                      value={selectedWs.operatorTime}
+                      className="h-7 text-sm w-20"
+                      onChange={e => updateWsProp(selectedWs.id, "operatorTime", parseFloat(e.target.value) || 0)} />
+                    <span className="text-xs text-muted-foreground">秒</span>
+                  </div>
+                  <Slider
+                    value={[selectedWs.operatorTime]}
+                    min={0} max={Math.max(300, selectedWs.operatorTime * 1.5)} step={0.5}
+                    onValueChange={([v]) => updateWsProp(selectedWs.id, "operatorTime", v)}
+                    className="mt-1" />
+                </div>
+
+                {/* 設備作業時間 */}
+                <div className="bg-background/50 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Cpu className="w-3.5 h-3.5 text-violet-400" />
+                    <Label className="text-xs font-medium text-violet-400">設備作業時間</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input type="number" min="0" step="0.1"
+                      value={selectedWs.machineTime}
+                      className="h-7 text-sm w-20"
+                      onChange={e => updateWsProp(selectedWs.id, "machineTime", parseFloat(e.target.value) || 0)} />
+                    <span className="text-xs text-muted-foreground">秒</span>
+                  </div>
+                  <Slider
+                    value={[selectedWs.machineTime]}
+                    min={0} max={Math.max(300, selectedWs.machineTime * 1.5)} step={0.5}
+                    onValueChange={([v]) => updateWsProp(selectedWs.id, "machineTime", v)}
+                    className="mt-1" />
+                  <p className="text-xs text-muted-foreground">
+                    工序時間 = max(人員, 設備) = <strong className="text-foreground">{Math.max(selectedWs.operatorTime, selectedWs.machineTime).toFixed(1)}s</strong>
+                  </p>
+                </div>
+
+                {/* 人力 */}
+                <div>
+                  <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Users className="w-3 h-3" />人力配置（人）
+                  </Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Input type="number" min="0.5" step="0.5"
+                      value={selectedWs.manpower}
+                      className="h-7 text-sm w-20"
+                      onChange={e => updateWsProp(selectedWs.id, "manpower", parseFloat(e.target.value) || 1)} />
+                    <span className="text-xs text-muted-foreground">人</span>
+                  </div>
+                </div>
+
+                {/* 排序 */}
+                <div>
+                  <Label className="text-xs text-muted-foreground">工站序號</Label>
+                  <Input type="number" min="0" step="1"
+                    value={selectedWs.sequenceOrder + 1}
+                    className="h-7 text-sm mt-1 w-20"
+                    onChange={e => updateWsProp(selectedWs.id, "sequenceOrder", (parseInt(e.target.value) || 1) - 1)} />
+                </div>
+
+                {/* 座標 */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">X 座標</Label>
+                    <Input type="number" value={selectedWs.x} className="h-7 text-sm mt-1"
+                      onChange={e => updateWsProp(selectedWs.id, "x", snap(parseInt(e.target.value) || 0))} />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Y 座標</Label>
+                    <Input type="number" value={selectedWs.y} className="h-7 text-sm mt-1"
+                      onChange={e => updateWsProp(selectedWs.id, "y", snap(parseInt(e.target.value) || 0))} />
+                  </div>
+                </div>
+
+                {/* 相關連線 */}
+                {layout.connections.filter(c => c.fromId === selectedWs.id || c.toId === selectedWs.id).length > 0 && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">物流連線</Label>
+                    <div className="space-y-1 mt-1">
+                      {layout.connections
+                        .filter(c => c.fromId === selectedWs.id || c.toId === selectedWs.id)
+                        .map(conn => {
+                          const other = layout.workstations.find(w =>
+                            w.id === (conn.fromId === selectedWs.id ? conn.toId : conn.fromId)
+                          );
+                          return (
+                            <div key={conn.id} className="flex items-center justify-between bg-background/50 rounded p-1.5 text-xs">
+                              <span className="text-muted-foreground">
+                                {conn.fromId === selectedWs.id ? "→" : "←"} {other?.name ?? "?"}
+                                {conn.distance ? ` (${conn.distance}m)` : ""}
+                                {conn.transportTime ? ` ${conn.transportTime}s` : ""}
+                              </span>
+                              <Button size="icon" variant="ghost" className="h-5 w-5 text-red-400"
+                                onClick={() => handleDeleteConn(conn.id)}>
+                                <X className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 套用至產線 */}
+                <Button size="sm" variant="outline" className="w-full h-8 gap-1 text-amber-400 border-amber-400/40 hover:bg-amber-400/10 text-xs mt-2"
+                  onClick={() => setShowApplyDialog(true)}>
+                  <Play className="w-3.5 h-3.5" />套用至實際產線
+                </Button>
+              </div>
+            ) : (
+              <div className="text-center text-muted-foreground py-8">
+                <Settings2 className="w-10 h-10 mx-auto mb-2 opacity-20" />
+                <p className="text-xs">點擊工站查看屬性</p>
+                <p className="text-xs mt-1 opacity-60">拖曳工站調整位置</p>
+                <p className="text-xs mt-1 opacity-60">點擊工具列「連線」建立物流動線</p>
+              </div>
+            )}
+          </div>
+
+          {/* 工站列表 */}
+          {layout.workstations.length > 0 && (
+            <div className="border-t border-border p-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                工站列表 ({layout.workstations.length})
+              </p>
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {[...layout.workstations]
+                  .sort((a, b) => a.sequenceOrder - b.sequenceOrder)
+                  .map(ws => {
+                    const ct = Math.max(ws.operatorTime, ws.machineTime);
+                    const colors = getWsColor(ws, maxCt, taktTime);
+                    return (
+                      <div key={ws.id}
+                        className={`flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer transition-colors text-xs ${selectedWsId === ws.id ? "bg-primary/20 border border-primary/40" : "hover:bg-muted/30"}`}
+                        onClick={() => setSelectedWsId(ws.id)}>
+                        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: colors.border }} />
+                        <span className="flex-1 truncate font-medium">{ws.name}</span>
+                        <span className="font-mono shrink-0" style={{ color: colors.border }}>{ct.toFixed(1)}s</span>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Dialog: 建立情境 ── */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>儲存為新情境</DialogTitle>
+            <DialogDescription>將目前的平面圖佈局儲存為新的模擬情境</DialogDescription>
+          </DialogHeader>
+          <div>
+            <Label>情境名稱</Label>
+            <Input value={newScenarioName} onChange={e => setNewScenarioName(e.target.value)}
+              placeholder="例：優化方案 A" className="mt-1" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>取消</Button>
+            <Button onClick={handleCreateScenario} disabled={!newScenarioName.trim() || createMutation.isPending}>
+              {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}建立
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: 新增工站 ── */}
+      <Dialog open={showAddWsDialog} onOpenChange={setShowAddWsDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>新增工站</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>工站名稱</Label>
+              <Input value={newWsName} onChange={e => setNewWsName(e.target.value)} placeholder="例：ST-01" className="mt-1" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="flex items-center gap-1"><Users className="w-3 h-3 text-blue-400" />人員作業時間（秒）</Label>
+                <Input type="number" min="0" step="0.1" value={newWsOpTime} onChange={e => setNewWsOpTime(e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label className="flex items-center gap-1"><Cpu className="w-3 h-3 text-violet-400" />設備作業時間（秒）</Label>
+                <Input type="number" min="0" step="0.1" value={newWsMcTime} onChange={e => setNewWsMcTime(e.target.value)} className="mt-1" />
+              </div>
+            </div>
+            <div>
+              <Label>人力（人）</Label>
+              <Input type="number" min="0.5" step="0.5" value={newWsManpower} onChange={e => setNewWsManpower(e.target.value)} className="mt-1" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddWsDialog(false)}>取消</Button>
+            <Button onClick={handleAddWorkstation}>新增</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: 連線屬性 ── */}
+      <Dialog open={showConnDialog} onOpenChange={setShowConnDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>物流連線屬性</DialogTitle>
+            {editingConn && (
+              <DialogDescription>
+                {layout.workstations.find(w => w.id === editingConn.fromId)?.name} →{" "}
+                {layout.workstations.find(w => w.id === editingConn.toId)?.name}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          {editingConn && (
+            <div className="space-y-3">
+              <div>
+                <Label>搬運距離（公尺）</Label>
+                <Input type="number" min="0" step="0.1"
+                  value={editingConn.distance ?? ""}
+                  placeholder="選填"
+                  className="mt-1"
+                  onChange={e => {
+                    const v = parseFloat(e.target.value);
+                    setEditingConn(prev => prev ? { ...prev, distance: isNaN(v) ? undefined : v } : null);
+                  }} />
+              </div>
+              <div>
+                <Label>搬運時間（秒）</Label>
+                <Input type="number" min="0" step="0.1"
+                  value={editingConn.transportTime ?? ""}
+                  placeholder="選填"
+                  className="mt-1"
+                  onChange={e => {
+                    const v = parseFloat(e.target.value);
+                    setEditingConn(prev => prev ? { ...prev, transportTime: isNaN(v) ? undefined : v } : null);
+                  }} />
+              </div>
+              <div>
+                <Label>標籤</Label>
+                <Input value={editingConn.label ?? ""} placeholder="選填" className="mt-1"
+                  onChange={e => setEditingConn(prev => prev ? { ...prev, label: e.target.value } : null)} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="destructive" size="sm" onClick={() => {
+              if (editingConn) { handleDeleteConn(editingConn.id); setShowConnDialog(false); }
+            }}>
+              <Trash2 className="w-3.5 h-3.5 mr-1" />刪除連線
+            </Button>
+            <Button variant="outline" onClick={() => setShowConnDialog(false)}>取消</Button>
+            <Button onClick={() => {
+              if (editingConn) {
+                handleUpdateConn(editingConn.id, "distance", editingConn.distance);
+                handleUpdateConn(editingConn.id, "transportTime", editingConn.transportTime);
+                handleUpdateConn(editingConn.id, "label", editingConn.label);
+                setShowConnDialog(false);
+                toast.success("連線屬性已更新");
+              }
+            }}>儲存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: 套用至產線 ── */}
+      <Dialog open={showApplyDialog} onOpenChange={setShowApplyDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Play className="w-5 h-5 text-amber-400" />套用至實際產線
+            </DialogTitle>
+            <DialogDescription>以下變更將寫入實際工站資料，此操作不可撤銷。</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-60 overflow-y-auto space-y-1.5">
+            {applyChanges.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">無任何變更</p>
+            ) : applyChanges.map((c, i) => (
+              <div key={i} className={`flex items-start gap-2 p-2 rounded-lg text-sm ${c.type === "add" ? "bg-emerald-500/10 border border-emerald-500/20" : c.type === "remove" ? "bg-red-500/10 border border-red-500/20" : "bg-blue-500/10 border border-blue-500/20"}`}>
+                {c.type === "add" ? <Plus className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" /> :
+                  c.type === "remove" ? <Trash2 className="w-4 h-4 text-red-400 mt-0.5 shrink-0" /> :
+                    <Settings2 className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />}
+                <div><span className="font-medium">{c.name}</span><span className="text-muted-foreground ml-2">{c.detail}</span></div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowApplyDialog(false)}>取消</Button>
+            <Button className="bg-amber-500 hover:bg-amber-600 text-white"
+              onClick={() => selectedScenarioId && applyMutation.mutate({ scenarioId: selectedScenarioId })}
+              disabled={applyMutation.isPending || applyChanges.length === 0}>
+              {applyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              確認套用（{applyChanges.length} 項）
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

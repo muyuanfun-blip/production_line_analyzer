@@ -304,3 +304,20 @@
 - [x] 前端：在 App.tsx 注冊 /simulator 路由
 - [x] 前端：在側邊欄新增「配置模擬」導覽項目
 - [x] 撰寫 simulation procedures 的 Vitest 測試（17 項全通過）
+
+## 視覺化產線平面圖模擬器（重新設計）
+- [x] 後端：擴充 simulation_scenarios workstationsData JSON 結構，新增 x/y 座標、operatorTime、machineTime、connections（物流連線陣列）
+- [x] 後端：更新 simulation create/update/applyToLine procedures 支援 FloorLayout 格式
+- [x] 前端：建立 FloorPlanSimulator.tsx 核心頁面
+- [x] 前端：SVG 平面圖畫布（可縮放、平移、格線背景）
+- [x] 前端：工站節點元件（可拖曳、顯示名稱/CT/人力、顏色依狀態）
+- [x] 前端：物流動線箭頭（依 connections 繪製 SVG 路徑，顯示搜運距離/時間）
+- [x] 前端：物流動線即時動畫（小圓點沿箭頭移動，速度依 CT 比例）
+- [x] 前端：工站屬性面板（點擊工站後展開，分別設定人員作業時間/設備作業時間）
+- [x] 前端：CT 自動計算（max(operatorTime, machineTime) 為工序時間）
+- [x] 前端：拖曳工站後即時更新物流動線位置
+- [x] 前端：即時 KPI 儀表板（平衡率、瓶頃、UPPH、Takt 達標率）
+- [x] 前端：套用現有產線參數按鈕（載入 workstations 並自動排列到畫布）
+- [x] 前端：儲存佈局按鈕（儲存座標與連線至情境）
+- [x] 前端：在 App.tsx 新增 /floor-simulator 路由，側邊欄連結對準
+- [x] 撰寫 FloorPlanSimulator 相關 Vitest 測試（100 項全通過）
