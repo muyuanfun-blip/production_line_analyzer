@@ -360,3 +360,29 @@
 - [ ] 工站屬性面板顯示「上游搬運時間」
 - [ ] 平衡圖柱狀圖疊加搬運時間區塊（不同顏色，顯示 CT + 搬運時間的合計）
 - [ ] 拖曳工站後，KPI 儀表板與平衡圖立即反映新的搬運時間
+
+## 工站人力與設備數量配置視覺化（FloorPlanSimulator 擴充）
+
+### 資料結構擴充
+- [x] FloorWs 型別新增 operatorCount（人員數量，預設 1）、machineCount（設備數量，預設 1）
+- [x] 套用產線參數時，從 workstation.manpower 帶入 operatorCount，machineCount 預設 1
+- [x] 建立情境時，operatorCount/machineCount 帶入預設値
+
+### 工站屬性面板
+- [x] 工站屬性面板新增「人員數量」輸入欄位（整數，min 1）
+- [x] 工站屬性面板新增「設備數量」輸入欄位（整數，min 0，0 表示純人工）
+- [x] 工站屬性面板顯示「人均作業時間」（operatorTime / operatorCount）
+- [x] 工站屬性面板顯示「設備利用率」（machineTime / (operatorTime × machineCount)）
+
+### 工站節點視覺化
+- [x] 工站節點底部顯示人員圖示列（圓形圖示，最多顯示 5 個，超過顯示 +N）
+- [x] 工站節點底部顯示設備圖示列（方形圖示，最多顯示 3 個，超過顯示 +N）
+- [x] 人員圖示顏色依負載狀態（人均 CT 超過 Takt → 紅色，正常 → 綠色）
+- [x] 設備圖示顏色依利用率（>90% → 紅色，>70% → 黃色，正常 → 藍色）
+- [x] 工站節點高度自動調整以容納人員/設備圖示列
+
+### KPI 擴充
+- [x] KPI 面板新增「總人員數」（所有工站 operatorCount 加總）
+- [x] KPI 面板新增「總設備數」（所有工站 machineCount 加總）
+- [x] KPI 面板新增「人均產能」（UPPH = 3600 / maxCT / totalOperatorCount）
+- [x] KPI 面板新增「設備利用率」（平均設備利用率）

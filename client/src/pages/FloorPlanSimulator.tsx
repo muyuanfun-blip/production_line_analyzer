@@ -33,6 +33,8 @@ export type FloorWs = {
   operatorTime: number; // 人員作業時間（秒）
   machineTime: number;  // 設備作業時間（秒）
   manpower: number;
+  operatorCount: number; // 人員數量（配置人數）
+  machineCount: number;  // 設備數量（0=純人工）
   sequenceOrder: number;
   description?: string;
 };
@@ -146,8 +148,16 @@ function calcKPI(workstations: FloorWs[], connections: FloorConnection[], scaleP
   const bottleneck = workstations.find(w => Math.max(w.operatorTime, w.machineTime) === maxCt);
   const balanceRate = (totalCt / (maxCt * cts.length)) * 100;
   const totalManpower = workstations.reduce((s, w) => s + w.manpower, 0);
+  const totalOperators = workstations.reduce((s, w) => s + (w.operatorCount ?? 1), 0);
+  const totalMachines = workstations.reduce((s, w) => s + (w.machineCount ?? 1), 0);
   const upph = totalManpower > 0 && maxCt > 0 ? 3600 / maxCt / totalManpower : 0;
+  const upphPerOperator = totalOperators > 0 && maxCt > 0 ? 3600 / maxCt / totalOperators : 0;
   const capacity = maxCt > 0 ? 3600 / maxCt : 0;
+  // 設備利用率：各工站 machineTime / (operatorTime * machineCount) 的加權平均
+  const machineUtilWs = workstations.filter(w => (w.machineCount ?? 1) > 0 && w.machineTime > 0 && w.operatorTime > 0);
+  const avgMachineUtil = machineUtilWs.length > 0
+    ? machineUtilWs.reduce((s, w) => s + Math.min(1, w.machineTime / (w.operatorTime * (w.machineCount ?? 1))), 0) / machineUtilWs.length * 100
+    : 0;
   const taktStats = taktTime ? {
     passRate: (cts.filter(ct => ct <= taktTime).length / cts.length) * 100,
     passCount: cts.filter(ct => ct <= taktTime).length,
@@ -159,7 +169,7 @@ function calcKPI(workstations: FloorWs[], connections: FloorConnection[], scaleP
   const avgTransportTime = transportTimes.length > 0 ? totalTransportTime / transportTimes.length : 0;
   const logisticsWaitRatio = (totalCt + totalTransportTime) > 0
     ? (totalTransportTime / (totalCt + totalTransportTime)) * 100 : 0;
-  return { totalCt, maxCt, avgCt, bottleneck, balanceRate, totalManpower, upph, capacity, taktStats, avgTransportTime, logisticsWaitRatio };
+  return { totalCt, maxCt, avgCt, bottleneck, balanceRate, totalManpower, totalOperators, totalMachines, upph, upphPerOperator, capacity, avgMachineUtil, taktStats, avgTransportTime, logisticsWaitRatio };
 }
 
 // ─── Animation Dot ────────────────────────────────────────────────────────────
@@ -281,10 +291,12 @@ export default function FloorPlanSimulator() {
         x: snap(80 + (i % 5) * (WS_W + 60)),
         y: snap(80 + Math.floor(i / 5) * (WS_H + 80)),
         width: WS_W,
-        height: WS_H,
-        operatorTime: w.cycleTime ?? 30,
-        machineTime: 0,
+        height: (w.machineCount ?? 1) > 0 ? 96 : 80,
+        operatorTime: w.cycleTime ?? w.operatorTime ?? 30,
+        machineTime: w.machineTime ?? 0,
         manpower: w.manpower ?? 1,
+        operatorCount: w.operatorCount ?? Math.max(1, Math.round(w.manpower ?? 1)),
+        machineCount: w.machineCount ?? 1,
         sequenceOrder: w.sequenceOrder ?? i,
         description: w.description,
       }));
@@ -311,10 +323,12 @@ export default function FloorPlanSimulator() {
       x: snap(80 + (i % 5) * (WS_W + 60)),
       y: snap(80 + Math.floor(i / 5) * (WS_H + 80)),
       width: WS_W,
-      height: WS_H,
+      height: 96, // 預設有 1 台設備
       operatorTime: parseFloat(w.cycleTime.toString()),
       machineTime: 0,
       manpower: parseFloat(w.manpower.toString()),
+      operatorCount: Math.max(1, Math.round(parseFloat(w.manpower.toString()))),
+      machineCount: 1,
       sequenceOrder: w.sequenceOrder,
       description: w.description ?? undefined,
     }));
@@ -365,10 +379,12 @@ export default function FloorPlanSimulator() {
       x: snap(80 + (layout.workstations.length % 5) * (WS_W + 60)),
       y: snap(80 + Math.floor(layout.workstations.length / 5) * (WS_H + 80)),
       width: WS_W,
-      height: WS_H,
+      height: 96, // 預設有 1 台設備
       operatorTime: opTime,
       machineTime: isNaN(mcTime) ? 0 : mcTime,
       manpower: isNaN(mp) || mp < 0.5 ? 1 : mp,
+      operatorCount: 1,
+      machineCount: 1,
       sequenceOrder: layout.workstations.length,
     };
     setLayout(prev => ({ ...prev, workstations: [...prev.workstations, newWs] }));
@@ -388,11 +404,22 @@ export default function FloorPlanSimulator() {
     setIsDirty(true);
   };
 
+  // ── 計算工站節點高度（依 machineCount 動態調整）──
+  const calcWsHeight = (mcCnt: number) => mcCnt > 0 ? 96 : 80;
+
   // ── 更新工站屬性 ──
   const updateWsProp = (id: number, field: keyof FloorWs, value: number | string) => {
     setLayout(prev => ({
       ...prev,
-      workstations: prev.workstations.map(w => w.id === id ? { ...w, [field]: value } : w),
+      workstations: prev.workstations.map(w => {
+        if (w.id !== id) return w;
+        const updated = { ...w, [field]: value };
+        // 當 machineCount 變更時，同步調整節點高度
+        if (field === 'machineCount') {
+          updated.height = calcWsHeight(typeof value === 'number' ? value : parseInt(value as string) || 0);
+        }
+        return updated;
+      }),
     }));
     setIsDirty(true);
   };
@@ -793,15 +820,63 @@ export default function FloorPlanSimulator() {
                       style={{ userSelect: "none" }}>
                       {ct.toFixed(1)}s
                     </text>
-                    {/* 人員/設備圖示 */}
-                    <text x={10} y={58} fill="#64748b" fontSize="10" style={{ userSelect: "none" }}>
-                      👤{ws.manpower}
-                    </text>
-                    {ws.machineTime > 0 && (
-                      <text x={ws.width / 2 + 4} y={58} fill="#64748b" fontSize="10" style={{ userSelect: "none" }}>
-                        ⚙️{ws.machineTime.toFixed(0)}s
-                      </text>
-                    )}
+                    {/* 人員與設備圖示列 */}
+                    {(() => {
+                      const opCnt = ws.operatorCount ?? 1;
+                      const mcCnt = ws.machineCount ?? 1;
+                      const perOpCt = opCnt > 0 ? ws.operatorTime / opCnt : ws.operatorTime;
+                      const opOverload = (taktTime ?? 0) > 0 && perOpCt > (taktTime ?? 0);
+                      const opColor = opOverload ? '#f87171' : '#34d399';
+                      const machUtil = mcCnt > 0 && ws.operatorTime > 0 ? ws.machineTime / (ws.operatorTime * mcCnt) : 0;
+                      const mcColor = machUtil > 0.9 ? '#f87171' : machUtil > 0.7 ? '#fbbf24' : '#60a5fa';
+                      const maxShow = 5;
+                      const showOp = Math.min(opCnt, maxShow);
+                      const extraOp = opCnt > maxShow ? opCnt - maxShow : 0;
+                      const maxShowMc = 3;
+                      const showMc = Math.min(mcCnt, maxShowMc);
+                      const extraMc = mcCnt > maxShowMc ? mcCnt - maxShowMc : 0;
+                      // 人員圖示列起始 Y：在名稱+CT 之後，進度條之前
+                      const opIconY = 50;
+                      const mcIconY = opIconY + 16; // 設備圖示列在人員圖示列下方
+                      return (
+                        <g>
+                          {/* 人員圖示列 */}
+                          {Array.from({ length: showOp }).map((_, idx) => (
+                            <circle key={`op-${idx}`}
+                              cx={10 + idx * 13} cy={opIconY} r={5}
+                              fill={opColor} opacity={0.85} />
+                          ))}
+                          {extraOp > 0 && (
+                            <text x={10 + showOp * 13} y={opIconY + 4} fill={opColor} fontSize="8" fontWeight="600">
+                              +{extraOp}
+                            </text>
+                          )}
+                          <text x={10 + showOp * 13 + (extraOp > 0 ? 14 : 4)} y={opIconY + 4}
+                            fill="#94a3b8" fontSize="8">
+                            {opCnt}人
+                          </text>
+                          {/* 設備圖示列 */}
+                          {mcCnt > 0 && (
+                            <g>
+                              {Array.from({ length: showMc }).map((_, idx) => (
+                                <rect key={`mc-${idx}`}
+                                  x={10 + idx * 13} y={mcIconY - 6} width={10} height={8}
+                                  rx={2} fill={mcColor} opacity={0.85} />
+                              ))}
+                              {extraMc > 0 && (
+                                <text x={10 + showMc * 13} y={mcIconY + 2} fill={mcColor} fontSize="8" fontWeight="600">
+                                  +{extraMc}
+                                </text>
+                              )}
+                              <text x={10 + showMc * 13 + (extraMc > 0 ? 14 : 4)} y={mcIconY + 2}
+                                fill="#94a3b8" fontSize="8">
+                                {mcCnt}台
+                              </text>
+                            </g>
+                          )}
+                        </g>
+                      );
+                    })()}
                     {/* 序號徽章 */}
                     <rect x={ws.width - 22} y={4} width={18} height={16} rx={4} fill={colors.badge} />
                     <text x={ws.width - 13} y={15} textAnchor="middle"
@@ -893,6 +968,41 @@ export default function FloorPlanSimulator() {
                   </div>
                 </div>
               )}
+              {/* 人力與設備統計 */}
+              <div className="bg-background/50 rounded-lg p-2 space-y-1">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">人力與設備</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-xs text-muted-foreground">總人員數</p>
+                    <p className="text-sm font-bold text-emerald-400">{kpi.totalOperators}人</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">總設備數</p>
+                    <p className="text-sm font-bold text-blue-400">{kpi.totalMachines}台</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">人均 UPPH</p>
+                    <p className="text-sm font-bold text-amber-400">{kpi.upphPerOperator.toFixed(2)}</p>
+                  </div>
+                  {kpi.avgMachineUtil > 0 && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">平均設備利用率</p>
+                      <p className={`text-sm font-bold ${
+                        kpi.avgMachineUtil > 90 ? 'text-red-400' :
+                        kpi.avgMachineUtil > 70 ? 'text-amber-400' : 'text-emerald-400'
+                      }`}>{kpi.avgMachineUtil.toFixed(1)}%</p>
+                    </div>
+                  )}
+                </div>
+                {kpi.avgMachineUtil > 0 && (
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${
+                      kpi.avgMachineUtil > 90 ? 'bg-red-400' :
+                      kpi.avgMachineUtil > 70 ? 'bg-amber-400' : 'bg-emerald-400'
+                    }`} style={{ width: `${Math.min(kpi.avgMachineUtil, 100)}%` }} />
+                  </div>
+                )}
+              </div>
               {/* 比例尺設定 */}
               <div className="bg-background/50 rounded-lg p-2">
                 <div className="flex items-center justify-between">
@@ -978,16 +1088,55 @@ export default function FloorPlanSimulator() {
                 </div>
 
                 {/* 人力 */}
-                <div>
-                  <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Users className="w-3 h-3" />人力配置（人）
-                  </Label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Input type="number" min="0.5" step="0.5"
-                      value={selectedWs.manpower}
-                      className="h-7 text-sm w-20"
-                      onChange={e => updateWsProp(selectedWs.id, "manpower", parseFloat(e.target.value) || 1)} />
-                    <span className="text-xs text-muted-foreground">人</span>
+                <div className="bg-background/50 rounded-lg p-3 space-y-3">
+                  <div className="flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-emerald-400" />
+                    <Label className="text-xs font-medium text-emerald-400">人力與設備配置</Label>
+                  </div>
+                  {/* 人員數量 */}
+                  <div>
+                    <Label className="text-xs text-muted-foreground">人員數量（位）</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Input type="number" min="1" step="1"
+                        value={selectedWs.operatorCount ?? 1}
+                        className="h-7 text-sm w-20"
+                        onChange={e => updateWsProp(selectedWs.id, "operatorCount", Math.max(1, parseInt(e.target.value) || 1))} />
+                      <span className="text-xs text-muted-foreground">人</span>
+                      <span className="text-xs text-muted-foreground ml-auto">
+                        人均工序: <strong className="text-foreground">{((selectedWs.operatorTime || 0) / (selectedWs.operatorCount || 1)).toFixed(1)}s</strong>
+                      </span>
+                    </div>
+                  </div>
+                  {/* 設備數量 */}
+                  <div>
+                    <Label className="text-xs text-muted-foreground">設備數量（台）</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Input type="number" min="0" step="1"
+                        value={selectedWs.machineCount ?? 1}
+                        className="h-7 text-sm w-20"
+                        onChange={e => updateWsProp(selectedWs.id, "machineCount", Math.max(0, parseInt(e.target.value) || 0))} />
+                      <span className="text-xs text-muted-foreground">台</span>
+                      {(selectedWs.machineCount ?? 1) > 0 && selectedWs.machineTime > 0 && (
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          利用率: <strong className={`${
+                            (selectedWs.machineTime / (selectedWs.operatorTime * (selectedWs.machineCount ?? 1))) > 0.9
+                              ? "text-red-400" : (selectedWs.machineTime / (selectedWs.operatorTime * (selectedWs.machineCount ?? 1))) > 0.7
+                              ? "text-amber-400" : "text-emerald-400"
+                          }`}>{Math.min(100, (selectedWs.machineTime / (selectedWs.operatorTime * (selectedWs.machineCount ?? 1))) * 100).toFixed(0)}%</strong>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {/* 人力配置（小數点） */}
+                  <div>
+                    <Label className="text-xs text-muted-foreground">人力配置（小數點分配）</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Input type="number" min="0.5" step="0.5"
+                        value={selectedWs.manpower}
+                        className="h-7 text-sm w-20"
+                        onChange={e => updateWsProp(selectedWs.id, "manpower", parseFloat(e.target.value) || 1)} />
+                      <span className="text-xs text-muted-foreground">人</span>
+                    </div>
                   </div>
                 </div>
 
