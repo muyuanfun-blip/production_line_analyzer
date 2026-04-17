@@ -55,6 +55,7 @@ export type FloorConnection = {
   distance?: number;           // 搬運距離（公尺，由座標自動計算）
   transportTime?: number;      // 搬運時間（秒）
   label?: string;
+  conveyorRef?: string;        // 使用的輸送帶物件 id
 };
 
 export type ConveyorObject = {
@@ -64,6 +65,8 @@ export type ConveyorObject = {
   speed: number;           // 公尺/分鐘
   name: string;
   color: string;           // 輸送帶顏色
+  snapFrom?: number;       // 吸附的起點工站 id
+  snapTo?: number;         // 吸附的終點工站 id
 };
 
 export type FloorLayout = {
@@ -650,6 +653,9 @@ export default function FloorPlanSimulator() {
     setDraggingConveyor({ id: cvId, handle });
   }, [layout.conveyors, svgPoint]);
 
+  // 輸送帶端點吸附工站的距離閾値（px）
+  const CV_SNAP_DIST = 30;
+
   useEffect(() => {
     if (!draggingConveyor) return;
     const onMove = (e: MouseEvent) => {
@@ -666,11 +672,35 @@ export default function FloorPlanSimulator() {
               y1: snap(conveyorDragStart.current.y1 + dy),
               x2: snap(conveyorDragStart.current.x2 + dx),
               y2: snap(conveyorDragStart.current.y2 + dy),
+              snapFrom: undefined,
+              snapTo: undefined,
             };
           } else if (draggingConveyor.handle === 'p1') {
-            return { ...cv, x1: snap(conveyorDragStart.current.x1 + dx), y1: snap(conveyorDragStart.current.y1 + dy) };
+            // 評估吸附工站
+            let nx = snap(conveyorDragStart.current.x1 + dx);
+            let ny = snap(conveyorDragStart.current.y1 + dy);
+            let snapFrom: number | undefined = undefined;
+            for (const ws of prev.workstations) {
+              const cx = ws.x + ws.width / 2;
+              const cy = ws.y + ws.height / 2;
+              if (Math.hypot(nx - cx, ny - cy) < CV_SNAP_DIST) {
+                nx = cx; ny = cy; snapFrom = ws.id; break;
+              }
+            }
+            return { ...cv, x1: nx, y1: ny, snapFrom };
           } else {
-            return { ...cv, x2: snap(conveyorDragStart.current.x2 + dx), y2: snap(conveyorDragStart.current.y2 + dy) };
+            // 評估吸附工站
+            let nx = snap(conveyorDragStart.current.x2 + dx);
+            let ny = snap(conveyorDragStart.current.y2 + dy);
+            let snapTo: number | undefined = undefined;
+            for (const ws of prev.workstations) {
+              const cx = ws.x + ws.width / 2;
+              const cy = ws.y + ws.height / 2;
+              if (Math.hypot(nx - cx, ny - cy) < CV_SNAP_DIST) {
+                nx = cx; ny = cy; snapTo = ws.id; break;
+              }
+            }
+            return { ...cv, x2: nx, y2: ny, snapTo };
           }
         }),
       }));
@@ -958,18 +988,29 @@ export default function FloorPlanSimulator() {
                 const midY = (fromWs.y + fromWs.height / 2 + toWs.y + toWs.height / 2) / 2;
                 const metrics = computeConnMetrics(conn, layout.workstations, scalePxPerM);
                 if (metrics.distance <= 0) return null;
-                return (
-                  <g key={`label-${conn.id}`} style={{ pointerEvents: 'none' }}>
-                    <rect x={midX - 28} y={midY - 23} width={56} height={30} rx={5}
-                      fill="#0d1117" stroke={cmeta.color} strokeWidth="0.8" opacity="0.92" />
-                    <text x={midX} y={midY - 11} textAnchor="middle" fill={cmeta.color} fontSize="9" fontWeight="700">
-                      {cmeta.label}
-                    </text>
-                    <text x={midX} y={midY + 2} textAnchor="middle" fill="#cbd5e1" fontSize="9">
-                      {metrics.distance.toFixed(1)}m / {metrics.transportTime.toFixed(1)}s
-                    </text>
-                  </g>
-                );
+                 // 查找指定的輸送帶物件
+                 const refCv = conn.conveyorRef
+                   ? (layout.conveyors ?? []).find(c => c.id === conn.conveyorRef)
+                   : undefined;
+                 const labelH = refCv ? 42 : 30;
+                 return (
+                   <g key={`label-${conn.id}`} style={{ pointerEvents: 'none' }}>
+                     <rect x={midX - 32} y={midY - 23} width={64} height={labelH} rx={5}
+                       fill="#0d1117" stroke={cmeta.color} strokeWidth="0.8" opacity="0.92" />
+                     <text x={midX} y={midY - 11} textAnchor="middle" fill={cmeta.color} fontSize="9" fontWeight="700">
+                       {cmeta.label}
+                     </text>
+                     <text x={midX} y={midY + 2} textAnchor="middle" fill="#cbd5e1" fontSize="9">
+                       {metrics.distance.toFixed(1)}m / {metrics.transportTime.toFixed(1)}s
+                     </text>
+                     {refCv && (
+                       <text x={midX} y={midY + 13} textAnchor="middle" fontSize="8" fontWeight="600"
+                         fill={refCv.color}>
+                         ≡ {refCv.name}
+                       </text>
+                     )}
+                   </g>
+                 );
               })}
 
               {/* 動畫小點層（在標籤上方、工站節點下方） */}
@@ -1037,12 +1078,27 @@ export default function FloorPlanSimulator() {
                       style={{ userSelect: 'none', pointerEvents: 'none' }}>
                       {cv.speed} m/min · {(len / scalePxPerM).toFixed(1)} m
                     </text>
+                    {/* 吸附工站高亮圓圈 */}
+                    {cv.snapFrom != null && (() => {
+                      const ws = layout.workstations.find(w => w.id === cv.snapFrom);
+                      return ws ? <circle cx={ws.x + ws.width/2} cy={ws.y + ws.height/2} r={22}
+                        fill="none" stroke={cv.color} strokeWidth="2" strokeDasharray="4 3" opacity="0.8"
+                        style={{ pointerEvents: 'none' }} /> : null;
+                    })()}
+                    {cv.snapTo != null && (() => {
+                      const ws = layout.workstations.find(w => w.id === cv.snapTo);
+                      return ws ? <circle cx={ws.x + ws.width/2} cy={ws.y + ws.height/2} r={22}
+                        fill="none" stroke={cv.color} strokeWidth="2" strokeDasharray="4 3" opacity="0.8"
+                        style={{ pointerEvents: 'none' }} /> : null;
+                    })()}
                     {/* 端點調整把手 */}
-                    <circle cx={cv.x1} cy={cv.y1} r={7} fill={isSelCV ? cv.color : '#1e293b'}
+                    <circle cx={cv.x1} cy={cv.y1} r={cv.snapFrom != null ? 9 : 7}
+                      fill={cv.snapFrom != null ? cv.color : (isSelCV ? cv.color : '#1e293b')}
                       stroke={cv.color} strokeWidth="2"
                       style={{ cursor: 'nwse-resize' }}
                       onMouseDown={e => handleConveyorMouseDown(e, cv.id, 'p1')} />
-                    <circle cx={cv.x2} cy={cv.y2} r={7} fill={isSelCV ? cv.color : '#1e293b'}
+                    <circle cx={cv.x2} cy={cv.y2} r={cv.snapTo != null ? 9 : 7}
+                      fill={cv.snapTo != null ? cv.color : (isSelCV ? cv.color : '#1e293b')}
                       stroke={cv.color} strokeWidth="2"
                       style={{ cursor: 'nwse-resize' }}
                       onMouseDown={e => handleConveyorMouseDown(e, cv.id, 'p2')} />
@@ -1392,10 +1448,16 @@ export default function FloorPlanSimulator() {
               if (!cv) return null;
               const len = Math.hypot(cv.x2 - cv.x1, cv.y2 - cv.y1);
               const updateCv = (field: keyof ConveyorObject, value: any) => {
-                setLayout(prev => ({
-                  ...prev,
-                  conveyors: (prev.conveyors ?? []).map(c => c.id === cv.id ? { ...c, [field]: value } : c),
-                }));
+                setLayout(prev => {
+                  const updatedConveyors = (prev.conveyors ?? []).map(c => c.id === cv.id ? { ...c, [field]: value } : c);
+                  // 當速度更新時，同步更新所有綁定此輸送帶的連線速度
+                  const updatedConnections = field === 'speed'
+                    ? prev.connections.map(conn =>
+                        conn.conveyorRef === cv.id ? { ...conn, speed: value as number } : conn
+                      )
+                    : prev.connections;
+                  return { ...prev, conveyors: updatedConveyors, connections: updatedConnections };
+                });
                 setIsDirty(true);
               };
               return (
@@ -1881,21 +1943,61 @@ export default function FloorPlanSimulator() {
                 </div>
                 {/* 輸送帶視覺預覽 + 即時搬運時間 */}
                 {(editingConn.conveyorType ?? 'manual') === 'conveyor' && (
-                  <div className="mt-3 rounded-lg overflow-hidden border border-border/40">
-                    <svg width="100%" height="28" viewBox="0 0 200 28">
-                      <rect x="0" y="4" width="200" height="20" fill="#0f2a3a" />
-                      <rect x="0" y="4" width="200" height="20" fill="#1e6a8a"
-                        strokeDasharray="4 8"
-                        style={{ stroke: '#1e6a8a', strokeWidth: 10, strokeDashoffset: 0,
-                          animation: `conveyor-roll ${
-                            (editingConn.speed ?? 30) >= 15 ? '0.4' :
-                            (editingConn.speed ?? 30) >= 8  ? '0.8' : '1.6'
-                          }s linear infinite` }} />
-                      <line x1="0" y1="14" x2="200" y2="14" stroke="#38bdf8" strokeWidth="1.5" opacity="0.9" />
-                      <text x="100" y="18" textAnchor="middle" fill="#38bdf8" fontSize="8" fontWeight="600">
-                        {editingConn.speed ?? 30} m/min →
-                      </text>
-                    </svg>
+                  <div className="mt-3 space-y-2">
+                    <div className="rounded-lg overflow-hidden border border-border/40">
+                      <svg width="100%" height="28" viewBox="0 0 200 28">
+                        <rect x="0" y="4" width="200" height="20" fill="#0f2a3a" />
+                        <rect x="0" y="4" width="200" height="20" fill="#1e6a8a"
+                          strokeDasharray="4 8"
+                          style={{ stroke: '#1e6a8a', strokeWidth: 10, strokeDashoffset: 0,
+                            animation: `conveyor-roll ${
+                              (editingConn.speed ?? 30) >= 15 ? '0.4' :
+                              (editingConn.speed ?? 30) >= 8  ? '0.8' : '1.6'
+                            }s linear infinite` }} />
+                        <line x1="0" y1="14" x2="200" y2="14" stroke="#38bdf8" strokeWidth="1.5" opacity="0.9" />
+                        <text x="100" y="18" textAnchor="middle" fill="#38bdf8" fontSize="8" fontWeight="600">
+                          {editingConn.speed ?? 30} m/min →
+                        </text>
+                      </svg>
+                    </div>
+                    {/* 使用輸送帶下拉選單 */}
+                    {(layout.conveyors ?? []).length > 0 ? (
+                      <div>
+                        <Label className="text-xs text-muted-foreground">使用輸送帶</Label>
+                        <select
+                          className="mt-1 w-full h-8 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                          value={editingConn.conveyorRef ?? ''}
+                          onChange={e => {
+                            const cvId = e.target.value;
+                            const cv = (layout.conveyors ?? []).find(c => c.id === cvId);
+                            setEditingConn(prev => prev ? {
+                              ...prev,
+                              conveyorRef: cvId || undefined,
+                              speed: cv ? cv.speed : (prev.speed ?? 30),
+                            } : null);
+                          }}>
+                          <option value="">— 不指定（手動設定速度）</option>
+                          {(layout.conveyors ?? []).map(cv => (
+                            <option key={cv.id} value={cv.id}>
+                              {cv.name}（{cv.speed} m/min）
+                            </option>
+                          ))}
+                        </select>
+                        {editingConn.conveyorRef && (() => {
+                          const cv = (layout.conveyors ?? []).find(c => c.id === editingConn.conveyorRef);
+                          return cv ? (
+                            <div className="mt-1.5 flex items-center gap-2 text-xs">
+                              <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: cv.color }} />
+                              <span className="text-muted-foreground">正在使用：</span>
+                              <span className="font-semibold" style={{ color: cv.color }}>{cv.name}</span>
+                              <span className="text-muted-foreground">· {cv.speed} m/min</span>
+                            </div>
+                          ) : null;
+                        })()}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">提示：畫布上尚無輸送帶物件，可從工具列新增。</p>
+                    )}
                   </div>
                 )}
                 {/* 即時搬運時間預覽 */}
@@ -1947,6 +2049,7 @@ export default function FloorPlanSimulator() {
                 handleUpdateConn(editingConn.id, 'conveyorType', editingConn.conveyorType ?? 'manual');
                 handleUpdateConn(editingConn.id, 'speed', editingConn.speed ?? CONVEYOR_META[editingConn.conveyorType ?? 'manual'].speed);
                 handleUpdateConn(editingConn.id, 'label', editingConn.label);
+                handleUpdateConn(editingConn.id, 'conveyorRef', editingConn.conveyorRef);
                 setShowConnDialog(false);
                 toast.success("連線屬性已更新");
               }
