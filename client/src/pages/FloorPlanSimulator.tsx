@@ -1078,30 +1078,7 @@ export default function FloorPlanSimulator() {
                       style={{ userSelect: 'none', pointerEvents: 'none' }}>
                       {cv.speed} m/min · {(len / scalePxPerM).toFixed(1)} m
                     </text>
-                    {/* 吸附工站高亮圓圈 */}
-                    {cv.snapFrom != null && (() => {
-                      const ws = layout.workstations.find(w => w.id === cv.snapFrom);
-                      return ws ? <circle cx={ws.x + ws.width/2} cy={ws.y + ws.height/2} r={22}
-                        fill="none" stroke={cv.color} strokeWidth="2" strokeDasharray="4 3" opacity="0.8"
-                        style={{ pointerEvents: 'none' }} /> : null;
-                    })()}
-                    {cv.snapTo != null && (() => {
-                      const ws = layout.workstations.find(w => w.id === cv.snapTo);
-                      return ws ? <circle cx={ws.x + ws.width/2} cy={ws.y + ws.height/2} r={22}
-                        fill="none" stroke={cv.color} strokeWidth="2" strokeDasharray="4 3" opacity="0.8"
-                        style={{ pointerEvents: 'none' }} /> : null;
-                    })()}
-                    {/* 端點調整把手 */}
-                    <circle cx={cv.x1} cy={cv.y1} r={cv.snapFrom != null ? 9 : 7}
-                      fill={cv.snapFrom != null ? cv.color : (isSelCV ? cv.color : '#1e293b')}
-                      stroke={cv.color} strokeWidth="2"
-                      style={{ cursor: 'nwse-resize' }}
-                      onMouseDown={e => handleConveyorMouseDown(e, cv.id, 'p1')} />
-                    <circle cx={cv.x2} cy={cv.y2} r={cv.snapTo != null ? 9 : 7}
-                      fill={cv.snapTo != null ? cv.color : (isSelCV ? cv.color : '#1e293b')}
-                      stroke={cv.color} strokeWidth="2"
-                      style={{ cursor: 'nwse-resize' }}
-                      onMouseDown={e => handleConveyorMouseDown(e, cv.id, 'p2')} />
+                    {/* 端點把手已移至最上層（cv-handles 層），此處不重複渲染 */}
                   </g>
                 );
               })}
@@ -1213,9 +1190,39 @@ export default function FloorPlanSimulator() {
                 );
               })}
 
+              {/* ── 輸送帶端點把手層（最上層，避免被工站遮住）── */}
+              {(layout.conveyors ?? []).map(cv => {
+                const isSelCV = selectedConveyorId === cv.id;
+                const snapFromWs = cv.snapFrom != null ? layout.workstations.find(w => w.id === cv.snapFrom) : null;
+                const snapToWs = cv.snapTo != null ? layout.workstations.find(w => w.id === cv.snapTo) : null;
+                return (
+                  <g key={`cv-handles-${cv.id}`}>
+                    {snapFromWs && (
+                      <circle cx={snapFromWs.x + snapFromWs.width / 2} cy={snapFromWs.y + snapFromWs.height / 2}
+                        r={28} fill="none" stroke={cv.color} strokeWidth="2" strokeDasharray="4 3" opacity="0.8"
+                        style={{ pointerEvents: 'none' }} />
+                    )}
+                    {snapToWs && (
+                      <circle cx={snapToWs.x + snapToWs.width / 2} cy={snapToWs.y + snapToWs.height / 2}
+                        r={28} fill="none" stroke={cv.color} strokeWidth="2" strokeDasharray="4 3" opacity="0.8"
+                        style={{ pointerEvents: 'none' }} />
+                    )}
+                    <circle cx={cv.x1} cy={cv.y1} r={cv.snapFrom != null ? 9 : 7}
+                      fill={cv.snapFrom != null ? cv.color : (isSelCV ? cv.color : '#1e293b')}
+                      stroke={cv.color} strokeWidth="2"
+                      style={{ cursor: 'nwse-resize' }}
+                      onMouseDown={e => handleConveyorMouseDown(e, cv.id, 'p1')} />
+                    <circle cx={cv.x2} cy={cv.y2} r={cv.snapTo != null ? 9 : 7}
+                      fill={cv.snapTo != null ? cv.color : (isSelCV ? cv.color : '#1e293b')}
+                      stroke={cv.color} strokeWidth="2"
+                      style={{ cursor: 'nwse-resize' }}
+                      onMouseDown={e => handleConveyorMouseDown(e, cv.id, 'p2')} />
+                  </g>
+                );
+              })}
+
             </g>
           </svg>
-
           {/* 空畫布提示 */}
           {!layout.workstations.length && (
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
