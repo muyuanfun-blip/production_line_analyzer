@@ -297,3 +297,84 @@ describe("FloorPlanSimulator 距離計算（bounding-box 邊緣距離）", () =>
     expect(pixelDistTest(a, b)).toBe(0);
   });
 });
+
+// ─── 輸送帶側邊吸附點與自動連線計算測試 ──────────────────────────────────────
+
+describe("輸送帶側邊吸附點距離計算", () => {
+  const SCALE = 40; // 40px = 1m
+
+  // 模擬 computeConnMetrics 的核心邏輯（有 fromPt/toPt 時用直線距離）
+  function computeConnMetricsTest(
+    conn: { fromPt?: { x: number; y: number }; toPt?: { x: number; y: number }; speed: number },
+    scalePxPerM: number
+  ): { distance: number; transportTime: number } {
+    if (scalePxPerM <= 0) return { distance: 0, transportTime: 0 };
+    if (!conn.fromPt || !conn.toPt) return { distance: 0, transportTime: 0 };
+    const distPx = Math.hypot(conn.toPt.x - conn.fromPt.x, conn.toPt.y - conn.fromPt.y);
+    const dist = distPx / scalePxPerM;
+    const time = conn.speed > 0 ? (dist / conn.speed) * 60 : 0;
+    return { distance: parseFloat(dist.toFixed(2)), transportTime: parseFloat(time.toFixed(2)) };
+  }
+
+  it("水平輸送帶（兩端吸附點距離 80px）應為 2.0m", () => {
+    const conn = {
+      fromPt: { x: 100, y: 200 },
+      toPt:   { x: 180, y: 200 },
+      speed: 20,
+    };
+    const metrics = computeConnMetricsTest(conn, SCALE);
+    expect(metrics.distance).toBeCloseTo(2.0, 1);
+  });
+
+  it("垂直輸送帶（兩端吸附點距離 40px）應為 1.0m", () => {
+    const conn = {
+      fromPt: { x: 100, y: 100 },
+      toPt:   { x: 100, y: 140 },
+      speed: 20,
+    };
+    const metrics = computeConnMetricsTest(conn, SCALE);
+    expect(metrics.distance).toBeCloseTo(1.0, 1);
+  });
+
+  it("斜向輸送帶（gapX=40, gapY=40）距離應為 sqrt(3200)/40 ≈ 1.41m", () => {
+    const conn = {
+      fromPt: { x: 100, y: 100 },
+      toPt:   { x: 140, y: 140 },
+      speed: 20,
+    };
+    const metrics = computeConnMetricsTest(conn, SCALE);
+    expect(metrics.distance).toBeCloseTo(Math.sqrt(40 * 40 + 40 * 40) / SCALE, 2);
+  });
+
+  it("搬運時間計算：2m ÷ 20 m/min = 6s", () => {
+    const conn = {
+      fromPt: { x: 0,  y: 0 },
+      toPt:   { x: 80, y: 0 },  // 80px / 40px/m = 2m
+      speed: 20,
+    };
+    const metrics = computeConnMetricsTest(conn, SCALE);
+    expect(metrics.distance).toBeCloseTo(2.0, 1);
+    expect(metrics.transportTime).toBeCloseTo(6.0, 1);
+  });
+
+  it("搬運時間計算：1m ÷ 60 m/min = 1s", () => {
+    const conn = {
+      fromPt: { x: 0,  y: 0 },
+      toPt:   { x: 40, y: 0 },  // 40px / 40px/m = 1m
+      speed: 60,
+    };
+    const metrics = computeConnMetricsTest(conn, SCALE);
+    expect(metrics.distance).toBeCloseTo(1.0, 1);
+    expect(metrics.transportTime).toBeCloseTo(1.0, 1);
+  });
+
+  it("速度為 0 時搬運時間應為 0", () => {
+    const conn = {
+      fromPt: { x: 0,  y: 0 },
+      toPt:   { x: 80, y: 0 },
+      speed: 0,
+    };
+    const metrics = computeConnMetricsTest(conn, SCALE);
+    expect(metrics.transportTime).toBe(0);
+  });
+});

@@ -56,6 +56,9 @@ export type FloorConnection = {
   transportTime?: number;      // 搬運時間（秒）
   label?: string;
   conveyorRef?: string;        // 使用的輸送帶物件 id
+  autoCreated?: string;        // 由哪條輸送帶自動建立（conveyorId），手動建立為 undefined
+  fromPt?: { x: number; y: number }; // 連線起點（輸送帶側邊吸附點）
+  toPt?:   { x: number; y: number }; // 連線終點（輸送帶側邊吸附點）
 };
 
 export type ConveyorObject = {
@@ -67,6 +70,8 @@ export type ConveyorObject = {
   color: string;           // 輸送帶顏色
   snapFrom?: number;       // 吸附的起點工站 id
   snapTo?: number;         // 吸附的終點工站 id
+  snapFromPt?: { x: number; y: number }; // 起點在工站上的絕對座標（側邊任意點）
+  snapToPt?:   { x: number; y: number }; // 終點在工站上的絕對座標（側邊任意點）
 };
 
 export type FloorLayout = {
@@ -98,11 +103,11 @@ function getWsColor(ws: FloorWs, maxCt: number, taktTime?: number): {
 function snap(v: number): number { return Math.round(v / GRID) * GRID; }
 
 // ─── Bezier Path between two nodes ───────────────────────────────────────────
-function makePath(from: FloorWs, to: FloorWs): string {
-  const fx = from.x + from.width / 2;
-  const fy = from.y + from.height / 2;
-  const tx = to.x + to.width / 2;
-  const ty = to.y + to.height / 2;
+function makePath(from: FloorWs, to: FloorWs, fromPt?: { x: number; y: number }, toPt?: { x: number; y: number }): string {
+  const fx = fromPt ? fromPt.x : from.x + from.width / 2;
+  const fy = fromPt ? fromPt.y : from.y + from.height / 2;
+  const tx = toPt ? toPt.x : to.x + to.width / 2;
+  const ty = toPt ? toPt.y : to.y + to.height / 2;
   const dx = tx - fx;
   const dy = ty - fy;
   const cx1 = fx + dx * 0.4;
@@ -186,10 +191,18 @@ function computeConnMetrics(
   workstations: FloorWs[],
   scalePxPerM: number
 ): { distance: number; transportTime: number } {
-  const from = workstations.find(w => w.id === conn.fromId);
-  const to   = workstations.find(w => w.id === conn.toId);
-  if (!from || !to || scalePxPerM <= 0) return { distance: 0, transportTime: 0 };
-  const dist = pixelDist(from, to) / scalePxPerM;  // 公尺
+  if (scalePxPerM <= 0) return { distance: 0, transportTime: 0 };
+  let distPx: number;
+  if (conn.fromPt && conn.toPt) {
+    // 輸送帶側邊吸附點：用兩吸附點的直線距離（反映輸送帶實際路徑長度）
+    distPx = Math.hypot(conn.toPt.x - conn.fromPt.x, conn.toPt.y - conn.fromPt.y);
+  } else {
+    const from = workstations.find(w => w.id === conn.fromId);
+    const to   = workstations.find(w => w.id === conn.toId);
+    if (!from || !to) return { distance: 0, transportTime: 0 };
+    distPx = pixelDist(from, to);
+  }
+  const dist = distPx / scalePxPerM;  // 公尺
   const time = conn.speed > 0 ? (dist / conn.speed) * 60 : 0; // 秒
   return { distance: parseFloat(dist.toFixed(2)), transportTime: parseFloat(time.toFixed(2)) };
 }
@@ -486,10 +499,29 @@ export default function FloorPlanSimulator() {
 
   // ── 刪除工站 ──
   const handleDeleteWs = (id: number) => {
-    setLayout(prev => ({
-      workstations: prev.workstations.filter(w => w.id !== id),
-      connections: prev.connections.filter(c => c.fromId !== id && c.toId !== id),
-    }));
+    setLayout(prev => {
+      // 清理吸附到此工站的輸送帶端點
+      const updatedConveyors = (prev.conveyors ?? []).map(cv => {
+        let updated = { ...cv };
+        if (cv.snapFrom === id) {
+          updated = { ...updated, snapFrom: undefined, snapFromPt: undefined };
+        }
+        if (cv.snapTo === id) {
+          updated = { ...updated, snapTo: undefined, snapToPt: undefined };
+        }
+        return updated;
+      });
+      // 刪除連線（包含自動連線）
+      const updatedConnections = prev.connections.filter(
+        c => c.fromId !== id && c.toId !== id
+      );
+      return {
+        ...prev,
+        workstations: prev.workstations.filter(w => w.id !== id),
+        connections: updatedConnections,
+        conveyors: updatedConveyors,
+      };
+    });
     if (selectedWsId === id) setSelectedWsId(null);
     setIsDirty(true);
   };
@@ -608,12 +640,64 @@ export default function FloorPlanSimulator() {
       const pt = svgPoint(e);
       const nx = snap(pt.x - dragOffset.current.x);
       const ny = snap(pt.y - dragOffset.current.y);
-      setLayout(prev => ({
-        ...prev,
-        workstations: prev.workstations.map(w =>
-          w.id === draggingId ? { ...w, x: Math.max(0, nx), y: Math.max(0, ny) } : w
-        ),
-      }));
+      setLayout(prev => {
+        const newWs = { ...prev.workstations.find(w => w.id === draggingId)!, x: Math.max(0, nx), y: Math.max(0, ny) };
+        const updatedWorkstations = prev.workstations.map(w => w.id === draggingId ? newWs : w);
+        // 同步更新吸附到此工站的輸送帶端點
+        const updatedConveyors = (prev.conveyors ?? []).map(cv => {
+          let changed = false;
+          let updates: Partial<ConveyorObject> = {};
+          if (cv.snapFrom === draggingId && cv.snapFromPt) {
+            // 重新計算端點在新工站上的位置（保持相對比例）
+            const oldWs = prev.workstations.find(w => w.id === draggingId)!;
+            const relX = (cv.snapFromPt.x - oldWs.x) / oldWs.width;
+            const relY = (cv.snapFromPt.y - oldWs.y) / oldWs.height;
+            const newPtX = Math.max(newWs.x, Math.min(newWs.x + newWs.width,  newWs.x + relX * newWs.width));
+            const newPtY = Math.max(newWs.y, Math.min(newWs.y + newWs.height, newWs.y + relY * newWs.height));
+            // 重新對齊到邊緣
+            const distLeft   = Math.abs(newPtX - newWs.x);
+            const distRight  = Math.abs(newPtX - (newWs.x + newWs.width));
+            const distTop    = Math.abs(newPtY - newWs.y);
+            const distBottom = Math.abs(newPtY - (newWs.y + newWs.height));
+            const minD = Math.min(distLeft, distRight, distTop, distBottom);
+            let ex = newPtX, ey = newPtY;
+            if (minD === distLeft)        { ex = newWs.x;             ey = newPtY; }
+            else if (minD === distRight)  { ex = newWs.x + newWs.width; ey = newPtY; }
+            else if (minD === distTop)    { ex = newPtX; ey = newWs.y; }
+            else                          { ex = newPtX; ey = newWs.y + newWs.height; }
+            updates = { ...updates, x1: ex, y1: ey, snapFromPt: { x: ex, y: ey } };
+            changed = true;
+          }
+          if (cv.snapTo === draggingId && cv.snapToPt) {
+            const oldWs = prev.workstations.find(w => w.id === draggingId)!;
+            const relX = (cv.snapToPt.x - oldWs.x) / oldWs.width;
+            const relY = (cv.snapToPt.y - oldWs.y) / oldWs.height;
+            const newPtX = Math.max(newWs.x, Math.min(newWs.x + newWs.width,  newWs.x + relX * newWs.width));
+            const newPtY = Math.max(newWs.y, Math.min(newWs.y + newWs.height, newWs.y + relY * newWs.height));
+            const distLeft   = Math.abs(newPtX - newWs.x);
+            const distRight  = Math.abs(newPtX - (newWs.x + newWs.width));
+            const distTop    = Math.abs(newPtY - newWs.y);
+            const distBottom = Math.abs(newPtY - (newWs.y + newWs.height));
+            const minD = Math.min(distLeft, distRight, distTop, distBottom);
+            let ex = newPtX, ey = newPtY;
+            if (minD === distLeft)        { ex = newWs.x;             ey = newPtY; }
+            else if (minD === distRight)  { ex = newWs.x + newWs.width; ey = newPtY; }
+            else if (minD === distTop)    { ex = newPtX; ey = newWs.y; }
+            else                          { ex = newPtX; ey = newWs.y + newWs.height; }
+            updates = { ...updates, x2: ex, y2: ey, snapToPt: { x: ex, y: ey } };
+            changed = true;
+          }
+          return changed ? { ...cv, ...updates } : cv;
+        });
+        // 同步更新自動連線的 fromPt/toPt
+        const updatedConnections = prev.connections.map(conn => {
+          if (!conn.autoCreated) return conn;
+          const cv = updatedConveyors.find(c => c.id === conn.autoCreated);
+          if (!cv) return conn;
+          return { ...conn, fromPt: cv.snapFromPt, toPt: cv.snapToPt };
+        });
+        return { ...prev, workstations: updatedWorkstations, conveyors: updatedConveyors, connections: updatedConnections };
+      });
     };
     const onUp = () => {
       setDraggingId(null);
@@ -653,8 +737,48 @@ export default function FloorPlanSimulator() {
     setDraggingConveyor({ id: cvId, handle });
   }, [layout.conveyors, svgPoint]);
 
-  // 輸送帶端點吸附工站的距離閾値（px）
-  const CV_SNAP_DIST = 30;
+  // 輸送帶端點吸附工站的距離閾值（px，以工站中心計算）
+  const CV_SNAP_DIST = 40;
+
+  // 計算點 (px, py) 對工站邊緣的最近點（側邊任意點）
+  const snapToWsEdge = useCallback((px: number, py: number, ws: FloorWs) => {
+    const clampedX = Math.max(ws.x, Math.min(ws.x + ws.width, px));
+    const clampedY = Math.max(ws.y, Math.min(ws.y + ws.height, py));
+    const distLeft   = Math.abs(px - ws.x);
+    const distRight  = Math.abs(px - (ws.x + ws.width));
+    const distTop    = Math.abs(py - ws.y);
+    const distBottom = Math.abs(py - (ws.y + ws.height));
+    const minEdgeDist = Math.min(distLeft, distRight, distTop, distBottom);
+    let ex = clampedX, ey = clampedY;
+    if (minEdgeDist === distLeft)        { ex = ws.x;             ey = clampedY; }
+    else if (minEdgeDist === distRight)  { ex = ws.x + ws.width;  ey = clampedY; }
+    else if (minEdgeDist === distTop)    { ex = clampedX;          ey = ws.y; }
+    else                                 { ex = clampedX;          ey = ws.y + ws.height; }
+    return { x: ex, y: ey };
+  }, []);
+
+  // 自動建立/更新/刪除輸送帶對應的連線
+  const syncConveyorAutoConn = useCallback((prevLayout: FloorLayout, cv: ConveyorObject): FloorLayout => {
+    const hasFrom = cv.snapFrom != null && cv.snapFromPt != null;
+    const hasTo   = cv.snapTo   != null && cv.snapToPt   != null;
+    // 刪除舊的自動連線
+    let connections = prevLayout.connections.filter(c => c.autoCreated !== cv.id);
+    if (hasFrom && hasTo) {
+      const autoConn: FloorConnection = {
+        id: `auto-${cv.id}`,
+        fromId: cv.snapFrom!,
+        toId:   cv.snapTo!,
+        conveyorType: 'conveyor',
+        speed: cv.speed,
+        conveyorRef: cv.id,
+        autoCreated: cv.id,
+        fromPt: cv.snapFromPt,
+        toPt:   cv.snapToPt,
+      };
+      connections = [...connections, autoConn];
+    }
+    return { ...prevLayout, connections };
+  }, []);
 
   useEffect(() => {
     if (!draggingConveyor) return;
@@ -662,9 +786,8 @@ export default function FloorPlanSimulator() {
       const pt = svgPoint(e);
       const dx = pt.x - conveyorDragStart.current.mx;
       const dy = pt.y - conveyorDragStart.current.my;
-      setLayout(prev => ({
-        ...prev,
-        conveyors: (prev.conveyors ?? []).map(cv => {
+      setLayout(prev => {
+        const updatedConveyors = (prev.conveyors ?? []).map(cv => {
           if (cv.id !== draggingConveyor.id) return cv;
           if (draggingConveyor.handle === 'body') {
             return { ...cv,
@@ -672,47 +795,59 @@ export default function FloorPlanSimulator() {
               y1: snap(conveyorDragStart.current.y1 + dy),
               x2: snap(conveyorDragStart.current.x2 + dx),
               y2: snap(conveyorDragStart.current.y2 + dy),
-              snapFrom: undefined,
-              snapTo: undefined,
+              snapFrom: undefined, snapTo: undefined,
+              snapFromPt: undefined, snapToPt: undefined,
             };
           } else if (draggingConveyor.handle === 'p1') {
-            // 評估吸附工站
             let nx = snap(conveyorDragStart.current.x1 + dx);
             let ny = snap(conveyorDragStart.current.y1 + dy);
             let snapFrom: number | undefined = undefined;
+            let snapFromPt: { x: number; y: number } | undefined = undefined;
             for (const ws of prev.workstations) {
-              const cx = ws.x + ws.width / 2;
-              const cy = ws.y + ws.height / 2;
-              if (Math.hypot(nx - cx, ny - cy) < CV_SNAP_DIST) {
-                nx = cx; ny = cy; snapFrom = ws.id; break;
+              const wsCx = ws.x + ws.width / 2;
+              const wsCy = ws.y + ws.height / 2;
+              if (Math.hypot(nx - wsCx, ny - wsCy) < CV_SNAP_DIST + ws.width / 2) {
+                const edgePt = snapToWsEdge(nx, ny, ws);
+                nx = edgePt.x; ny = edgePt.y;
+                snapFrom = ws.id; snapFromPt = edgePt; break;
               }
             }
-            return { ...cv, x1: nx, y1: ny, snapFrom };
+            return { ...cv, x1: nx, y1: ny, snapFrom, snapFromPt };
           } else {
-            // 評估吸附工站
             let nx = snap(conveyorDragStart.current.x2 + dx);
             let ny = snap(conveyorDragStart.current.y2 + dy);
             let snapTo: number | undefined = undefined;
+            let snapToPt: { x: number; y: number } | undefined = undefined;
             for (const ws of prev.workstations) {
-              const cx = ws.x + ws.width / 2;
-              const cy = ws.y + ws.height / 2;
-              if (Math.hypot(nx - cx, ny - cy) < CV_SNAP_DIST) {
-                nx = cx; ny = cy; snapTo = ws.id; break;
+              const wsCx = ws.x + ws.width / 2;
+              const wsCy = ws.y + ws.height / 2;
+              if (Math.hypot(nx - wsCx, ny - wsCy) < CV_SNAP_DIST + ws.width / 2) {
+                const edgePt = snapToWsEdge(nx, ny, ws);
+                nx = edgePt.x; ny = edgePt.y;
+                snapTo = ws.id; snapToPt = edgePt; break;
               }
             }
-            return { ...cv, x2: nx, y2: ny, snapTo };
+            return { ...cv, x2: nx, y2: ny, snapTo, snapToPt };
           }
-        }),
-      }));
+        });
+        const updatedCv = updatedConveyors.find(c => c.id === draggingConveyor.id);
+        const withConveyors = { ...prev, conveyors: updatedConveyors };
+        return updatedCv ? syncConveyorAutoConn(withConveyors, updatedCv) : withConveyors;
+      });
     };
     const onUp = () => { setDraggingConveyor(null); setIsDirty(true); };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-  }, [draggingConveyor, svgPoint]);
+  }, [draggingConveyor, svgPoint, syncConveyorAutoConn, snapToWsEdge]);
 
   const handleDeleteConveyor = useCallback((cvId: string) => {
-    setLayout(prev => ({ ...prev, conveyors: (prev.conveyors ?? []).filter(c => c.id !== cvId) }));
+    setLayout(prev => ({
+      ...prev,
+      conveyors: (prev.conveyors ?? []).filter(c => c.id !== cvId),
+      // 同步刪除該輸送帶自動建立的連線
+      connections: prev.connections.filter(c => c.autoCreated !== cvId),
+    }));
     setSelectedConveyorId(null);
     setIsDirty(true);
   }, []);
@@ -947,14 +1082,18 @@ export default function FloorPlanSimulator() {
                 const fromWs = layout.workstations.find(w => w.id === conn.fromId);
                 const toWs = layout.workstations.find(w => w.id === conn.toId);
                 if (!fromWs || !toWs) return null;
-                const pathD = makePath(fromWs, toWs);
+                const pathD = makePath(fromWs, toWs, conn.fromPt, conn.toPt);
                 const fromCt = Math.max(fromWs.operatorTime, fromWs.machineTime);
                 // 輸送帶類型樣式
                 const ctype = conn.conveyorType ?? 'manual';
                 const cmeta = CONVEYOR_META[ctype];
                 const animDur = Math.max(0.3, fromCt / (conn.speed > 0 ? conn.speed : 10));
-                const midX = (fromWs.x + fromWs.width / 2 + toWs.x + toWs.width / 2) / 2;
-                const midY = (fromWs.y + fromWs.height / 2 + toWs.y + toWs.height / 2) / 2;
+                const midX = conn.fromPt && conn.toPt
+                  ? (conn.fromPt.x + conn.toPt.x) / 2
+                  : (fromWs.x + fromWs.width / 2 + toWs.x + toWs.width / 2) / 2;
+                const midY = conn.fromPt && conn.toPt
+                  ? (conn.fromPt.y + conn.toPt.y) / 2
+                  : (fromWs.y + fromWs.height / 2 + toWs.y + toWs.height / 2) / 2;
                 // 即時計算距離與搬運時間
                 const metrics = computeConnMetrics(conn, layout.workstations, scalePxPerM);
                 const isSelected = editingConn?.id === conn.id;
@@ -984,8 +1123,12 @@ export default function FloorPlanSimulator() {
                 if (!fromWs || !toWs) return null;
                 const ctype = conn.conveyorType ?? 'manual';
                 const cmeta = CONVEYOR_META[ctype];
-                const midX = (fromWs.x + fromWs.width / 2 + toWs.x + toWs.width / 2) / 2;
-                const midY = (fromWs.y + fromWs.height / 2 + toWs.y + toWs.height / 2) / 2;
+                const midX = conn.fromPt && conn.toPt
+                  ? (conn.fromPt.x + conn.toPt.x) / 2
+                  : (fromWs.x + fromWs.width / 2 + toWs.x + toWs.width / 2) / 2;
+                const midY = conn.fromPt && conn.toPt
+                  ? (conn.fromPt.y + conn.toPt.y) / 2
+                  : (fromWs.y + fromWs.height / 2 + toWs.y + toWs.height / 2) / 2;
                 const metrics = computeConnMetrics(conn, layout.workstations, scalePxPerM);
                 if (metrics.distance <= 0) return null;
                  // 查找指定的輸送帶物件
@@ -1018,11 +1161,11 @@ export default function FloorPlanSimulator() {
                 const fromWs = layout.workstations.find(w => w.id === conn.fromId);
                 const toWs = layout.workstations.find(w => w.id === conn.toId);
                 if (!fromWs || !toWs) return null;
-                const pathD = makePath(fromWs, toWs);
+                const pathD = makePath(fromWs, toWs, conn.fromPt, conn.toPt);
                 const fromCt = Math.max(fromWs.operatorTime, fromWs.machineTime);
                 const ctype = conn.conveyorType ?? 'manual';
                 const cmeta = CONVEYOR_META[ctype];
-                // 輸送帶已有滾輪動畫，不需要額外的動畫小點
+                // 輸送帶已有滚輪動畫，不需要額外的動畫小點
                 if (ctype === 'conveyor') return null;
                 const animDur = Math.max(0.3, fromCt / (conn.speed > 0 ? conn.speed : 10));
                 return <AnimDot key={`anim-${conn.id}`} path={pathD} duration={animDur} color={cmeta.color} />;
@@ -1190,23 +1333,25 @@ export default function FloorPlanSimulator() {
                 );
               })}
 
-              {/* ── 輸送帶端點把手層（最上層，避免被工站遮住）── */}
+              {/* ── 輸送帶端點把手層（最上層，避免被工站遣住）── */}
               {(layout.conveyors ?? []).map(cv => {
                 const isSelCV = selectedConveyorId === cv.id;
-                const snapFromWs = cv.snapFrom != null ? layout.workstations.find(w => w.id === cv.snapFrom) : null;
-                const snapToWs = cv.snapTo != null ? layout.workstations.find(w => w.id === cv.snapTo) : null;
                 return (
                   <g key={`cv-handles-${cv.id}`}>
-                    {snapFromWs && (
-                      <circle cx={snapFromWs.x + snapFromWs.width / 2} cy={snapFromWs.y + snapFromWs.height / 2}
-                        r={28} fill="none" stroke={cv.color} strokeWidth="2" strokeDasharray="4 3" opacity="0.8"
+                    {/* 吸附點標記：在側邊吸附點顯示小圓點（而非工站中心） */}
+                    {cv.snapFromPt && (
+                      <circle cx={cv.snapFromPt.x} cy={cv.snapFromPt.y}
+                        r={5} fill={cv.color} opacity="0.9"
+                        stroke="#fff" strokeWidth="1.5"
                         style={{ pointerEvents: 'none' }} />
                     )}
-                    {snapToWs && (
-                      <circle cx={snapToWs.x + snapToWs.width / 2} cy={snapToWs.y + snapToWs.height / 2}
-                        r={28} fill="none" stroke={cv.color} strokeWidth="2" strokeDasharray="4 3" opacity="0.8"
+                    {cv.snapToPt && (
+                      <circle cx={cv.snapToPt.x} cy={cv.snapToPt.y}
+                        r={5} fill={cv.color} opacity="0.9"
+                        stroke="#fff" strokeWidth="1.5"
                         style={{ pointerEvents: 'none' }} />
                     )}
+                    {/* 端點把手 */}
                     <circle cx={cv.x1} cy={cv.y1} r={cv.snapFrom != null ? 9 : 7}
                       fill={cv.snapFrom != null ? cv.color : (isSelCV ? cv.color : '#1e293b')}
                       stroke={cv.color} strokeWidth="2"
@@ -1542,6 +1687,38 @@ export default function FloorPlanSimulator() {
                         {Math.round(Math.atan2(cv.y2 - cv.y1, cv.x2 - cv.x1) * 180 / Math.PI)}<span className="text-xs font-normal text-muted-foreground ml-0.5">°</span>
                       </p>
                     </div>
+                  </div>
+                  {/* 吸附狀態與自動連線資訊 */}
+                  <div className="bg-background/50 rounded-lg p-3 space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground">連接狀態</p>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="w-2 h-2 rounded-full inline-block" style={{ background: cv.snapFrom != null ? cv.color : '#374151' }} />
+                      <span className="text-muted-foreground">起點：</span>
+                      {cv.snapFrom != null ? (
+                        <span style={{ color: cv.color }} className="font-medium">
+                          {layout.workstations.find(w => w.id === cv.snapFrom)?.name ?? '?'}
+                          {cv.snapFromPt ? ` (${cv.snapFromPt.x.toFixed(0)}, ${cv.snapFromPt.y.toFixed(0)})` : ''}
+                        </span>
+                      ) : <span className="text-muted-foreground/60">未連接</span>}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="w-2 h-2 rounded-full inline-block" style={{ background: cv.snapTo != null ? cv.color : '#374151' }} />
+                      <span className="text-muted-foreground">終點：</span>
+                      {cv.snapTo != null ? (
+                        <span style={{ color: cv.color }} className="font-medium">
+                          {layout.workstations.find(w => w.id === cv.snapTo)?.name ?? '?'}
+                          {cv.snapToPt ? ` (${cv.snapToPt.x.toFixed(0)}, ${cv.snapToPt.y.toFixed(0)})` : ''}
+                        </span>
+                      ) : <span className="text-muted-foreground/60">未連接</span>}
+                    </div>
+                    {cv.snapFrom != null && cv.snapTo != null ? (
+                      <div className="flex items-center gap-1.5 mt-1 text-xs text-emerald-400">
+                        <Check className="w-3 h-3" />
+                        <span>已自動建立物流連線，連動計算搬運時間</span>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground/60 mt-1">將輸送帶端點拖靈到工站側邊可自動連接</p>
+                    )}
                   </div>
                   {/* 輸送帶預覽 SVG */}
                   <div className="rounded-lg overflow-hidden border border-border/40">
