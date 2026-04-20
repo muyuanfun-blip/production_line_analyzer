@@ -103,17 +103,54 @@ function getWsColor(ws: FloorWs, maxCt: number, taktTime?: number): {
 function snap(v: number): number { return Math.round(v / GRID) * GRID; }
 
 // ─── Bezier Path between two nodes ───────────────────────────────────────────
+// 判斷吸附點在工站的哪個邊緣，回傳出發方向向量 (dx, dy)，長度為 1
+function snapEdgeDir(ws: FloorWs, pt: { x: number; y: number }): { dx: number; dy: number } {
+  const cx = ws.x + ws.width / 2;
+  const cy = ws.y + ws.height / 2;
+  const relX = pt.x - cx; // 相對中心的 x
+  const relY = pt.y - cy; // 相對中心的 y
+  // 判斷最近的邊：比較 |relX / (w/2)| 與 |relY / (h/2)|
+  const normX = Math.abs(relX) / (ws.width / 2);
+  const normY = Math.abs(relY) / (ws.height / 2);
+  if (normX >= normY) {
+    return { dx: relX >= 0 ? 1 : -1, dy: 0 }; // 左邊或右邊
+  } else {
+    return { dx: 0, dy: relY >= 0 ? 1 : -1 }; // 上邊或下邊
+  }
+}
+
 function makePath(from: FloorWs, to: FloorWs, fromPt?: { x: number; y: number }, toPt?: { x: number; y: number }): string {
   const fx = fromPt ? fromPt.x : from.x + from.width / 2;
   const fy = fromPt ? fromPt.y : from.y + from.height / 2;
   const tx = toPt ? toPt.x : to.x + to.width / 2;
   const ty = toPt ? toPt.y : to.y + to.height / 2;
-  const dx = tx - fx;
-  const dy = ty - fy;
-  const cx1 = fx + dx * 0.4;
-  const cy1 = fy;
-  const cx2 = tx - dx * 0.4;
-  const cy2 = ty;
+  const dist = Math.hypot(tx - fx, ty - fy);
+  const ctrlLen = Math.max(40, dist * 0.35); // 控制點延伸長度
+
+  let cx1: number, cy1: number, cx2: number, cy2: number;
+
+  if (fromPt) {
+    // 從吸附點出發：控制點沿邊緣法線方向延伸
+    const dir = snapEdgeDir(from, fromPt);
+    cx1 = fx + dir.dx * ctrlLen;
+    cy1 = fy + dir.dy * ctrlLen;
+  } else {
+    // 無吸附點：水平方向控制點（原始行為）
+    cx1 = fx + (tx - fx) * 0.4;
+    cy1 = fy;
+  }
+
+  if (toPt) {
+    // 到達吸附點：控制點沿邊緣法線方向反向延伸
+    const dir = snapEdgeDir(to, toPt);
+    cx2 = tx + dir.dx * ctrlLen;
+    cy2 = ty + dir.dy * ctrlLen;
+  } else {
+    // 無吸附點：水平方向控制點（原始行為）
+    cx2 = tx - (tx - fx) * 0.4;
+    cy2 = ty;
+  }
+
   return `M ${fx} ${fy} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${tx} ${ty}`;
 }
 
