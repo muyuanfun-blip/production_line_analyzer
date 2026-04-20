@@ -514,3 +514,21 @@ export async function deleteSimulation(id: number) {
   if (!db) throw new Error("Database not available");
   return db.delete(simulationScenarios).where(eq(simulationScenarios.id, id));
 }
+
+export async function updateScenarioBackground(
+  id: number,
+  data: {
+    backgroundSvg?: string | null;
+    backgroundLayers?: unknown;
+    backgroundOpacity?: string;
+    backgroundOffsetX?: string;
+    backgroundOffsetY?: string;
+    backgroundScale?: string;
+    backgroundFileName?: string | null;
+  }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(simulationScenarios).set(data as any).where(eq(simulationScenarios.id, id));
+  return getSimulationById(id);
+}

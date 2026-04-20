@@ -140,6 +140,14 @@ export const simulationScenarios = mysqlTable("simulation_scenarios", {
   workstationsData: json("workstationsData").notNull(), // 模擬工站數據（與快照格式相同）
   notes: text("notes"),
   createdBy: int("createdBy"),                     // 建立者 userId
+  // DXF 底圖相關欄位
+  backgroundSvg: text("backgroundSvg"),           // 解析後的 SVG 字串（底圖向量）
+  backgroundLayers: json("backgroundLayers"),     // 圖層設定 [{ name, visible, color }]
+  backgroundOpacity: decimal("backgroundOpacity", { precision: 4, scale: 2 }).default("0.35"), // 底圖透明度（0–1）
+  backgroundOffsetX: decimal("backgroundOffsetX", { precision: 10, scale: 2 }).default("0"),  // 底圖 X 偏移（px）
+  backgroundOffsetY: decimal("backgroundOffsetY", { precision: 10, scale: 2 }).default("0"),  // 底圖 Y 偏移（px）
+  backgroundScale: decimal("backgroundScale", { precision: 10, scale: 4 }).default("1.0000"), // 底圖縮放比例
+  backgroundFileName: varchar("backgroundFileName", { length: 255 }), // 原始 DXF 檔名
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

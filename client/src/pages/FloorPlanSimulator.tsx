@@ -7,7 +7,7 @@ import {
   Maximize2, Download, Upload, GitCompare, Loader2, Link2, Link2Off,
   LayoutGrid, ChevronRight, X, Check, Users, Cpu, Clock, BarChart3,
   Target, Zap, AlertTriangle, TrendingUp, RotateCcw, FlaskConical,
-  MoveHorizontal, ChevronDown, ChevronUp,
+  MoveHorizontal, ChevronDown, ChevronUp, Map, Eye, EyeOff, Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { parseDxfToSvg, type DxfLayer } from "@/lib/dxfToSvg";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type FloorWs = {
@@ -348,6 +349,30 @@ export default function FloorPlanSimulator() {
   const [newWsMcTime, setNewWsMcTime] = useState("0");
   const [newWsManpower, setNewWsManpower] = useState("1");
 
+  // ── DXF 底圖狀態 ──
+  const [bgSvgContent, setBgSvgContent] = useState<string | null>(null);
+  const [bgViewBox, setBgViewBox] = useState<{ minX: number; minY: number; width: number; height: number } | null>(null);
+  const [bgLayers, setBgLayers] = useState<DxfLayer[]>([]);
+  const [bgOpacity, setBgOpacity] = useState(0.35);
+  const [bgOffsetX, setBgOffsetX] = useState(0);
+  const [bgOffsetY, setBgOffsetY] = useState(0);
+  const [bgScale, setBgScale] = useState(1.0);
+  const [bgFileName, setBgFileName] = useState<string | null>(null);
+  const [showDxfDialog, setShowDxfDialog] = useState(false);
+  const [dxfParsing, setDxfParsing] = useState(false);
+  const [bgAlignMode, setBgAlignMode] = useState(false); // 底圖對齊模式
+  const [bgDragging, setBgDragging] = useState(false);
+  const bgDragStart = useRef({ mx: 0, my: 0, ox: 0, oy: 0 });
+  const bgFileInputRef = useRef<HTMLInputElement>(null);
+  // 比例尺校正狀態
+  const [calMode, setCalMode] = useState(false); // 比例尺校正模式
+  const [calPts, setCalPts] = useState<{ x: number; y: number }[]>([]); // 已點選的校正點
+  const [calDist, setCalDist] = useState("1"); // 輸入的實際距離（公尺）
+  const updateBackgroundMutation = trpc.simulation.updateBackground.useMutation({
+    onSuccess: () => toast.success("底圖設定已儲存"),
+    onError: (e) => toast.error(`底圖儲存失敗：${e.message}`),
+  });
+
   // ── 右側面板寬度調整 ──
   const [rightPanelWidth, setRightPanelWidth] = useState(288); // 預設 288px (w-72)
   const [kpiCollapsed, setKpiCollapsed] = useState(false);
@@ -451,6 +476,17 @@ export default function FloorPlanSimulator() {
     }
     setIsDirty(false);
     setSelectedWsId(null);
+    // 載入底圖狀態
+    const sc = scenarios?.find(s => s.id === id);
+    if (sc) {
+      setBgSvgContent((sc as any).backgroundSvg ?? null);
+      setBgLayers(((sc as any).backgroundLayers as DxfLayer[]) ?? []);
+      setBgOpacity(parseFloat((sc as any).backgroundOpacity ?? '0.35'));
+      setBgOffsetX(parseFloat((sc as any).backgroundOffsetX ?? '0'));
+      setBgOffsetY(parseFloat((sc as any).backgroundOffsetY ?? '0'));
+      setBgScale(parseFloat((sc as any).backgroundScale ?? '1.0'));
+      setBgFileName((sc as any).backgroundFileName ?? null);
+    }
   }, [isDirty, scenarios]);
 
   // ── 從產線載入 ──
@@ -891,12 +927,18 @@ export default function FloorPlanSimulator() {
 
   // ── 畫布平移 ──
   const handleSvgMouseDown = useCallback((e: React.MouseEvent) => {
+    // 底圖對齊模式：點擊底圖區域開始拖曳
+    if (bgAlignMode && bgSvgContent) {
+      setBgDragging(true);
+      bgDragStart.current = { mx: e.clientX, my: e.clientY, ox: bgOffsetX, oy: bgOffsetY };
+      return;
+    }
     if (e.target !== svgRef.current && (e.target as Element).tagName !== "rect") return;
     // 點擊空白處清除輸送帶選取
     setSelectedConveyorId(null);
     setIsPanning(true);
     panStart.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
-  }, [pan]);
+  }, [pan, bgAlignMode, bgSvgContent, bgOffsetX, bgOffsetY]);
 
   useEffect(() => {
     if (!isPanning) return;
@@ -912,7 +954,22 @@ export default function FloorPlanSimulator() {
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
   }, [isPanning]);
 
-  // ── 滾輪縮放 ──
+  // ── 底圖拖曳 useEffect ──
+  useEffect(() => {
+    if (!bgDragging) return;
+    const onMove = (e: MouseEvent) => {
+      const dx = (e.clientX - bgDragStart.current.mx) / zoom;
+      const dy = (e.clientY - bgDragStart.current.my) / zoom;
+      setBgOffsetX(bgDragStart.current.ox + dx);
+      setBgOffsetY(bgDragStart.current.oy + dy);
+    };
+    const onUp = () => setBgDragging(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [bgDragging, zoom]);
+
+  // ── 滚輪縮放 ──
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -957,6 +1014,97 @@ export default function FloorPlanSimulator() {
     }
     return changes;
   }, [layout.workstations, lineWorkstations]);
+
+  // ── DXF 匹入處理 ──
+  const handleDxfImport = useCallback(async (file: File) => {
+    setDxfParsing(true);
+    try {
+      const text = await file.text();
+      const result = parseDxfToSvg(text);
+      setBgSvgContent(result.svgContent);
+      setBgViewBox(result.viewBox);
+      setBgLayers(result.layers);
+      setBgFileName(file.name);
+      // 自動計算底圖縮放：讓底圖寬度對映到畫布寬度（約 2000px）
+      if (result.viewBox.width > 0) {
+        const targetPx = 2000;
+        const autoScale = targetPx / result.viewBox.width;
+        setBgScale(autoScale);
+      }
+      setBgOffsetX(0);
+      setBgOffsetY(0);
+      toast.success(`已匹入 ${file.name}，共 ${result.entityCount} 個圖形元素，${result.layers.length} 個圖層`);
+    } catch (err: any) {
+      toast.error(`DXF 匹入失敗：${err.message}`);
+    } finally {
+      setDxfParsing(false);
+    }
+  }, []);
+
+  // ── 儲存底圖設定 ──
+  const handleSaveBg = useCallback(() => {
+    if (!selectedScenarioId) { toast.error('請先選取情境'); return; }
+    updateBackgroundMutation.mutate({
+      id: selectedScenarioId,
+      backgroundSvg: bgSvgContent,
+      backgroundLayers: bgLayers,
+      backgroundOpacity: bgOpacity,
+      backgroundOffsetX: bgOffsetX,
+      backgroundOffsetY: bgOffsetY,
+      backgroundScale: bgScale,
+      backgroundFileName: bgFileName,
+    });
+  }, [selectedScenarioId, bgSvgContent, bgLayers, bgOpacity, bgOffsetX, bgOffsetY, bgScale, bgFileName, updateBackgroundMutation]);
+
+  // ── 清除底圖 ──
+  const handleClearBg = useCallback(() => {
+    setBgSvgContent(null);
+    setBgViewBox(null);
+    setBgLayers([]);
+    setBgFileName(null);
+    setBgOffsetX(0);
+    setBgOffsetY(0);
+    setBgScale(1);
+    setBgAlignMode(false);
+    if (selectedScenarioId) {
+      updateBackgroundMutation.mutate({
+        id: selectedScenarioId,
+        backgroundSvg: null,
+        backgroundLayers: [],
+        backgroundFileName: null,
+      });
+    }
+    toast.success('底圖已清除');
+  }, [selectedScenarioId, updateBackgroundMutation]);
+
+  // ── 底圖拖曳處理 ──
+  const handleBgMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!bgAlignMode) return;
+    e.stopPropagation();
+    setBgDragging(true);
+    bgDragStart.current = { mx: e.clientX, my: e.clientY, ox: bgOffsetX, oy: bgOffsetY };
+  }, [bgAlignMode, bgOffsetX, bgOffsetY]);
+
+  // ── 比例尺校正點擊處理 ──
+  const handleCalClick = useCallback((svgX: number, svgY: number) => {
+    if (!calMode) return;
+    setCalPts(prev => {
+      const next = [...prev, { x: svgX, y: svgY }];
+      if (next.length === 2) {
+        // 兩點已選，計算實際距離
+        const pxDist = Math.hypot(next[1].x - next[0].x, next[1].y - next[0].y);
+        const realM = parseFloat(calDist);
+        if (pxDist > 0 && realM > 0) {
+          const newScale = pxDist / realM;
+          setScalePxPerM(Math.round(newScale));
+          toast.success(`比例尺已更新：${Math.round(newScale)} px/m`);
+        }
+        setCalMode(false);
+        return [];
+      }
+      return next;
+    });
+  }, [calMode, calDist]);
 
   // ── 自動排列 ──
   const handleAutoLayout = () => {
@@ -1053,6 +1201,17 @@ export default function FloorPlanSimulator() {
             onClick={handleAutoLayout}>
             <LayoutGrid className="w-4 h-4" />
           </Button>
+          <Button size="icon" variant="ghost" className="h-9 w-9" title="匯入 DXF 底圖"
+            onClick={() => setShowDxfDialog(true)}>
+            <Map className="w-4 h-4" />
+          </Button>
+          {bgSvgContent && (
+            <Button size="icon" variant={bgAlignMode ? "default" : "ghost"} className="h-9 w-9"
+              title={bgAlignMode ? "退出對齊模式" : "底圖對齊模式"}
+              onClick={() => setBgAlignMode(v => !v)}>
+              <Layers className="w-4 h-4" />
+            </Button>
+          )}
           <div className="flex-1" />
           <Button size="icon" variant="ghost" className="h-9 w-9" title="縮小"
             onClick={() => setZoom(z => Math.max(MIN_ZOOM, z * 0.8))}>
@@ -1079,12 +1238,25 @@ export default function FloorPlanSimulator() {
 
         {/* ── 主畫布 ── */}
         <div className="flex-1 relative overflow-hidden bg-[#0d1117]"
-          style={{ cursor: connectMode ? "crosshair" : isPanning ? "grabbing" : draggingId ? "grabbing" : "grab" }}>
+          style={{ cursor: calMode ? 'crosshair' : bgAlignMode ? 'move' : connectMode ? "crosshair" : isPanning ? "grabbing" : draggingId ? "grabbing" : "grab" }}>
 
           {/* 連線模式提示 */}
           {connectMode && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-primary/90 text-primary-foreground text-xs px-3 py-1.5 rounded-full shadow-lg">
               {connectFrom === null ? "點擊起始工站" : "點擊目標工站完成連線（再次點擊起始站取消）"}
+            </div>
+          )}
+          {/* 底圖對齊模式提示 */}
+          {bgAlignMode && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-amber-500/90 text-white text-xs px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2">
+              <Layers className="w-3.5 h-3.5" />
+              底圖對齊模式：拖曳底圖來對齊工站位置，再次點擊層圖按鈕退出
+            </div>
+          )}
+          {/* 比例尺校正模式提示 */}
+          {calMode && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-amber-600/90 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
+              {calPts.length === 0 ? "點擊第一點（A）" : "點擊第二點（B）完成校正"}
             </div>
           )}
 
@@ -1110,6 +1282,40 @@ export default function FloorPlanSimulator() {
                     <line key={`h${i}`} x1={0} y1={i * GRID} x2={3000} y2={i * GRID} stroke="#334155" strokeWidth="0.5" />
                   ))}
                 </g>
+              )}
+
+              {/* DXF 底圖層 */}
+              {bgSvgContent && bgViewBox && (() => {
+                const vb = bgViewBox;
+                return (
+                  <g
+                    opacity={bgOpacity}
+                    transform={`translate(${bgOffsetX}, ${bgOffsetY}) scale(${bgScale})`}
+                    style={{ cursor: bgAlignMode ? 'move' : 'default', pointerEvents: bgAlignMode ? 'all' : 'none' }}
+                    onMouseDown={handleBgMouseDown}
+                  >
+                    <svg
+                      x={-vb.minX}
+                      y={-vb.minY}
+                      viewBox={`${vb.minX} ${vb.minY} ${vb.width} ${vb.height}`}
+                      width={vb.width}
+                      height={vb.height}
+                      overflow="visible"
+                      dangerouslySetInnerHTML={{ __html: bgSvgContent }}
+                    />
+                  </g>
+                );
+              })()}
+
+              {/* 比例尺校正點標記 */}
+              {calPts.map((pt, i) => (
+                <g key={i}>
+                  <circle cx={pt.x} cy={pt.y} r={6} fill="#f59e0b" stroke="#fff" strokeWidth="1.5" />
+                  <text x={pt.x + 8} y={pt.y - 4} fontSize="11" fill="#f59e0b" fontWeight="bold">{i === 0 ? 'A' : 'B'}</text>
+                </g>
+              ))}
+              {calPts.length === 1 && (
+                <line x1={calPts[0].x} y1={calPts[0].y} x2={calPts[0].x + 40} y2={calPts[0].y} stroke="#f59e0b" strokeWidth="1" strokeDasharray="4 3" />
               )}
 
               <ArrowDefs />
@@ -1623,7 +1829,115 @@ export default function FloorPlanSimulator() {
                     <span className="text-xs text-muted-foreground">px/m</span>
                   </div>
                 </div>
+                {bgSvgContent && (
+                  <div className="mt-1.5 flex items-center gap-1">
+                    <Button size="sm" variant="outline" className="h-6 text-xs flex-1"
+                      onClick={() => { setCalMode(true); setCalPts([]); }}>
+                      比例尺校正
+                    </Button>
+                    {calMode && (
+                      <Button size="sm" variant="ghost" className="h-6 text-xs px-2"
+                        onClick={() => { setCalMode(false); setCalPts([]); }}>X</Button>
+                    )}
+                  </div>
+                )}
+                {calMode && (
+                  <div className="mt-1 flex items-center gap-1">
+                    <Label className="text-xs text-muted-foreground">實際距離</Label>
+                    <Input type="number" min="0.1" step="0.1"
+                      value={calDist}
+                      className="h-6 w-16 text-xs px-1"
+                      onChange={e => setCalDist(e.target.value)} />
+                    <span className="text-xs text-muted-foreground">m</span>
+                  </div>
+                )}
               </div>
+
+              {/* DXF 底圖設定 */}
+              {bgSvgContent && (
+                <div className="bg-background/50 rounded-lg p-2 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Map className="w-3 h-3" />
+                      {bgFileName ?? 'DXF 底圖'}
+                    </p>
+                    <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-red-400 hover:text-red-300"
+                      onClick={handleClearBg}><X className="w-3 h-3" /></Button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-muted-foreground w-12">透明度</Label>
+                    <Slider min={0} max={1} step={0.05} value={[bgOpacity]}
+                      onValueChange={([v]) => setBgOpacity(v)}
+                      className="flex-1 h-1" />
+                    <span className="text-xs text-muted-foreground w-8 text-right">{Math.round(bgOpacity * 100)}%</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-muted-foreground w-12">縮放</Label>
+                    <Input type="number" min="0.01" max="10" step="0.01"
+                      value={bgScale.toFixed(2)}
+                      className="h-6 text-xs px-1 flex-1"
+                      onChange={e => setBgScale(parseFloat(e.target.value) || 1)} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-muted-foreground w-12">偏移 X</Label>
+                    <Input type="number" step="1"
+                      value={Math.round(bgOffsetX)}
+                      className="h-6 text-xs px-1 flex-1"
+                      onChange={e => setBgOffsetX(parseInt(e.target.value) || 0)} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-muted-foreground w-12">偏移 Y</Label>
+                    <Input type="number" step="1"
+                      value={Math.round(bgOffsetY)}
+                      className="h-6 text-xs px-1 flex-1"
+                      onChange={e => setBgOffsetY(parseInt(e.target.value) || 0)} />
+                  </div>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant={bgAlignMode ? 'default' : 'outline'} className="h-6 text-xs flex-1"
+                      onClick={() => setBgAlignMode(v => !v)}>
+                      {bgAlignMode ? '退出對齊' : '對齊模式'}
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-6 text-xs flex-1"
+                      onClick={handleSaveBg}
+                      disabled={updateBackgroundMutation.isPending}>
+                      {updateBackgroundMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : '儲存底圖'}
+                    </Button>
+                  </div>
+                  {/* 圖層清單 */}
+                  {bgLayers.length > 0 && (
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] text-muted-foreground/60 mb-1">{bgLayers.length} 個圖層</p>
+                      {bgLayers.map(layer => (
+                        <div key={layer.name} className="flex items-center gap-1.5 text-[10px]">
+                          <button
+                            className="flex items-center gap-1 flex-1 text-left hover:text-foreground transition-colors"
+                            style={{ color: layer.visible ? layer.color : '#64748b' }}
+                            onClick={() => {
+                              setBgLayers(prev => prev.map(l =>
+                                l.name === layer.name ? { ...l, visible: !l.visible } : l
+                              ));
+                              // 將圖層顯示/隱藏套用到 SVG 內容
+                              setBgSvgContent(prev => {
+                                if (!prev) return prev;
+                                const newVisible = !layer.visible;
+                                // 更新對應圖層 <g> 的 style
+                                return prev.replace(
+                                  new RegExp(`(<g data-layer="${layer.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" style=")[^"]*(")`, 'g'),
+                                  `$1${newVisible ? '' : 'display:none'}$2`
+                                );
+                              });
+                            }}
+                          >
+                            <span className="w-2 h-2 rounded-sm inline-block shrink-0" style={{ background: layer.visible ? layer.color : '#334155' }} />
+                            <span className="truncate max-w-[80px]">{layer.name}</span>
+                          </button>
+                          <span className="text-muted-foreground/40">{layer.visible ? '✓' : '–'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               </div>
               )}
             </div>
@@ -2311,6 +2625,71 @@ export default function FloorPlanSimulator() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Dialog: DXF 底圖匯入 ── */}
+      <Dialog open={showDxfDialog} onOpenChange={setShowDxfDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Map className="w-5 h-5 text-cyan-400" />匯入 DXF 廠房底圖
+            </DialogTitle>
+            <DialogDescription>
+              支援 AutoCAD DXF 格式。匯入後可調整透明度、縮放、偏移來對齊工站位置。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* 上傳區域 */}
+            <div
+              className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+              onClick={() => bgFileInputRef.current?.click()}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => {
+                e.preventDefault();
+                const file = e.dataTransfer.files[0];
+                if (file) { handleDxfImport(file); setShowDxfDialog(false); }
+              }}
+            >
+              {dxfParsing ? (
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                  <p className="text-sm text-muted-foreground">解析中...</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <Upload className="w-8 h-8 text-muted-foreground" />
+                  <p className="text-sm font-medium">點擊選擇或拖曳 DXF 檔案</p>
+                  <p className="text-xs text-muted-foreground">支援 .dxf 格式</p>
+                </div>
+              )}
+            </div>
+            {/* 說明 */}
+            <div className="bg-muted/30 rounded-lg p-3 space-y-1.5 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground">支援的圖形類型</p>
+              <p>✓ LINE、ARC、CIRCLE、ELLIPSE</p>
+              <p>✓ LWPOLYLINE、POLYLINE</p>
+              <p>✓ SPLINE（近似為直線段）</p>
+              <p className="text-amber-400">⚠ TEXT、MTEXT 目前不支援</p>
+              <p className="text-amber-400">⚠ DWG 格式請先在 AutoCAD 另存為 DXF</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDxfDialog(false)}>取消</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 隱藏的 file input */}
+      <input
+        ref={bgFileInputRef}
+        type="file"
+        accept=".dxf"
+        className="hidden"
+        onChange={e => {
+          const file = e.target.files?.[0];
+          if (file) { handleDxfImport(file); setShowDxfDialog(false); }
+          e.target.value = '';
+        }}
+      />
     </div>
   );
 }

@@ -439,3 +439,21 @@
 - [x] 自動連線從吸附點出發，貝茲曲線控制點沿邊緣法線方向延伸，路徑更自然
 - [x] 到達端同樣根據吸附邊緣決定控制點方向，使路徑平滑進入工站側邊
 - [x] 無吸附點的普通連線保持原有水平控制點行為（不影響既有功能）
+
+## DXF 廠房底圖匯入（方案 A：dxf-parser + SVG）
+- [x] 安裝 dxf-parser npm 套件
+- [x] drizzle/schema.ts：simulation_scenarios 新增 backgroundSvg、backgroundLayers、backgroundOpacity、backgroundOffsetX/Y、backgroundScale、backgroundFileName 欄位
+- [x] 執行資料庫遷移
+- [x] server/db.ts：新增 updateScenarioBackground query helper
+- [x] server/routers.ts：新增 simulation.updateBackground protectedProcedure
+- [x] 前端：實作 parseDxfToSvg 函式（dxf-parser → LINE/ARC/CIRCLE/POLYLINE/SPLINE → SVG path）
+- [x] 前端：配置模擬畫布 SVG 底圖渲染層（pointer-events:none）
+- [x] 前端：工具列新增「匯入 DXF」按鈕，點擊後開啟上傳 Dialog（支援點擊選擇與拖曳上傳）
+- [x] 前端：底圖透明度滑桿（0–100%）
+- [x] 前端：底圖對齊模式（拖曳底圖對齊工站位置）
+- [x] 前端：底圖縮放、偏移 X/Y 手動輸入
+- [x] 前端：比例尺校正工具（點選底圖兩點 A/B → 輸入實際距離 → 自動更新 scalePxPerM）
+- [x] 前端：底圖可清除（恢復空白畫布）
+- [x] 前端：底圖設定儲存至資料庫（場景切換時自動載入）
+- [x] 前端：圖層清單 UI，列出所有 DXF 圖層並可逐一顯示/隱藏，切換後即時更新底圖渲染
+- [x] 撰寫 DXF 解析相關 Vitest 測試（server/dxf.test.ts，20 項：LINE/ARC/CIRCLE/POLYLINE/SPLINE 轉 SVG、容錯處理、viewBox 計算）— 總計 133 項測試全通過

@@ -18,6 +18,7 @@ import {
   getUserByUsername, getAllUsers, createLocalUser,
   updateUserPassword, toggleUserActive, updateUserRole, updateUserLastSignedIn,
   listSimulations, getSimulationById, createSimulation, updateSimulation, deleteSimulation,
+  updateScenarioBackground,
 } from "./db";
 import bcrypt from "bcryptjs";
 import { sdk } from "./_core/sdk";
@@ -876,6 +877,34 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
           added: changes.filter(c => c.type === 'add').length,
           removed: changes.filter(c => c.type === 'remove').length,
         };
+      }),
+
+    // 更新 DXF 底圖設定
+    updateBackground: protectedProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        backgroundSvg: z.string().nullable().optional(),
+        backgroundLayers: z.array(z.object({
+          name: z.string(),
+          visible: z.boolean(),
+          color: z.string().optional(),
+        })).optional(),
+        backgroundOpacity: z.number().min(0).max(1).optional(),
+        backgroundOffsetX: z.number().optional(),
+        backgroundOffsetY: z.number().optional(),
+        backgroundScale: z.number().positive().optional(),
+        backgroundFileName: z.string().nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, backgroundOpacity, backgroundOffsetX, backgroundOffsetY, backgroundScale, ...rest } = input;
+        const scenario = await updateScenarioBackground(id, {
+          ...rest,
+          ...(backgroundOpacity !== undefined && { backgroundOpacity: backgroundOpacity.toFixed(2) }),
+          ...(backgroundOffsetX !== undefined && { backgroundOffsetX: backgroundOffsetX.toFixed(2) }),
+          ...(backgroundOffsetY !== undefined && { backgroundOffsetY: backgroundOffsetY.toFixed(2) }),
+          ...(backgroundScale !== undefined && { backgroundScale: backgroundScale.toFixed(4) }),
+        });
+        return { success: true, scenario };
       }),
   }),
 });
