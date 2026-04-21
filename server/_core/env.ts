@@ -8,6 +8,6 @@ export const ENV = {
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
   ollamaApiKey: process.env.OLLAMA_API_KEY ?? "",
-  ollamaBaseUrl: "https://ollama.com",
-  ollamaModel: "qwen3-coder:480b",
+  ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",
+  ollamaModel: process.env.OLLAMA_MODEL ?? "llama3.2",
 };

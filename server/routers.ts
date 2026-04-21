@@ -361,6 +361,10 @@ export const appRouter = router({
         })),
       }))
       .mutation(async ({ input }) => {
+        // 本地部署：若未設定 OLLAMA_API_KEY，回傳友善錯誤訊息
+        if (!ENV.ollamaApiKey) {
+          throw new Error('AI 分析功能需要設定 OLLAMA_API_KEY 環境變數。請在 .env 檔案中設定 OLLAMA_API_KEY，並確認本地 Ollama 服務已啟動（預設 http://localhost:11434）。');
+        }
         const bottleneck = input.workstations.reduce((max, w) =>
           w.cycleTime > max.cycleTime ? w : max, input.workstations[0]);
         const totalTime = input.workstations.reduce((sum, w) => sum + w.cycleTime, 0);

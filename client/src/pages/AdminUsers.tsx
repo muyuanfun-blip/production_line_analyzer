@@ -133,7 +133,7 @@ export default function AdminUsers() {
                   {userList.map((u) => (
                     <TableRow key={u.id}>
                       <TableCell className="font-mono text-sm">
-                        {u.username ?? <span className="text-muted-foreground italic">（OAuth 帳號）</span>}
+                        {u.username ?? <span className="text-muted-foreground italic">（外部登入帳號）</span>}
                       </TableCell>
                       <TableCell>{u.name ?? "—"}</TableCell>
                       <TableCell>

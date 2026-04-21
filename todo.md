@@ -457,3 +457,29 @@
 - [x] 前端：底圖設定儲存至資料庫（場景切換時自動載入）
 - [x] 前端：圖層清單 UI，列出所有 DXF 圖層並可逐一顯示/隱藏，切換後即時更新底圖渲染
 - [x] 撰寫 DXF 解析相關 Vitest 測試（server/dxf.test.ts，20 項：LINE/ARC/CIRCLE/POLYLINE/SPLINE 轉 SVG、容錯處理、viewBox 計算）— 總計 133 項測試全通過
+
+## 登入機制簡化（移除 OAuth 依賴，改為純帳號密碼）
+- [x] 後端：routers.ts 新增 auth.localLogin（帳號+密碼驗證 + 寫入 JWT session cookie）
+- [x] 後端：routers.ts 新增 admin.createUser（管理員建立新帳號）
+- [x] 後端：密碼使用 bcryptjs 雜湊儲存（users.passwordHash 欄位）
+- [x] 後端：context.ts 透過 JWT cookie 直接解析 session，不依賴 Manus OAuth
+- [x] 前端：LoginPage.tsx（帳號密碼表單，取代 OAuth 跳轉）
+- [x] 前端：const.ts getLoginUrl() 改為回傳 /login，移除 Manus OAuth URL 建構
+- [x] 前端：main.tsx 全域 unauthorized 錯誤改為重導向至 /login（非 OAuth portal）
+- [x] 前端：useAuth.ts 預設 redirectPath 改為 /login（移除 getLoginUrl 依賴）
+- [x] 前端：AdminUsers.tsx 管理員帳號管理頁面（新增/停用/重設密碼/角色）
+- [x] 前端：App.tsx AuthGuard 未登入跳轉至 /login
+- [x] 後端：cookies.ts 修正本機 HTTP 環境 cookie 設定（sameSite=lax，避免 sameSite=none+HTTP 衝突）
+- [x] 新增初始管理員帳號建立腳本（seed-admin.mjs）
+- [x] 更新 LOCAL_SETUP.md：說明初始管理員帳號建立方式
+- [x] 全部 133 項 Vitest 測試通過
+
+## 地端部署問題修正（全面簡化）
+- [x] sdk.ts verifySession：appId 改為選填驗證，為空時填入 "local"，解決本地登入失敗問題
+- [x] sdk.ts authenticateRequest：移除 OAuth 同步邏輯，DB 找不到用戶時直接拋 ForbiddenError
+- [x] env.ts：ollamaBaseUrl 改為從 OLLAMA_BASE_URL 環境變數讀取，預設 http://localhost:11434
+- [x] env.ts：ollamaModel 改為從 OLLAMA_MODEL 環境變數讀取，預設 llama3.2
+- [x] routers.ts aiSuggest：加入 ollamaApiKey 空值保護，回傳友善錯誤訊息
+- [x] AdminUsers.tsx：「OAuth 帳號」文字改為「外部登入帳號」
+- [x] env.local.example：所有 Manus OAuth 欄位預設留空，新增 OLLAMA_BASE_URL/OLLAMA_MODEL 說明
+- [x] 全部 133 項 Vitest 測試通過
