@@ -1020,7 +1020,7 @@ export default function FloorPlanSimulator() {
     setDxfParsing(true);
     try {
       const text = await file.text();
-      const result = parseDxfToSvg(text);
+      const result = await parseDxfToSvg(text);
       setBgSvgContent(result.svgContent);
       setBgViewBox(result.viewBox);
       setBgLayers(result.layers);

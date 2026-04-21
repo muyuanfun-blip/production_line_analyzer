@@ -4,9 +4,15 @@
  * 支援：LINE, LWPOLYLINE, POLYLINE, ARC, CIRCLE, ELLIPSE, SPLINE, TEXT, MTEXT
  */
 
-// dxf-parser 使用 CommonJS，需用 require 方式匯入
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const DxfParser = require('dxf-parser');
+// dxf-parser 使用 CommonJS，在 Vite 環境中需用動態 import 來載入
+let _DxfParserClass: any = null;
+async function getDxfParser(): Promise<any> {
+  if (!_DxfParserClass) {
+    const mod = await import('dxf-parser');
+    _DxfParserClass = mod.default ?? mod;
+  }
+  return _DxfParserClass;
+}
 
 export type DxfLayer = {
   name: string;
@@ -135,8 +141,9 @@ function entityToPath(entity: any): string | null {
   }
 }
 
-export function parseDxfToSvg(dxfText: string): DxfParseResult {
-  const parser = new DxfParser();
+export async function parseDxfToSvg(dxfText: string): Promise<DxfParseResult> {
+  const DxfParserClass = await getDxfParser();
+  const parser = new DxfParserClass();
   const dxf = parser.parseSync(dxfText);
 
   // 收集所有圖層
