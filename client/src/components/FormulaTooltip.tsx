@@ -21,7 +21,9 @@ export type FormulaKey =
   | "avgCycleTime"
   | "totalManpower"
   | "workstationCount"
-  | "stationUpph";
+  | "stationUpph"
+  | "dailyCapacity"
+  | "monthlyCapacity";
 
 interface FormulaInfo {
   name: string;
@@ -122,6 +124,24 @@ export const FORMULA_MAP: Record<FormulaKey, FormulaInfo> = {
     example: "例：工站時間 45s、2 人 → 3600 ÷ 45 ÷ 2 = 40 件/人/時",
     unit: "件/人/時",
     tip: "工站 UPPH 遠高於產線 UPPH 時，表示該工站人力有餘裕可調配",
+  },
+  dailyCapacity: {
+    name: "日產能",
+    formula: "(每日工作時間(h) × 3600) ÷ 瓶頸工站週期時間(s)",
+    description:
+      "在目前瓶頸節拍下，每個工作日可生產的最大件數。受瓶頸工站與工作時間影響。",
+    example: "例：瓶頸 60s、每日工作 8h → (8 × 3600) ÷ 60 = 480 件/日",
+    unit: "件/日",
+    tip: "提升日產能的方法：縮短瓶頸時間、增加工作時間或導入加班班制",
+  },
+  monthlyCapacity: {
+    name: "月產能",
+    formula: "日產能(件/日) × 每月工作日數(天/月)",
+    description:
+      "在目前瓶頸節拍與班制設定下，每個月可生產的最大件數，是排程與備料的重要依據。",
+    example: "例：日產能 480 件、每月 22 工作日 → 480 × 22 = 10,560 件/月",
+    unit: "件/月",
+    tip: "月產能可用於評估是否能滿足客戶訂單需求，並規劃人力與設備投資",
   },
 };
 

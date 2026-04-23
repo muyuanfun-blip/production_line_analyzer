@@ -483,3 +483,10 @@
 - [x] AdminUsers.tsx：「OAuth 帳號」文字改為「外部登入帳號」
 - [x] env.local.example：所有 Manus OAuth 欄位預設留空，新增 OLLAMA_BASE_URL/OLLAMA_MODEL 說明
 - [x] 全部 133 項 Vitest 測試通過
+
+## 平衡分析：工作時間設定與產能計算（新增）
+- [x] 前端：BalanceAnalysis.tsx 新增「工作時間設定」區塊（每日工作時間 h/天、每月工作日數 天/月）
+- [x] 前端：依據設定值即時計算日產能（件/日）與月產能（件/月）
+- [x] 前端：在 KPI 卡片區新增「日產能」與「月產能」卡片
+- [x] 前端：設定值儲存至 localStorage，頁面重整後保留
+- [x] 前端：工作時間設定支援班制快速選擇（單班 8h、雙班 16h、三班 24h）

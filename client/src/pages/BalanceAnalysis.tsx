@@ -124,6 +124,15 @@ export default function BalanceAnalysis() {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [snapName, setSnapName] = useState("");
   const [snapNote, setSnapNote] = useState("");
+  // ─── 工作時間設定（localStorage 持久化）─────────────────────────────────────
+  const [workHoursPerDay, setWorkHoursPerDay] = useState<number>(() => {
+    const saved = localStorage.getItem('balance_workHoursPerDay');
+    return saved ? parseFloat(saved) : 8;
+  });
+  const [workDaysPerMonth, setWorkDaysPerMonth] = useState<number>(() => {
+    const saved = localStorage.getItem('balance_workDaysPerMonth');
+    return saved ? parseFloat(saved) : 22;
+  });
 
   const utils = trpc.useUtils();
   const { data: line } = trpc.productionLine.getById.useQuery({ id: lineId });
@@ -218,14 +227,20 @@ export default function BalanceAnalysis() {
       ? 3600 / maxTime / totalManpower
       : 0;
 
+    // 日產能 = (每日工作時間(h) × 3600) ÷ 瓶頸時間(s)
+    const dailyCapacity = maxTime > 0 ? Math.floor((workHoursPerDay * 3600) / maxTime) : 0;
+    // 月產能 = 日產能 × 每月工作日數
+    const monthlyCapacity = dailyCapacity * workDaysPerMonth;
     return {
       totalTime, maxTime, minTime, avgTime, balanceRate, balanceLoss,
       bottleneck, taktStats, chartData,
       workstationCount: workstations.length,
       totalManpower,
       upph,
+      dailyCapacity,
+      monthlyCapacity,
     };
-  }, [workstations, taktTime]);
+  }, [workstations, taktTime, workHoursPerDay, workDaysPerMonth]);
 
   const handleExportReport = () => {
     if (!analysis || !workstations) { toast.error("沒有資料可導出"); return; }
@@ -570,6 +585,123 @@ export default function BalanceAnalysis() {
             </Card>
           </div>
 
+
+
+          {/* 工作時間設定與產能計算 */}
+          <Card className="border-sky-500/30 bg-sky-500/5">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="h-8 w-8 rounded-lg bg-sky-400/15 flex items-center justify-center">
+                  <Clock className="h-4 w-4 text-sky-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-sky-400">工作時間設定</p>
+                  <p className="text-xs text-muted-foreground">設定班制以計算日/月產能</p>
+                </div>
+              </div>
+              {/* 班制快速選擇 */}
+              <div className="flex gap-2 mb-4">
+                {[
+                  { label: "單班", hours: 8 },
+                  { label: "雙班", hours: 16 },
+                  { label: "三班", hours: 24 },
+                ].map(({ label, hours }) => (
+                  <button
+                    key={hours}
+                    onClick={() => {
+                      setWorkHoursPerDay(hours);
+                      localStorage.setItem('balance_workHoursPerDay', String(hours));
+                    }}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-medium border transition-all ${
+                      workHoursPerDay === hours
+                        ? "bg-sky-500/20 border-sky-500/60 text-sky-300"
+                        : "bg-muted/30 border-border text-muted-foreground hover:border-sky-500/40 hover:text-sky-400"
+                    }`}
+                  >
+                    {label} {hours}h
+                  </button>
+                ))}
+              </div>
+              {/* 輸入區 */}
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">每日工作時間（h/天）</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={24}
+                    step={0.5}
+                    value={workHoursPerDay}
+                    onChange={e => {
+                      const v = parseFloat(e.target.value);
+                      if (!isNaN(v) && v > 0 && v <= 24) {
+                        setWorkHoursPerDay(v);
+                        localStorage.setItem('balance_workHoursPerDay', String(v));
+                      }
+                    }}
+                    className="h-8 text-sm bg-background/50"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">每月工作日數（天/月）</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={31}
+                    step={1}
+                    value={workDaysPerMonth}
+                    onChange={e => {
+                      const v = parseInt(e.target.value);
+                      if (!isNaN(v) && v > 0 && v <= 31) {
+                        setWorkDaysPerMonth(v);
+                        localStorage.setItem('balance_workDaysPerMonth', String(v));
+                      }
+                    }}
+                    className="h-8 text-sm bg-background/50"
+                  />
+                </div>
+              </div>
+              {/* 日產能 / 月產能 KPI */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-lg bg-sky-400/10 border border-sky-400/20">
+                  <p className="text-xs text-muted-foreground mb-1">日產能</p>
+                  <FormulaTooltip
+                    formulaKey="dailyCapacity"
+                    liveValues={{
+                      "瓶頸時間": `${analysis.maxTime.toFixed(1)}s`,
+                      "每日工時": `${workHoursPerDay}h`,
+                    }}
+                  >
+                    <p className="text-xl font-bold text-sky-300">
+                      {analysis.dailyCapacity.toLocaleString()}
+                    </p>
+                  </FormulaTooltip>
+                  <p className="text-xs text-sky-400/70 mt-0.5">件/日</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    = ({workHoursPerDay}h × 3600) ÷ {analysis.maxTime.toFixed(1)}s
+                  </p>
+                </div>
+                <div className="p-3 rounded-lg bg-indigo-400/10 border border-indigo-400/20">
+                  <p className="text-xs text-muted-foreground mb-1">月產能</p>
+                  <FormulaTooltip
+                    formulaKey="monthlyCapacity"
+                    liveValues={{
+                      "日產能": `${analysis.dailyCapacity.toLocaleString()}件`,
+                      "工作日數": `${workDaysPerMonth}天`,
+                    }}
+                  >
+                    <p className="text-xl font-bold text-indigo-300">
+                      {analysis.monthlyCapacity.toLocaleString()}
+                    </p>
+                  </FormulaTooltip>
+                  <p className="text-xs text-indigo-400/70 mt-0.5">件/月</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    = {analysis.dailyCapacity.toLocaleString()} × {workDaysPerMonth}天
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
           {/* Balance Rate Progress */}
           <Card className="border-border bg-card">
             <CardHeader className="pb-3">
