@@ -205,7 +205,7 @@ export default function Home() {
           <p className="text-muted-foreground text-lg max-w-2xl leading-relaxed">
             整合工站時間統計、產線平衡分析、動作分析與 AI 優化建議，
             精確識別瓶頸、提升生產效率、實現精實生產目標。<br />
-            設計者：Danny.F
+            設計者：D.F.
           </p>
           <div className="flex items-center gap-4 mt-6">
             <Button size="lg" className="glow-primary" onClick={() => setLocation("/lines")}>
