@@ -7,7 +7,7 @@ import {
   Maximize2, Download, Upload, GitCompare, Loader2, Link2, Link2Off,
   LayoutGrid, ChevronRight, X, Check, Users, Cpu, Clock, BarChart3,
   Target, Zap, AlertTriangle, TrendingUp, RotateCcw, FlaskConical,
-  MoveHorizontal, ChevronDown, ChevronUp, Map, Eye, EyeOff, Layers,
+  MoveHorizontal, ChevronDown, ChevronUp, Map, Eye, EyeOff, Layers, PenLine,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,10 +75,25 @@ export type ConveyorObject = {
   snapToPt?:   { x: number; y: number }; // 終點在工站上的絕對座標（側邊任意點）
 };
 
+export type ZoneObject = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  name: string;
+  color: string;   // fill color (hex)
+  opacity: number; // 0.05 ~ 0.35
+};
+export const ZONE_PRESET_COLORS = [
+  '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
+  '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
+];
 export type FloorLayout = {
   workstations: FloorWs[];
   connections: FloorConnection[];
   conveyors?: ConveyorObject[];
+  zones?: ZoneObject[];
 };
 
 /// ─── Constants ───────────────────────────────────────────────────────────
@@ -368,6 +383,11 @@ export default function FloorPlanSimulator() {
   const [calMode, setCalMode] = useState(false); // 比例尺校正模式
   const [calPts, setCalPts] = useState<{ x: number; y: number }[]>([]); // 已點選的校正點
   const [calDist, setCalDist] = useState("1"); // 輸入的實際距離（公尺）
+  // ── 功能區標示（Zone）──
+  const [zoneMode, setZoneMode] = useState(false); // 繪製模式
+  const [zoneDrawing, setZoneDrawing] = useState<{ startX: number; startY: number; curX: number; curY: number } | null>(null);
+  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+  const [editingZoneColor, setEditingZoneColor] = useState(ZONE_PRESET_COLORS[0]);
   const updateBackgroundMutation = trpc.simulation.updateBackground.useMutation({
     onSuccess: () => toast.success("底圖設定已儲存"),
     onError: (e) => toast.error(`底圖儲存失敗：${e.message}`),
@@ -933,12 +953,19 @@ export default function FloorPlanSimulator() {
       bgDragStart.current = { mx: e.clientX, my: e.clientY, ox: bgOffsetX, oy: bgOffsetY };
       return;
     }
+    // Zone 繪製模式：記錄起點
+    if (zoneMode) {
+      const pt = svgPoint(e);
+      setZoneDrawing({ startX: pt.x, startY: pt.y, curX: pt.x, curY: pt.y });
+      return;
+    }
     if (e.target !== svgRef.current && (e.target as Element).tagName !== "rect") return;
     // 點擊空白處清除輸送帶選取
     setSelectedConveyorId(null);
+    setSelectedZoneId(null);
     setIsPanning(true);
     panStart.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
-  }, [pan, bgAlignMode, bgSvgContent, bgOffsetX, bgOffsetY]);
+  }, [pan, bgAlignMode, bgSvgContent, bgOffsetX, bgOffsetY, zoneMode, svgPoint]);
 
   useEffect(() => {
     if (!isPanning) return;
@@ -967,8 +994,46 @@ export default function FloorPlanSimulator() {
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-  }, [bgDragging, zoom]);
-
+   }, [bgDragging, zoom]);
+  // ── Zone 繪製追蹤 ──
+  useEffect(() => {
+    if (!zoneDrawing) return;
+    const onMove = (e: MouseEvent) => {
+      const svgEl = svgRef.current;
+      if (!svgEl) return;
+      const rect = svgEl.getBoundingClientRect();
+      const rawX = (e.clientX - rect.left - pan.x) / zoom;
+      const rawY = (e.clientY - rect.top  - pan.y) / zoom;
+      setZoneDrawing(d => d ? { ...d, curX: rawX, curY: rawY } : null);
+    };
+    const onUp = (e: MouseEvent) => {
+      const svgEl = svgRef.current;
+      if (!svgEl || !zoneDrawing) { setZoneDrawing(null); return; }
+      const rect = svgEl.getBoundingClientRect();
+      const rawX = (e.clientX - rect.left - pan.x) / zoom;
+      const rawY = (e.clientY - rect.top  - pan.y) / zoom;
+      const x = snap(Math.min(zoneDrawing.startX, rawX));
+      const y = snap(Math.min(zoneDrawing.startY, rawY));
+      const w = snap(Math.abs(rawX - zoneDrawing.startX));
+      const h = snap(Math.abs(rawY - zoneDrawing.startY));
+      if (w >= GRID * 2 && h >= GRID * 2) {
+        const newZone: ZoneObject = {
+          id: `zone-${Date.now()}`,
+          x, y, width: w, height: h,
+          name: `功能區 ${((layout.zones?.length ?? 0) + 1)}`,
+          color: editingZoneColor,
+          opacity: 0.15,
+        };
+        setLayout(prev => ({ ...prev, zones: [...(prev.zones ?? []), newZone] }));
+        setSelectedZoneId(newZone.id);
+        setIsDirty(true);
+      }
+      setZoneDrawing(null);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [zoneDrawing, pan, zoom, editingZoneColor, layout.zones]);
   // ── 滚輪縮放 ──
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
@@ -1205,6 +1270,11 @@ export default function FloorPlanSimulator() {
             onClick={() => setShowDxfDialog(true)}>
             <Map className="w-4 h-4" />
           </Button>
+          <Button size="icon" variant={zoneMode ? "default" : "ghost"} className="h-9 w-9"
+            title={zoneMode ? "退出功能區繪製模式" : "繪製功能區標示"}
+            onClick={() => { setZoneMode(v => !v); setZoneDrawing(null); setConnectMode(false); }}>
+            <PenLine className="w-4 h-4" />
+          </Button>
           {bgSvgContent && (
             <Button size="icon" variant={bgAlignMode ? "default" : "ghost"} className="h-9 w-9"
               title={bgAlignMode ? "退出對齊模式" : "底圖對齊模式"}
@@ -1238,12 +1308,19 @@ export default function FloorPlanSimulator() {
 
         {/* ── 主畫布 ── */}
         <div className="flex-1 relative overflow-hidden bg-[#0d1117]"
-          style={{ cursor: calMode ? 'crosshair' : bgAlignMode ? 'move' : connectMode ? "crosshair" : isPanning ? "grabbing" : draggingId ? "grabbing" : "grab" }}>
+          style={{ cursor: calMode ? 'crosshair' : zoneMode ? 'crosshair' : bgAlignMode ? 'move' : connectMode ? "crosshair" : isPanning ? "grabbing" : draggingId ? "grabbing" : "grab" }}>
 
           {/* 連線模式提示 */}
           {connectMode && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-primary/90 text-primary-foreground text-xs px-3 py-1.5 rounded-full shadow-lg">
               {connectFrom === null ? "點擊起始工站" : "點擊目標工站完成連線（再次點擊起始站取消）"}
+            </div>
+          )}
+          {/* Zone 繪製模式提示 */}
+          {zoneMode && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-emerald-600/90 text-white text-xs px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2">
+              <PenLine className="w-3.5 h-3.5" />
+              功能區繪製模式：拖曳畫布繪製矩形區域，再次點擊工具列按鈕退出
             </div>
           )}
           {/* 底圖對齊模式提示 */}
@@ -1307,6 +1384,43 @@ export default function FloorPlanSimulator() {
                 );
               })()}
 
+              {/* 功能區標示層（工站層之下） */}
+              {(layout.zones ?? []).map(zone => {
+                const isSelZ = selectedZoneId === zone.id;
+                return (
+                  <g key={zone.id}
+                    onClick={e => { e.stopPropagation(); if (!zoneMode) { setSelectedZoneId(zone.id); setSelectedWsId(null); setSelectedConveyorId(null); } }}
+                    style={{ cursor: zoneMode ? 'crosshair' : 'pointer' }}>
+                    <rect
+                      x={zone.x} y={zone.y} width={zone.width} height={zone.height}
+                      fill={zone.color} fillOpacity={zone.opacity}
+                      stroke={zone.color} strokeWidth={isSelZ ? 2 : 1}
+                      strokeDasharray={isSelZ ? 'none' : '6 3'}
+                      rx={4} />
+                    <text
+                      x={zone.x + 8} y={zone.y + 18}
+                      fontSize="13" fontWeight="600"
+                      fill={zone.color} fillOpacity="0.9"
+                      style={{ pointerEvents: 'none', userSelect: 'none' }}>
+                      {zone.name}
+                    </text>
+                  </g>
+                );
+              })}
+              {/* Zone 繪製預覽 */}
+              {zoneDrawing && (() => {
+                const x = Math.min(zoneDrawing.startX, zoneDrawing.curX);
+                const y = Math.min(zoneDrawing.startY, zoneDrawing.curY);
+                const w = Math.abs(zoneDrawing.curX - zoneDrawing.startX);
+                const h = Math.abs(zoneDrawing.curY - zoneDrawing.startY);
+                return (
+                  <rect x={x} y={y} width={w} height={h}
+                    fill={editingZoneColor} fillOpacity={0.12}
+                    stroke={editingZoneColor} strokeWidth={1.5}
+                    strokeDasharray="6 3" rx={4}
+                    style={{ pointerEvents: 'none' }} />
+                );
+              })()}
               {/* 比例尺校正點標記 */}
               {calPts.map((pt, i) => (
                 <g key={i}>
@@ -1945,6 +2059,59 @@ export default function FloorPlanSimulator() {
 
           {/* 工站屬性面板 */}
           <div className="flex-1 overflow-y-auto p-3">
+            {/* Zone 屬性面板 */}
+            {selectedZoneId && !selectedWsId && (() => {
+              const zone = (layout.zones ?? []).find(z => z.id === selectedZoneId);
+              if (!zone) return null;
+              const updateZone = (field: keyof ZoneObject, value: any) => {
+                setLayout(prev => ({
+                  ...prev,
+                  zones: (prev.zones ?? []).map(z => z.id === zone.id ? { ...z, [field]: value } : z),
+                }));
+                setIsDirty(true);
+              };
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-foreground">功能區屬性</p>
+                    <Button size="icon" variant="ghost" className="h-6 w-6 text-red-400 hover:text-red-300"
+                      onClick={() => {
+                        setLayout(prev => ({ ...prev, zones: (prev.zones ?? []).filter(z => z.id !== zone.id) }));
+                        setSelectedZoneId(null);
+                        setIsDirty(true);
+                      }}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">區域名稱</Label>
+                    <Input className="h-7 text-sm mt-1" value={zone.name}
+                      onChange={e => updateZone('name', e.target.value)} />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">顏色</Label>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {ZONE_PRESET_COLORS.map(c => (
+                        <button key={c} className="w-6 h-6 rounded-full border-2 transition-all"
+                          style={{ background: c, borderColor: zone.color === c ? '#fff' : 'transparent' }}
+                          onClick={() => updateZone('color', c)} />
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">透明度 ({Math.round(zone.opacity * 100)}%)</Label>
+                    <Slider className="mt-2" min={5} max={40} step={5}
+                      value={[Math.round(zone.opacity * 100)]}
+                      onValueChange={([v]) => updateZone('opacity', v / 100)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                    <div><span className="block">寬度</span><span className="text-foreground font-medium">{(zone.width / scalePxPerM).toFixed(1)} m</span></div>
+                    <div><span className="block">高度</span><span className="text-foreground font-medium">{(zone.height / scalePxPerM).toFixed(1)} m</span></div>
+                    <div><span className="block">面積</span><span className="text-foreground font-medium">{(zone.width * zone.height / scalePxPerM / scalePxPerM).toFixed(1)} m²</span></div>
+                  </div>
+                </div>
+              );
+            })()}
             {/* 輸送帶屬性面板 */}
             {selectedConveyorId && !selectedWsId && (() => {
               const cv = (layout.conveyors ?? []).find(c => c.id === selectedConveyorId);
@@ -2329,6 +2496,25 @@ export default function FloorPlanSimulator() {
             )}
           </div>
 
+          {/* 功能區列表 */}
+          {(layout.zones ?? []).length > 0 && (
+            <div className="border-t border-border p-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                功能區 ({(layout.zones ?? []).length})
+              </p>
+              <div className="space-y-1 max-h-28 overflow-y-auto">
+                {(layout.zones ?? []).map(zone => (
+                  <div key={zone.id}
+                    className={`flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer transition-colors text-xs ${selectedZoneId === zone.id ? "bg-primary/20 border border-primary/40" : "hover:bg-muted/30"}`}
+                    onClick={() => { setSelectedZoneId(zone.id); setSelectedWsId(null); setSelectedConveyorId(null); }}>
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ background: zone.color }} />
+                    <span className="flex-1 truncate font-medium">{zone.name}</span>
+                    <span className="text-muted-foreground">{(zone.width * zone.height / scalePxPerM / scalePxPerM).toFixed(1)} m²</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {/* 工站列表 */}
           {layout.workstations.length > 0 && (
             <div className="border-t border-border p-3">
