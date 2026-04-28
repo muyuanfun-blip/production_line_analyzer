@@ -84,6 +84,11 @@ export type ZoneObject = {
   name: string;
   color: string;   // fill color (hex)
   opacity: number; // 0.05 ~ 0.35
+  // Buffer Zone 擴充
+  isBuffer?: boolean;      // 是否為緩衝區
+  maxWip?: number;         // 最大 WIP 容量（件）
+  linkedWsIds?: string[];  // 關聯工站 ID（用於估算積料）
+  wipNote?: string;        // 備註說明
 };
 export const ZONE_PRESET_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
@@ -1049,8 +1054,46 @@ export default function FloorPlanSimulator() {
     [layout.workstations, layout.connections, scalePxPerM, taktTime]
   );
   const maxCt = kpi?.maxCt ?? 0;
-
   const selectedWs = layout.workstations.find(w => w.id === selectedWsId);
+
+  // ── 緩衝區 WIP 估算 ──
+  // 模型：對於每個緩衝區，找到關聯工站中「最慢上游工站 CT」與「最快下游工站 CT」
+  // 積料速率 = 1/上游CT - 1/下游CT（件/秒），積料時間取 30分鐘估算（可調整）
+  const bufferWipMap = useMemo(() => {
+    const result: Record<string, { estimatedWip: number; wipRatio: number; status: 'ok' | 'warn' | 'alert' }> = {};
+    for (const zone of (layout.zones ?? [])) {
+      if (!zone.isBuffer || !zone.maxWip || zone.maxWip <= 0) continue;
+      const linked = (zone.linkedWsIds ?? []).map(id => layout.workstations.find(w => String(w.id) === id)).filter((w): w is FloorWs => w !== undefined);
+      if (linked.length < 1) {
+        result[zone.id] = { estimatedWip: 0, wipRatio: 0, status: 'ok' };
+        continue;
+      }
+      const cts = linked.map(w => Math.max(w.operatorTime, w.machineTime));
+      const upstreamCt = Math.max(...cts);
+      const downstreamCt = Math.min(...cts);
+      // 積料速率：上游产出速率 - 下游消耗速率（件/秒）
+      const prodRate = upstreamCt > 0 ? 1 / upstreamCt : 0;
+      const consRate = downstreamCt > 0 ? 1 / downstreamCt : 0;
+      const accRate = Math.max(0, prodRate - consRate); // 正則為積料
+      // 估算 30 分鐘積料量（如果積料速率 = 0 則取關聯工站平均 CT 估算常態 WIP）
+      let estimatedWip: number;
+      if (accRate > 0) {
+        estimatedWip = Math.round(accRate * 1800); // 30分鐘積料
+      } else {
+        // 平衡狀態：估算常態 WIP = 工站數 × 1（每工站平均 1 件在制）
+        estimatedWip = linked.length;
+      }
+      const wipRatio = estimatedWip / zone.maxWip;
+      const status: 'ok' | 'warn' | 'alert' = wipRatio >= 1 ? 'alert' : wipRatio >= 0.8 ? 'warn' : 'ok';
+      result[zone.id] = { estimatedWip, wipRatio, status };
+    }
+    return result;
+  }, [layout.zones, layout.workstations]);
+
+  // WIP 警示統計
+  const wipAlertCount = Object.values(bufferWipMap).filter(v => v.status === 'alert').length;
+  const wipWarnCount  = Object.values(bufferWipMap).filter(v => v.status === 'warn').length;
+  const wipMaxRatio   = Object.values(bufferWipMap).reduce((m, v) => Math.max(m, v.wipRatio), 0);;
 
   // ── 套用至產線的變更清單 ──
   const applyChanges = useMemo(() => {
@@ -1387,23 +1430,66 @@ export default function FloorPlanSimulator() {
               {/* 功能區標示層（工站層之下） */}
               {(layout.zones ?? []).map(zone => {
                 const isSelZ = selectedZoneId === zone.id;
+                const wipInfo = bufferWipMap[zone.id];
+                const isAlert = wipInfo?.status === 'alert';
+                const isWarn  = wipInfo?.status === 'warn';
+                // 警示時邊框顏色覆蓋
+                const strokeColor = isAlert ? '#ef4444' : isWarn ? '#f59e0b' : zone.color;
+                const fillColor   = isAlert ? '#ef4444' : isWarn ? '#f59e0b' : zone.color;
+                const strokeW     = isAlert ? 2.5 : isSelZ ? 2 : 1;
+                const strokeDash  = isAlert ? '8 3' : isSelZ ? 'none' : '6 3';
                 return (
                   <g key={zone.id}
                     onClick={e => { e.stopPropagation(); if (!zoneMode) { setSelectedZoneId(zone.id); setSelectedWsId(null); setSelectedConveyorId(null); } }}
                     style={{ cursor: zoneMode ? 'crosshair' : 'pointer' }}>
+                    {/* 區域填充 */}
                     <rect
                       x={zone.x} y={zone.y} width={zone.width} height={zone.height}
-                      fill={zone.color} fillOpacity={zone.opacity}
-                      stroke={zone.color} strokeWidth={isSelZ ? 2 : 1}
-                      strokeDasharray={isSelZ ? 'none' : '6 3'}
+                      fill={fillColor} fillOpacity={isAlert ? 0.18 : zone.opacity}
+                      stroke={strokeColor} strokeWidth={strokeW}
+                      strokeDasharray={strokeDash}
                       rx={4} />
+                    {/* 警示時加一層紅色外框強調 */}
+                    {isAlert && (
+                      <rect
+                        x={zone.x - 2} y={zone.y - 2}
+                        width={zone.width + 4} height={zone.height + 4}
+                        fill="none" stroke="#ef4444" strokeWidth={1.5}
+                        strokeDasharray="4 4" rx={6}
+                        style={{ pointerEvents: 'none' }} />
+                    )}
+                    {/* 區域名稱 */}
                     <text
                       x={zone.x + 8} y={zone.y + 18}
                       fontSize="13" fontWeight="600"
-                      fill={zone.color} fillOpacity="0.9"
+                      fill={strokeColor} fillOpacity="0.9"
                       style={{ pointerEvents: 'none', userSelect: 'none' }}>
-                      {zone.name}
+                      {zone.isBuffer ? '■ ' : ''}{zone.name}
                     </text>
+                    {/* Buffer Zone WIP 狀態標示 */}
+                    {zone.isBuffer && wipInfo && zone.maxWip && (
+                      <>
+                        {/* WIP 進度列 */}
+                        <rect
+                          x={zone.x + 8} y={zone.y + 24}
+                          width={Math.min(zone.width - 16, 120)} height={6}
+                          fill="#1f2937" rx={3}
+                          style={{ pointerEvents: 'none' }} />
+                        <rect
+                          x={zone.x + 8} y={zone.y + 24}
+                          width={Math.min((zone.width - 16) * Math.min(wipInfo.wipRatio, 1), 120)} height={6}
+                          fill={isAlert ? '#ef4444' : isWarn ? '#f59e0b' : '#10b981'} rx={3}
+                          style={{ pointerEvents: 'none' }} />
+                        {/* WIP 數字標示 */}
+                        <text
+                          x={zone.x + 8} y={zone.y + 42}
+                          fontSize="11" fill={strokeColor} fillOpacity="0.85"
+                          style={{ pointerEvents: 'none', userSelect: 'none' }}>
+                          WIP {wipInfo.estimatedWip}/{zone.maxWip}
+                          {isAlert ? ' ⚠️超限' : isWarn ? ' ⚠️接近上限' : ' ✓正常'}
+                        </text>
+                      </>
+                    )}
                   </g>
                 );
               })}
@@ -1818,6 +1904,36 @@ export default function FloorPlanSimulator() {
                   </div>
                 </div>
               )}
+              {/* WIP 風險統計 */}
+              {Object.keys(bufferWipMap).length > 0 && (
+                <div className={`rounded-lg p-2 space-y-1 ${
+                  wipAlertCount > 0 ? 'bg-red-500/10 border border-red-500/30' :
+                  wipWarnCount  > 0 ? 'bg-amber-500/10 border border-amber-500/30' :
+                  'bg-background/50'
+                }`}>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">WIP 風險</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-xs text-muted-foreground">超限緩衝區</p>
+                      <p className={`text-sm font-bold ${wipAlertCount > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                        {wipAlertCount} 個
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">接近上限</p>
+                      <p className={`text-sm font-bold ${wipWarnCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                        {wipWarnCount} 個
+                      </p>
+                    </div>
+                  </div>
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${
+                      wipAlertCount > 0 ? 'bg-red-500' : wipWarnCount > 0 ? 'bg-amber-500' : 'bg-emerald-500'
+                    }`} style={{ width: `${Math.min(wipMaxRatio * 100, 100)}%` }} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">最高使用率 {Math.round(wipMaxRatio * 100)}%</p>
+                </div>
+              )}
               {/* 人力與設備統計 */}
               <div className="bg-background/50 rounded-lg p-2 space-y-1">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">人力與設備</p>
@@ -2108,6 +2224,89 @@ export default function FloorPlanSimulator() {
                     <div><span className="block">寬度</span><span className="text-foreground font-medium">{(zone.width / scalePxPerM).toFixed(1)} m</span></div>
                     <div><span className="block">高度</span><span className="text-foreground font-medium">{(zone.height / scalePxPerM).toFixed(1)} m</span></div>
                     <div><span className="block">面積</span><span className="text-foreground font-medium">{(zone.width * zone.height / scalePxPerM / scalePxPerM).toFixed(1)} m²</span></div>
+                  </div>
+                  {/* ── Buffer Zone 設定 ── */}
+                  <div className="border-t border-border pt-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs text-muted-foreground">緩衝區模式</Label>
+                      <button
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          zone.isBuffer ? 'bg-amber-500' : 'bg-muted'
+                        }`}
+                        onClick={() => updateZone('isBuffer', !zone.isBuffer)}>
+                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                          zone.isBuffer ? 'translate-x-4' : 'translate-x-1'
+                        }`} />
+                      </button>
+                    </div>
+                    {zone.isBuffer && (
+                      <>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">最大 WIP 容量（件）</Label>
+                          <Input
+                            type="number" min={1} step={1}
+                            className="h-7 text-sm mt-1"
+                            value={zone.maxWip ?? ''}
+                            placeholder="例：20"
+                            onChange={e => updateZone('maxWip', parseInt(e.target.value) || undefined)} />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">關聯工站（選取用於估算積料）</Label>
+                          <div className="mt-1 space-y-1 max-h-28 overflow-y-auto">
+                            {layout.workstations.map(ws => {
+                              const wsId = String(ws.id);
+                              const checked = (zone.linkedWsIds ?? []).includes(wsId);
+                              return (
+                                <label key={ws.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5">
+                                  <input type="checkbox" className="accent-amber-500" checked={checked}
+                                    onChange={() => {
+                                      const cur = zone.linkedWsIds ?? [];
+                                      updateZone('linkedWsIds', checked ? cur.filter(id => id !== wsId) : [...cur, wsId]);
+                                    }} />
+                                  <span className="truncate">{ws.name}</span>
+                                  <span className="text-muted-foreground ml-auto shrink-0">{Math.max(ws.operatorTime, ws.machineTime).toFixed(1)}s</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        {/* WIP 狀態顯示 */}
+                        {bufferWipMap[zone.id] && zone.maxWip && (
+                          <div className={`rounded-lg p-2 text-xs space-y-1.5 ${
+                            bufferWipMap[zone.id].status === 'alert' ? 'bg-red-500/15 border border-red-500/40' :
+                            bufferWipMap[zone.id].status === 'warn'  ? 'bg-amber-500/15 border border-amber-500/40' :
+                            'bg-emerald-500/10 border border-emerald-500/30'
+                          }`}>
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold">當前 WIP 估算</span>
+                              <span className={`font-bold ${
+                                bufferWipMap[zone.id].status === 'alert' ? 'text-red-400' :
+                                bufferWipMap[zone.id].status === 'warn'  ? 'text-amber-400' : 'text-emerald-400'
+                              }`}>
+                                {bufferWipMap[zone.id].estimatedWip} / {zone.maxWip} 件
+                              </span>
+                            </div>
+                            <div className="h-2 bg-muted rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full transition-all ${
+                                bufferWipMap[zone.id].status === 'alert' ? 'bg-red-500' :
+                                bufferWipMap[zone.id].status === 'warn'  ? 'bg-amber-500' : 'bg-emerald-500'
+                              }`} style={{ width: `${Math.min(bufferWipMap[zone.id].wipRatio * 100, 100)}%` }} />
+                            </div>
+                            <div className="text-muted-foreground">
+                              {bufferWipMap[zone.id].status === 'alert' && '⚠️ WIP 超過上限，請立即處理積料'}
+                              {bufferWipMap[zone.id].status === 'warn'  && `⚠️ WIP 接近上限（${Math.round(bufferWipMap[zone.id].wipRatio * 100)}%）`}
+                              {bufferWipMap[zone.id].status === 'ok'    && '✓ WIP 正常，緩衝區適当'}
+                            </div>
+                          </div>
+                        )}
+                        <div>
+                          <Label className="text-xs text-muted-foreground">備註說明</Label>
+                          <Input className="h-7 text-sm mt-1" value={zone.wipNote ?? ''}
+                            placeholder="例：包裝材料暫存區"
+                            onChange={e => updateZone('wipNote', e.target.value)} />
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               );

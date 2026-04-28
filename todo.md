@@ -491,3 +491,4 @@
 - [x] 前端：設定值儲存至 localStorage，頁面重整後保留
 - [x] 前端：工作時間設定支援班制快速選擇（單班 8h、雙班 16h、三班 24h）
 - [x] 平面圖模擬器：新增功能區標示（Zone Annotation）物件 — 拖曳繪製矩形區域、8色預設色票、透明度調整、名稱編輯、面積顯示、右側清單、刪除，儲存至 FloorLayout.zones
+- [x] 平面圖模擬器：新增緩衝區（Buffer Zone）功能 — ZoneObject 擴充 isBuffer/maxWip/linkedWsIds/wipNote 欄位、WIP 積料速率估算（30分鐘模型）、SVG 進度條+警示邊框（ok/warn/alert 三級）、屬性面板 Buffer 開關+工站多選、KPI 面板 WIP 風險統計卡片
