@@ -691,9 +691,11 @@ export default function SimulationPage() {
                       <div key={tpl.name}
                         draggable
                         onDragStart={e => {
-                          setPaletteDragTemplate({ name: tpl.name, cycleTime: tpl.cycleTime, manpower: tpl.manpower });
+                          const d = { name: tpl.name, cycleTime: tpl.cycleTime, manpower: tpl.manpower };
+                          setPaletteDragTemplate(d);
                           e.dataTransfer.effectAllowed = "copy";
                           e.dataTransfer.setData("text/plain", "palette");
+                          e.dataTransfer.setData("application/json", JSON.stringify(d));
                         }}
                         onDragEnd={() => setPaletteDragTemplate(null)}
                         className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-border hover:border-primary/50 hover:bg-muted/20 cursor-grab active:cursor-grabbing transition-all group select-none">
@@ -716,9 +718,11 @@ export default function SimulationPage() {
                         <div key={lw.id}
                           draggable
                           onDragStart={e => {
-                            setPaletteDragTemplate({ name: lw.name, cycleTime: parseFloat(lw.cycleTime.toString()), manpower: parseFloat(lw.manpower.toString()) });
+                            const d = { name: lw.name, cycleTime: parseFloat(lw.cycleTime.toString()), manpower: parseFloat(lw.manpower.toString()) };
+                            setPaletteDragTemplate(d);
                             e.dataTransfer.effectAllowed = "copy";
                             e.dataTransfer.setData("text/plain", "palette");
+                            e.dataTransfer.setData("application/json", JSON.stringify(d));
                           }}
                           onDragEnd={() => setPaletteDragTemplate(null)}
                           className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-border hover:border-cyan-400/50 hover:bg-muted/20 cursor-grab active:cursor-grabbing transition-all select-none">
@@ -781,15 +785,7 @@ export default function SimulationPage() {
                 </div>
               </div>
             )}
-            {selectedScenarioId && sortedWs.length === 0 && (
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center space-y-3">
-                  <p className="text-muted-foreground text-sm">此情境尚無工站</p>
-                  <Button size="sm" onClick={() => setShowAddWsDialog(true)}><Plus className="w-3.5 h-3.5 mr-1.5" />新增工站</Button>
-                </div>
-              </div>
-            )}
-            {selectedScenarioId && sortedWs.length > 0 && (
+            {selectedScenarioId && (
               <div className="space-y-6">
                 {/* 自由定位畫布 */}
                 <div
@@ -800,18 +796,24 @@ export default function SimulationPage() {
                   onDrop={e => {
                     e.preventDefault();
                     const type = e.dataTransfer.getData("text/plain");
-                    if (type === "palette" && paletteDragTemplate) {
-                      const rect = canvasRef.current?.getBoundingClientRect();
-                      if (!rect) return;
-                      const x = Math.max(10, e.clientX - rect.left - 74);
-                      const y = Math.max(10, e.clientY - rect.top - 60);
-                      const newId = -(Date.now());
-                      const newWs: SimWorkstation = { id: newId, name: paletteDragTemplate.name, cycleTime: paletteDragTemplate.cycleTime, manpower: paletteDragTemplate.manpower, sequenceOrder: localWorkstations.length };
-                      setLocalWorkstations(prev => [...prev, newWs]);
-                      setWsPositions(prev => ({ ...prev, [newId]: { x, y } }));
-                      setIsDirty(true);
-                      setPaletteDragTemplate(null);
-                    }
+                    if (type !== "palette") return;
+                    // 優先從 dataTransfer JSON 取得模板資料，避免 state 競態問題
+                    let tplData: { name: string; cycleTime: number; manpower: number } | null = paletteDragTemplate;
+                    try {
+                      const raw = e.dataTransfer.getData("application/json");
+                      if (raw) tplData = JSON.parse(raw);
+                    } catch { /* ignore */ }
+                    if (!tplData) return;
+                    const rect = canvasRef.current?.getBoundingClientRect();
+                    if (!rect) return;
+                    const x = Math.max(10, e.clientX - rect.left - 74);
+                    const y = Math.max(10, e.clientY - rect.top - 20);
+                    const newId = -(Date.now());
+                    const newWs: SimWorkstation = { id: newId, name: tplData.name, cycleTime: tplData.cycleTime, manpower: tplData.manpower, sequenceOrder: localWorkstations.length };
+                    setLocalWorkstations(prev => [...prev, newWs]);
+                    setWsPositions(prev => ({ ...prev, [newId]: { x, y } }));
+                    setIsDirty(true);
+                    setPaletteDragTemplate(null);
                   }}
                   onMouseMove={e => {
                     if (!canvasDragging) return;
