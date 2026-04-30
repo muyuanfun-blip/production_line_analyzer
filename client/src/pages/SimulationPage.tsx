@@ -79,6 +79,17 @@ const STATUS_META: Record<BarStatus, { label: string; color: string; bg: string 
   efficient:  { label: "高效",     color: COLORS.efficient,  bg: "bg-emerald-500/10 border-emerald-500/30" },
 };
 
+// ─── Object Palette Templates ────────────────────────────────────────────────
+const PALETTE_TEMPLATES = [
+  { name: "標準工站",   icon: "⚙️",  cycleTime: 30, manpower: 1,   color: "#22d3ee" },
+  { name: "瓶頸工站",   icon: "🔥",  cycleTime: 60, manpower: 1,   color: "#f97316" },
+  { name: "品管工站",   icon: "🔍",  cycleTime: 20, manpower: 1,   color: "#a78bfa" },
+  { name: "包裝工站",   icon: "📦",  cycleTime: 25, manpower: 1,   color: "#4ade80" },
+  { name: "組裝工站",   icon: "🔧",  cycleTime: 45, manpower: 2,   color: "#f59e0b" },
+  { name: "測試工站",   icon: "🧪",  cycleTime: 35, manpower: 1,   color: "#60a5fa" },
+  { name: "搬運工站",   icon: "🚚",  cycleTime: 15, manpower: 0.5, color: "#94a3b8" },
+  { name: "空白工站",   icon: "➕",  cycleTime: 10, manpower: 1,   color: "#64748b" },
+];
 // ─── KPI Calculator ───────────────────────────────────────────────────────────
 function calcKPI(workstations: SimWorkstation[], taktTime?: number) {
   if (!workstations.length) return null;
@@ -376,6 +387,12 @@ export default function SimulationPage() {
   const [isDirty, setIsDirty] = useState(false);
   const [selectedWsId, setSelectedWsId] = useState<number | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  // Free-canvas positions: wsId -> {x, y}
+  const [wsPositions, setWsPositions] = useState<Record<number, { x: number; y: number }>>({});
+  const [canvasDragging, setCanvasDragging] = useState<{ id: number; startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const [paletteTab, setPaletteTab] = useState<"scenario" | "palette">("scenario");
+  const [paletteDragTemplate, setPaletteDragTemplate] = useState<{ name: string; cycleTime: number; manpower: number } | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
 
@@ -605,46 +622,119 @@ export default function SimulationPage() {
 
       {/* 三欄主體 */}
       <div className="flex flex-1 overflow-hidden">
-        {/* 左欄：情境列表 */}
+        {/* 左欄：情境列表 + 物件庫（雙 Tab） */}
         {!leftCollapsed && (
           <div className="w-56 shrink-0 border-r border-border bg-card/30 flex flex-col overflow-hidden">
-            <div className="px-3 py-2.5 border-b border-border flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">情境列表</span>
-              <Button size="icon" variant="ghost" className="h-6 w-6 text-primary" onClick={() => setShowCreateDialog(true)} disabled={!selectedLineId}><Plus className="w-3.5 h-3.5" /></Button>
+            {/* Tab 切換 */}
+            <div className="flex border-b border-border shrink-0">
+              <button onClick={() => setPaletteTab("scenario")}
+                className={`flex-1 py-2 text-xs font-semibold transition-colors ${paletteTab === "scenario" ? "text-primary border-b-2 border-primary bg-primary/5" : "text-muted-foreground hover:text-foreground"}`}>
+                情境列表
+              </button>
+              <button onClick={() => setPaletteTab("palette")}
+                className={`flex-1 py-2 text-xs font-semibold transition-colors ${paletteTab === "palette" ? "text-primary border-b-2 border-primary bg-primary/5" : "text-muted-foreground hover:text-foreground"}`}>
+                物件庫
+              </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-              {!selectedLineId && <p className="text-xs text-muted-foreground text-center py-6 px-2">請先在頂部選擇產線</p>}
-              {selectedLineId && !scenarios?.length && <p className="text-xs text-muted-foreground text-center py-6 px-2">尚無情境，點擊 + 新建</p>}
-              {scenarios?.map(scenario => {
-                const wsData = scenario.workstationsData as SimWorkstation[];
-                const sKpi = calcKPI(wsData, taktTime);
-                const isActive = selectedScenarioId === scenario.id;
-                return (
-                  <div key={scenario.id}
-                    className={`rounded-lg border p-2.5 cursor-pointer transition-all group ${isActive ? "border-primary bg-primary/10" : "border-border hover:border-primary/40 hover:bg-muted/20"}`}
-                    onClick={() => handleSelectScenario(scenario as Scenario)}>
-                    <div className="flex items-start justify-between gap-1">
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold truncate">{scenario.name}</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{wsData.length} 工站</p>
+
+            {/* 情境列表 Tab */}
+            {paletteTab === "scenario" && (
+              <>
+                <div className="px-3 py-2 border-b border-border flex items-center justify-between shrink-0">
+                  <span className="text-[10px] text-muted-foreground">選擇情境開始編輯</span>
+                  <Button size="icon" variant="ghost" className="h-6 w-6 text-primary" onClick={() => setShowCreateDialog(true)} disabled={!selectedLineId}><Plus className="w-3.5 h-3.5" /></Button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+                  {!selectedLineId && <p className="text-xs text-muted-foreground text-center py-6 px-2">請先在頂部選擇產線</p>}
+                  {selectedLineId && !scenarios?.length && <p className="text-xs text-muted-foreground text-center py-6 px-2">尚無情境，點擊 + 新建</p>}
+                  {scenarios?.map(scenario => {
+                    const wsData = scenario.workstationsData as SimWorkstation[];
+                    const sKpi = calcKPI(wsData, taktTime);
+                    const isActive = selectedScenarioId === scenario.id;
+                    return (
+                      <div key={scenario.id}
+                        className={`rounded-lg border p-2.5 cursor-pointer transition-all group ${isActive ? "border-primary bg-primary/10" : "border-border hover:border-primary/40 hover:bg-muted/20"}`}
+                        onClick={() => handleSelectScenario(scenario as Scenario)}>
+                        <div className="flex items-start justify-between gap-1">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold truncate">{scenario.name}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">{wsData.length} 工站</p>
+                          </div>
+                          <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                            <Button size="icon" variant="ghost" className="h-5 w-5" onClick={e => { e.stopPropagation(); duplicateMutation.mutate({ id: scenario.id, newName: `${scenario.name} (複製)` }); }}><Copy className="w-2.5 h-2.5" /></Button>
+                            <Button size="icon" variant="ghost" className="h-5 w-5 text-red-400" onClick={e => { e.stopPropagation(); if (confirm(`確定刪除「${scenario.name}」？`)) deleteMutation.mutate({ id: scenario.id }); }}><Trash2 className="w-2.5 h-2.5" /></Button>
+                          </div>
+                        </div>
+                        {sKpi && (
+                          <div className="mt-1.5 grid grid-cols-2 gap-x-2 text-[10px]">
+                            <span className="text-muted-foreground">平衡率</span>
+                            <span className={`font-mono font-medium ${sKpi.balanceRate >= 85 ? "text-emerald-400" : sKpi.balanceRate >= 70 ? "text-amber-400" : "text-red-400"}`}>{sKpi.balanceRate.toFixed(1)}%</span>
+                            <span className="text-muted-foreground">瓶頸 CT</span>
+                            <span className="font-mono font-medium text-orange-400">{sKpi.maxTime.toFixed(1)}s</span>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                        <Button size="icon" variant="ghost" className="h-5 w-5" onClick={e => { e.stopPropagation(); duplicateMutation.mutate({ id: scenario.id, newName: `${scenario.name} (複製)` }); }}><Copy className="w-2.5 h-2.5" /></Button>
-                        <Button size="icon" variant="ghost" className="h-5 w-5 text-red-400" onClick={e => { e.stopPropagation(); if (confirm(`確定刪除「${scenario.name}」？`)) deleteMutation.mutate({ id: scenario.id }); }}><Trash2 className="w-2.5 h-2.5" /></Button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {/* 物件庫 Tab */}
+            {paletteTab === "palette" && (
+              <div className="flex-1 overflow-y-auto p-2 space-y-3">
+                {/* 工站模板 */}
+                <div>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-1 mb-1.5">工站模板</p>
+                  <div className="space-y-1">
+                    {PALETTE_TEMPLATES.map(tpl => (
+                      <div key={tpl.name}
+                        draggable
+                        onDragStart={e => {
+                          setPaletteDragTemplate({ name: tpl.name, cycleTime: tpl.cycleTime, manpower: tpl.manpower });
+                          e.dataTransfer.effectAllowed = "copy";
+                          e.dataTransfer.setData("text/plain", "palette");
+                        }}
+                        onDragEnd={() => setPaletteDragTemplate(null)}
+                        className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-border hover:border-primary/50 hover:bg-muted/20 cursor-grab active:cursor-grabbing transition-all group select-none">
+                        <span className="text-base shrink-0">{tpl.icon}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium truncate">{tpl.name}</p>
+                          <p className="text-[10px] text-muted-foreground">CT {tpl.cycleTime}s · {tpl.manpower}人</p>
+                        </div>
+                        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: tpl.color }} />
                       </div>
-                    </div>
-                    {sKpi && (
-                      <div className="mt-1.5 grid grid-cols-2 gap-x-2 text-[10px]">
-                        <span className="text-muted-foreground">平衡率</span>
-                        <span className={`font-mono font-medium ${sKpi.balanceRate >= 85 ? "text-emerald-400" : sKpi.balanceRate >= 70 ? "text-amber-400" : "text-red-400"}`}>{sKpi.balanceRate.toFixed(1)}%</span>
-                        <span className="text-muted-foreground">瓶頸 CT</span>
-                        <span className="font-mono font-medium text-orange-400">{sKpi.maxTime.toFixed(1)}s</span>
-                      </div>
-                    )}
+                    ))}
                   </div>
-                );
-              })}
-            </div>
+                </div>
+                {/* 產線現有工站 */}
+                {lineWorkstations && lineWorkstations.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-1 mb-1.5">產線工站</p>
+                    <div className="space-y-1">
+                      {lineWorkstations.map(lw => (
+                        <div key={lw.id}
+                          draggable
+                          onDragStart={e => {
+                            setPaletteDragTemplate({ name: lw.name, cycleTime: parseFloat(lw.cycleTime.toString()), manpower: parseFloat(lw.manpower.toString()) });
+                            e.dataTransfer.effectAllowed = "copy";
+                            e.dataTransfer.setData("text/plain", "palette");
+                          }}
+                          onDragEnd={() => setPaletteDragTemplate(null)}
+                          className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-border hover:border-cyan-400/50 hover:bg-muted/20 cursor-grab active:cursor-grabbing transition-all select-none">
+                          <span className="text-base shrink-0">🏭</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-medium truncate">{lw.name}</p>
+                            <p className="text-[10px] text-muted-foreground">CT {parseFloat(lw.cycleTime.toString()).toFixed(1)}s · {parseFloat(lw.manpower.toString())}人</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <p className="text-[10px] text-muted-foreground text-center py-2 px-1">拖曳物件到右側畫布放置</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -701,30 +791,108 @@ export default function SimulationPage() {
             )}
             {selectedScenarioId && sortedWs.length > 0 && (
               <div className="space-y-6">
-                {/* 工站流程卡片列 */}
-                <div className="flex items-center flex-wrap gap-y-6 pb-2">
-                  {sortedWs.map((ws, index) => (
-                    <WsCard key={ws.id} ws={ws} index={index} total={sortedWs.length}
-                      maxTime={kpi?.maxTime ?? 0} taktTime={taktTime}
-                      isSelected={selectedWsId === ws.id} isDragging={dragIndex === index}
-                      diffType={wsDiffMap.get(ws.id) ?? null}
-                      onSelect={() => setSelectedWsId(prev => prev === ws.id ? null : ws.id)}
-                      onDragStart={handleDragStart} onDragOver={handleDragOver} onDrop={handleDrop}
-                      onUpdate={(field, value) => { updateWs(ws.id, field as keyof SimWorkstation, value as never); }}
-                      onMoveLeft={() => {
-                        const sorted = [...localWorkstations].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
-                        if (index > 0) { const newArr = [...sorted]; [newArr[index], newArr[index - 1]] = [newArr[index - 1], newArr[index]]; setLocalWorkstations(newArr.map((w, i) => ({ ...w, sequenceOrder: i }))); setIsDirty(true); }
-                      }}
-                      onMoveRight={() => {
-                        const sorted = [...localWorkstations].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
-                        if (index < sorted.length - 1) { const newArr = [...sorted]; [newArr[index], newArr[index + 1]] = [newArr[index + 1], newArr[index]]; setLocalWorkstations(newArr.map((w, i) => ({ ...w, sequenceOrder: i }))); setIsDirty(true); }
-                      }}
-                      onMerge={() => mergeWithNext(index)}
-                      onSplit={() => openSplit(index)}
-                      onDelete={() => deleteWs(ws.id)}
-                      onInsertAfter={() => { setNewWsInsertAfter(index.toString()); setShowAddWsDialog(true); }}
-                    />
-                  ))}
+                {/* 自由定位畫布 */}
+                <div
+                  ref={canvasRef}
+                  className="relative bg-muted/10 rounded-xl border border-dashed border-border overflow-auto"
+                  style={{ minHeight: "340px", height: "340px" }}
+                  onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
+                  onDrop={e => {
+                    e.preventDefault();
+                    const type = e.dataTransfer.getData("text/plain");
+                    if (type === "palette" && paletteDragTemplate) {
+                      const rect = canvasRef.current?.getBoundingClientRect();
+                      if (!rect) return;
+                      const x = Math.max(10, e.clientX - rect.left - 74);
+                      const y = Math.max(10, e.clientY - rect.top - 60);
+                      const newId = -(Date.now());
+                      const newWs: SimWorkstation = { id: newId, name: paletteDragTemplate.name, cycleTime: paletteDragTemplate.cycleTime, manpower: paletteDragTemplate.manpower, sequenceOrder: localWorkstations.length };
+                      setLocalWorkstations(prev => [...prev, newWs]);
+                      setWsPositions(prev => ({ ...prev, [newId]: { x, y } }));
+                      setIsDirty(true);
+                      setPaletteDragTemplate(null);
+                    }
+                  }}
+                  onMouseMove={e => {
+                    if (!canvasDragging) return;
+                    const dx = e.clientX - canvasDragging.startX;
+                    const dy = e.clientY - canvasDragging.startY;
+                    setWsPositions(prev => ({ ...prev, [canvasDragging.id]: { x: Math.max(0, canvasDragging.origX + dx), y: Math.max(0, canvasDragging.origY + dy) } }));
+                  }}
+                  onMouseUp={() => setCanvasDragging(null)}
+                  onMouseLeave={() => setCanvasDragging(null)}
+                >
+                  {/* 格線背景 */}
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                      <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+                        <path d="M 24 0 L 0 0 0 24" fill="none" stroke="currentColor" strokeWidth="0.3" className="text-border/40" />
+                      </pattern>
+                    </defs>
+                    <rect width="100%" height="100%" fill="url(#grid)" />
+                    {/* 流程箭頭 */}
+                    {sortedWs.map((ws, i) => {
+                      if (i >= sortedWs.length - 1) return null;
+                      const next = sortedWs[i + 1];
+                      const CARD_W = 148; const CARD_H = 120;
+                      const pos = wsPositions[ws.id] ?? { x: 20 + i * 180, y: 100 };
+                      const nextPos = wsPositions[next.id] ?? { x: 20 + (i + 1) * 180, y: 100 };
+                      const x1 = pos.x + CARD_W; const y1 = pos.y + CARD_H / 2;
+                      const x2 = nextPos.x; const y2 = nextPos.y + CARD_H / 2;
+                      const mx = (x1 + x2) / 2;
+                      return (
+                        <g key={`arrow-${ws.id}`}>
+                          <path d={`M ${x1} ${y1} C ${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`}
+                            fill="none" stroke="#334155" strokeWidth="1.5" strokeDasharray="4 3" />
+                          <polygon points={`${x2},${y2} ${x2 - 7},${y2 - 4} ${x2 - 7},${y2 + 4}`} fill="#334155" />
+                        </g>
+                      );
+                    })}
+                  </svg>
+                  {/* 空畫布提示 */}
+                  {sortedWs.length === 0 && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground/40 pointer-events-none select-none">
+                      <Layers className="w-10 h-10 mb-2" />
+                      <p className="text-sm">從左側物件庫拖曳工站到此處</p>
+                      <p className="text-xs mt-1">或點擊「新增工站」按鈕</p>
+                    </div>
+                  )}
+                  {/* 工站卡片（絕對定位） */}
+                  {sortedWs.map((ws, index) => {
+                    const CARD_W = 148; const CARD_H = 120;
+                    const pos = wsPositions[ws.id] ?? { x: 20 + index * 180, y: 100 };
+                    return (
+                      <div key={ws.id}
+                        style={{ position: "absolute", left: pos.x, top: pos.y, width: CARD_W, zIndex: selectedWsId === ws.id ? 10 : 1 }}
+                        onMouseDown={e => {
+                          if ((e.target as HTMLElement).closest("button,input")) return;
+                          e.preventDefault();
+                          setCanvasDragging({ id: ws.id, startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y });
+                          setSelectedWsId(ws.id);
+                        }}>
+                        <WsCard ws={ws} index={index} total={sortedWs.length}
+                          maxTime={kpi?.maxTime ?? 0} taktTime={taktTime}
+                          isSelected={selectedWsId === ws.id} isDragging={canvasDragging?.id === ws.id}
+                          diffType={wsDiffMap.get(ws.id) ?? null}
+                          onSelect={() => setSelectedWsId(prev => prev === ws.id ? null : ws.id)}
+                          onDragStart={handleDragStart} onDragOver={handleDragOver} onDrop={handleDrop}
+                          onUpdate={(field, value) => { updateWs(ws.id, field as keyof SimWorkstation, value as never); }}
+                          onMoveLeft={() => {
+                            const sorted = [...localWorkstations].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
+                            if (index > 0) { const newArr = [...sorted]; [newArr[index], newArr[index - 1]] = [newArr[index - 1], newArr[index]]; setLocalWorkstations(newArr.map((w, i2) => ({ ...w, sequenceOrder: i2 }))); setIsDirty(true); }
+                          }}
+                          onMoveRight={() => {
+                            const sorted = [...localWorkstations].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
+                            if (index < sorted.length - 1) { const newArr = [...sorted]; [newArr[index], newArr[index + 1]] = [newArr[index + 1], newArr[index]]; setLocalWorkstations(newArr.map((w, i2) => ({ ...w, sequenceOrder: i2 }))); setIsDirty(true); }
+                          }}
+                          onMerge={() => mergeWithNext(index)}
+                          onSplit={() => openSplit(index)}
+                          onDelete={() => deleteWs(ws.id)}
+                          onInsertAfter={() => { setNewWsInsertAfter(index.toString()); setShowAddWsDialog(true); }}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
                 {/* 平衡圖 */}
                 {kpi && (
