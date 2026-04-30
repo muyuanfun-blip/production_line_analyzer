@@ -493,3 +493,4 @@
 - [x] 平面圖模擬器：新增功能區標示（Zone Annotation）物件 — 拖曳繪製矩形區域、8色預設色票、透明度調整、名稱編輯、面積顯示、右側清單、刪除，儲存至 FloorLayout.zones
 - [x] 平面圖模擬器：新增緩衝區（Buffer Zone）功能 — ZoneObject 擴充 isBuffer/maxWip/linkedWsIds/wipNote 欄位、WIP 積料速率估算（30分鐘模型）、SVG 進度條+警示邊框（ok/warn/alert 三級）、屬性面板 Buffer 開關+工站多選、KPI 面板 WIP 風險統計卡片
 - [x] 配置模擬：重寫為物件導向三欄式介面 — 左欄情境列表、中欄工站流程卡片畫布（拖曳排序/箭頭連接/CT進度條）、右欄屬性面板（KPI/編輯/合併/拆分/移位），底部工具列含下載圖表、比較情境、套用至產線
+- [x] 配置模擬：物件導向互動強化 — 工站卡片右鍵選單（前移/後移/合併/拆分/刪除）、雙擊名稱/CT 內嵌編輯（Enter確認/Esc取消）、箭頭間嵌入式新增按鈕（hover顯示+號）、diff徽章（NEW/MOD對比原始產線）、wsDiffMap useMemo

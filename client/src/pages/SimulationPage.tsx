@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useLocation } from "wouter";
 import {
   ArrowLeft, Plus, Copy, Trash2, Play, Save, ChevronLeft, ChevronRight,
@@ -6,6 +6,7 @@ import {
   CheckCircle, Download, Loader2,
   Settings, TrendingUp, TrendingDown, Minus,
   GripVertical, ArrowRight, PanelLeft, PanelRight, Layers, GitCompare, AlertTriangle,
+  Pencil, Check, X as XIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -156,36 +157,102 @@ async function downloadChartAsPng(containerRef: React.RefObject<HTMLDivElement |
 }
 
 // ─── Workstation Card ─────────────────────────────────────────────────────────
+// ─── Context Menu ─────────────────────────────────────────────────────────────
+function WsContextMenu({ x, y, onClose, onMoveLeft, onMoveRight, onMerge, onSplit, onDelete, canMoveLeft, canMoveRight, canMerge }: {
+  x: number; y: number; onClose: () => void;
+  onMoveLeft: () => void; onMoveRight: () => void;
+  onMerge: () => void; onSplit: () => void; onDelete: () => void;
+  canMoveLeft: boolean; canMoveRight: boolean; canMerge: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+  const item = (label: string, icon: React.ReactNode, action: () => void, disabled = false, danger = false) => (
+    <button key={label} disabled={disabled} onClick={() => { action(); onClose(); }}
+      className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs rounded transition-colors text-left
+        ${disabled ? "opacity-30 cursor-not-allowed" : danger ? "hover:bg-red-500/20 text-red-400" : "hover:bg-accent text-foreground"}`}>
+      {icon}{label}
+    </button>
+  );
+  return (
+    <div ref={ref} className="fixed z-[200] bg-popover border border-border rounded-lg shadow-xl py-1 min-w-[140px]"
+      style={{ left: x, top: y }}>
+      {item("前移", <ChevronLeft className="w-3.5 h-3.5" />, onMoveLeft, !canMoveLeft)}
+      {item("後移", <ChevronRight className="w-3.5 h-3.5" />, onMoveRight, !canMoveRight)}
+      <div className="my-1 border-t border-border" />
+      {item("合併下站", <Merge className="w-3.5 h-3.5 text-amber-400" />, onMerge, !canMerge)}
+      {item("拆分工站", <Scissors className="w-3.5 h-3.5 text-cyan-400" />, onSplit)}
+      <div className="my-1 border-t border-border" />
+      {item("刪除工站", <Trash2 className="w-3.5 h-3.5" />, onDelete, false, true)}
+    </div>
+  );
+}
+// ─── Workstation Card ─────────────────────────────────────────────────────────
 function WsCard({
-  ws, index, total, maxTime, taktTime, isSelected, isDragging,
+  ws, index, total, maxTime, taktTime, isSelected, isDragging, diffType,
   onSelect, onDragStart, onDragOver, onDrop,
+  onMoveLeft, onMoveRight, onMerge, onSplit, onDelete, onUpdate,
+  onInsertAfter,
 }: {
   ws: SimWorkstation; index: number; total: number;
   maxTime: number; taktTime?: number;
   isSelected: boolean; isDragging: boolean;
+  diffType?: "add" | "update" | null;
   onSelect: () => void;
   onDragStart: (e: React.DragEvent, index: number) => void;
   onDragOver: (e: React.DragEvent, index: number) => void;
   onDrop: (e: React.DragEvent, index: number) => void;
+  onMoveLeft: () => void; onMoveRight: () => void;
+  onMerge: () => void; onSplit: () => void; onDelete: () => void;
+  onUpdate: (field: string, value: string | number) => void;
+  onInsertAfter: () => void;
 }) {
   const status = getBarStatus(ws.cycleTime, maxTime, taktTime);
   const meta = STATUS_META[status];
   const fillPct = maxTime > 0 ? Math.min((ws.cycleTime / maxTime) * 100, 100) : 0;
   const taktPct = taktTime && maxTime > 0 ? Math.min((taktTime / maxTime) * 100, 100) : null;
+  const [editingField, setEditingField] = useState<"name" | "ct" | null>(null);
+  const [editVal, setEditVal] = useState("");
+  const editRef = useRef<HTMLInputElement>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const startEdit = (field: "name" | "ct", e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingField(field);
+    setEditVal(field === "name" ? ws.name : ws.cycleTime.toString());
+    setTimeout(() => editRef.current?.select(), 30);
+  };
+  const commitEdit = () => {
+    if (editingField === "name" && editVal.trim()) onUpdate("name", editVal.trim());
+    if (editingField === "ct") { const v = parseFloat(editVal); if (!isNaN(v) && v > 0) onUpdate("cycleTime", v); }
+    setEditingField(null);
+  };
+  const cancelEdit = () => setEditingField(null);
+
+  const diffBadge = diffType === "add"
+    ? <span className="absolute -top-2 -right-2 z-20 text-[9px] font-bold px-1 py-0.5 rounded-full bg-emerald-500 text-white">NEW</span>
+    : diffType === "update"
+    ? <span className="absolute -top-2 -right-2 z-20 text-[9px] font-bold px-1 py-0.5 rounded-full bg-amber-500 text-white">MOD</span>
+    : null;
 
   return (
-    <div className="flex items-center shrink-0">
+    <div className="flex items-center shrink-0 group">
       <div
         draggable
         onDragStart={e => onDragStart(e, index)}
         onDragOver={e => onDragOver(e, index)}
         onDrop={e => onDrop(e, index)}
         onClick={onSelect}
-        className={`relative w-[140px] rounded-xl border-2 cursor-pointer transition-all select-none
+        onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
+        className={`relative w-[148px] rounded-xl border-2 cursor-pointer transition-all select-none
           ${isSelected ? "border-primary bg-primary/10 shadow-lg shadow-primary/20" : "border hover:border-primary/60 hover:shadow-md"}
           ${isDragging ? "opacity-40 scale-95" : ""}`}
         style={{ borderColor: isSelected ? undefined : meta.color + "60" }}
       >
+        {diffBadge}
         <div className="absolute -top-2.5 -left-2.5 w-5 h-5 rounded-full bg-card border border-border flex items-center justify-center text-[10px] font-bold text-muted-foreground z-10">
           {index + 1}
         </div>
@@ -193,11 +260,39 @@ function WsCard({
           <GripVertical className="w-3.5 h-3.5" />
         </div>
         <div className="p-3 pt-3.5 space-y-2">
-          <p className="text-xs font-semibold text-foreground truncate pr-4" title={ws.name}>{ws.name}</p>
-          <div className="text-center">
-            <span className="text-2xl font-bold font-mono" style={{ color: meta.color }}>{ws.cycleTime.toFixed(1)}</span>
-            <span className="text-xs text-muted-foreground ml-1">s</span>
-          </div>
+          {editingField === "name" ? (
+            <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+              <input ref={editRef} value={editVal} onChange={e => setEditVal(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }}
+                className="w-full text-xs font-semibold bg-background border border-primary rounded px-1 py-0.5 outline-none" />
+              <button onClick={commitEdit} className="text-emerald-400 shrink-0"><Check className="w-3 h-3" /></button>
+              <button onClick={cancelEdit} className="text-muted-foreground shrink-0"><XIcon className="w-3 h-3" /></button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 group/name">
+              <p className="text-xs font-semibold text-foreground truncate flex-1" title={ws.name}>{ws.name}</p>
+              <button onDoubleClick={e => startEdit("name", e)} onClick={e => e.stopPropagation()}
+                className="opacity-0 group-hover/name:opacity-60 hover:!opacity-100 text-muted-foreground shrink-0">
+                <Pencil className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          )}
+          {editingField === "ct" ? (
+            <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
+              <input ref={editRef} value={editVal} onChange={e => setEditVal(e.target.value)} type="number" min="0.1" step="0.1"
+                onKeyDown={e => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }}
+                className="w-16 text-center text-xl font-bold font-mono bg-background border border-primary rounded px-1 py-0.5 outline-none" style={{ color: meta.color }} />
+              <div className="flex flex-col gap-0.5">
+                <button onClick={commitEdit} className="text-emerald-400"><Check className="w-3 h-3" /></button>
+                <button onClick={cancelEdit} className="text-muted-foreground"><XIcon className="w-3 h-3" /></button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center group/ct" onDoubleClick={e => startEdit("ct", e)}>
+              <span className="text-2xl font-bold font-mono" style={{ color: meta.color }}>{ws.cycleTime.toFixed(1)}</span>
+              <span className="text-xs text-muted-foreground ml-1">s</span>
+            </div>
+          )}
           <div className="relative h-2 bg-muted/50 rounded-full overflow-visible">
             <div className="h-full rounded-full transition-all" style={{ width: `${fillPct}%`, background: meta.color }} />
             {taktPct !== null && (
@@ -211,16 +306,27 @@ function WsCard({
           </div>
         </div>
       </div>
-      {index < total - 1 && (
-        <div className="flex items-center mx-1 shrink-0">
-          <div className="w-6 h-0.5 bg-border" />
-          <ArrowRight className="w-3 h-3 text-muted-foreground -ml-1" />
-        </div>
+      {ctxMenu && (
+        <WsContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)}
+          onMoveLeft={onMoveLeft} onMoveRight={onMoveRight}
+          onMerge={onMerge} onSplit={onSplit} onDelete={onDelete}
+          canMoveLeft={index > 0} canMoveRight={index < total - 1} canMerge={index < total - 1} />
       )}
+      {index < total - 1 ? (
+        <div className="flex items-center mx-1 shrink-0 relative group/arrow">
+          <div className="w-4 h-0.5 bg-border" />
+          <button onClick={e => { e.stopPropagation(); onInsertAfter(); }}
+            className="opacity-0 group-hover/arrow:opacity-100 absolute left-1/2 -translate-x-1/2 -translate-y-1/2 top-1/2 z-10
+              w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-md transition-opacity">
+            <Plus className="w-3 h-3" />
+          </button>
+          <ArrowRight className="w-3 h-3 text-muted-foreground -ml-1" />
+          <div className="w-4 h-0.5 bg-border" />
+        </div>
+      ) : null}
     </div>
   );
 }
-
 // ─── Balance Mini Chart ───────────────────────────────────────────────────────
 function BalanceMiniChart({ workstations, taktTime, avgTime, chartRef }: {
   workstations: SimWorkstation[]; taktTime?: number; avgTime: number;
@@ -413,6 +519,21 @@ export default function SimulationPage() {
   };
 
   const kpi = useMemo(() => calcKPI(localWorkstations, taktTime), [localWorkstations, taktTime]);
+  // diff map: ws.id -> "add"|"update" for badge display
+  const wsDiffMap = useMemo(() => {
+    const map = new Map<number, "add" | "update">();
+    if (!lineWorkstations) return map;
+    for (const simWs of localWorkstations) {
+      if (simWs.id < 0) { map.set(simWs.id, "add"); continue; }
+      const existing = lineWorkstations.find(w => w.id === simWs.id);
+      if (!existing) { map.set(simWs.id, "add"); continue; }
+      const ctChanged = Math.abs(parseFloat(existing.cycleTime.toString()) - simWs.cycleTime) > 0.01;
+      const mpChanged = Math.abs(parseFloat(existing.manpower.toString()) - simWs.manpower) > 0.01;
+      const nameChanged = existing.name !== simWs.name;
+      if (ctChanged || mpChanged || nameChanged) map.set(simWs.id, "update");
+    }
+    return map;
+  }, [localWorkstations, lineWorkstations]);
   const sortedWs = useMemo(() => [...localWorkstations].sort((a, b) => a.sequenceOrder - b.sequenceOrder), [localWorkstations]);
   const selectedWs = localWorkstations.find(w => w.id === selectedWsId);
   const selectedWsIndex = selectedWs ? sortedWs.findIndex(w => w.id === selectedWsId) : -1;
@@ -586,8 +707,23 @@ export default function SimulationPage() {
                     <WsCard key={ws.id} ws={ws} index={index} total={sortedWs.length}
                       maxTime={kpi?.maxTime ?? 0} taktTime={taktTime}
                       isSelected={selectedWsId === ws.id} isDragging={dragIndex === index}
+                      diffType={wsDiffMap.get(ws.id) ?? null}
                       onSelect={() => setSelectedWsId(prev => prev === ws.id ? null : ws.id)}
-                      onDragStart={handleDragStart} onDragOver={handleDragOver} onDrop={handleDrop} />
+                      onDragStart={handleDragStart} onDragOver={handleDragOver} onDrop={handleDrop}
+                      onUpdate={(field, value) => { updateWs(ws.id, field as keyof SimWorkstation, value as never); }}
+                      onMoveLeft={() => {
+                        const sorted = [...localWorkstations].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
+                        if (index > 0) { const newArr = [...sorted]; [newArr[index], newArr[index - 1]] = [newArr[index - 1], newArr[index]]; setLocalWorkstations(newArr.map((w, i) => ({ ...w, sequenceOrder: i }))); setIsDirty(true); }
+                      }}
+                      onMoveRight={() => {
+                        const sorted = [...localWorkstations].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
+                        if (index < sorted.length - 1) { const newArr = [...sorted]; [newArr[index], newArr[index + 1]] = [newArr[index + 1], newArr[index]]; setLocalWorkstations(newArr.map((w, i) => ({ ...w, sequenceOrder: i }))); setIsDirty(true); }
+                      }}
+                      onMerge={() => mergeWithNext(index)}
+                      onSplit={() => openSplit(index)}
+                      onDelete={() => deleteWs(ws.id)}
+                      onInsertAfter={() => { setNewWsInsertAfter(index.toString()); setShowAddWsDialog(true); }}
+                    />
                   ))}
                 </div>
                 {/* 平衡圖 */}
