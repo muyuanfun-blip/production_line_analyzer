@@ -64,6 +64,13 @@
       "when": 1776727297641,
       "tag": "0008_easy_king_cobra",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1777715610464,
+      "tag": "0009_rare_penance",
+      "breakpoints": true
     }
   ]
 }

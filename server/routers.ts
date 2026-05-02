@@ -19,6 +19,8 @@ import {
   updateUserPassword, toggleUserActive, updateUserRole, updateUserLastSignedIn,
   listSimulations, getSimulationById, createSimulation, updateSimulation, deleteSimulation,
   updateScenarioBackground,
+  getProductModelsByLine, getProductModelById, createProductModel,
+  updateProductModel, deleteProductModel,
 } from "./db";
 import bcrypt from "bcryptjs";
 import { sdk } from "./_core/sdk";
@@ -909,6 +911,60 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
           ...(backgroundScale !== undefined && { backgroundScale: backgroundScale.toFixed(4) }),
         });
         return { success: true, scenario };
+      }),
+  }),
+
+  // ─── Product Models ────────────────────────────────────────────────────────────────────────────────
+  productModel: router({
+    listByLine: protectedProcedure
+      .input(z.object({ productionLineId: z.number() }))
+      .query(async ({ input }) => getProductModelsByLine(input.productionLineId)),
+
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => getProductModelById(input.id)),
+
+    create: protectedProcedure
+      .input(z.object({
+        productionLineId: z.number(),
+        modelCode: z.string().min(1).max(64),
+        modelName: z.string().min(1).max(255),
+        targetCycleTime: z.number().positive().nullable().optional(),
+        batchSize: z.number().int().positive().optional(),
+        description: z.string().nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const model = await createProductModel({
+          ...input,
+          targetCycleTime: input.targetCycleTime != null ? String(input.targetCycleTime) : null,
+        });
+        return { success: true, model };
+      }),
+
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        modelCode: z.string().min(1).max(64).optional(),
+        modelName: z.string().min(1).max(255).optional(),
+        targetCycleTime: z.number().positive().nullable().optional(),
+        batchSize: z.number().int().positive().optional(),
+        description: z.string().nullable().optional(),
+        isActive: z.number().int().min(0).max(1).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, targetCycleTime, ...rest } = input;
+        const model = await updateProductModel(id, {
+          ...rest,
+          ...(targetCycleTime !== undefined && { targetCycleTime: targetCycleTime != null ? String(targetCycleTime) : null }),
+        });
+        return { success: true, model };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteProductModel(input.id);
+        return { success: true };
       }),
   }),
 });

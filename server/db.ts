@@ -8,6 +8,7 @@ import {
   handActions, InsertHandAction,
   analysisSnapshots, InsertAnalysisSnapshot,
   simulationScenarios, InsertSimulationScenario,
+  productModels, InsertProductModel,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -513,6 +514,45 @@ export async function deleteSimulation(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.delete(simulationScenarios).where(eq(simulationScenarios.id, id));
+}
+
+// ─── Product Models ─────────────────────────────────────────────────────────
+
+export async function getProductModelsByLine(productionLineId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(productModels)
+    .where(eq(productModels.productionLineId, productionLineId))
+    .orderBy(asc(productModels.modelCode));
+}
+
+export async function getProductModelById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(productModels).where(eq(productModels.id, id)).limit(1);
+  return result[0];
+}
+
+export async function createProductModel(data: InsertProductModel) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(productModels).values(data);
+  const insertId = (result as any)[0]?.insertId;
+  if (!insertId) throw new Error("Failed to get insertId");
+  return getProductModelById(Number(insertId));
+}
+
+export async function updateProductModel(id: number, data: Partial<InsertProductModel>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(productModels).set(data).where(eq(productModels.id, id));
+  return getProductModelById(id);
+}
+
+export async function deleteProductModel(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(productModels).where(eq(productModels.id, id));
 }
 
 export async function updateScenarioBackground(

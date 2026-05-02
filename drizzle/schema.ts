@@ -154,3 +154,19 @@ export const simulationScenarios = mysqlTable("simulation_scenarios", {
 
 export type SimulationScenario = typeof simulationScenarios.$inferSelect;
 export type InsertSimulationScenario = typeof simulationScenarios.$inferInsert;
+
+// 產品型號資料表
+export const productModels = mysqlTable("product_models", {
+  id: int("id").autoincrement().primaryKey(),
+  productionLineId: int("productionLineId").notNull(),
+  modelCode: varchar("modelCode", { length: 64 }).notNull(),
+  modelName: varchar("modelName", { length: 255 }).notNull(),
+  targetCycleTime: decimal("targetCycleTime", { precision: 10, scale: 2 }),
+  batchSize: int("batchSize").default(1),
+  description: text("description"),
+  isActive: tinyint("isActive").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ProductModel = typeof productModels.$inferSelect;
+export type InsertProductModel = typeof productModels.$inferInsert;
