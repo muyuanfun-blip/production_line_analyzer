@@ -20,6 +20,7 @@ import DataRefinement from "./pages/DataRefinement";
 import SimulationPage from "./pages/SimulationPage";
 import FloorPlanSimulator from "./pages/FloorPlanSimulator";
 import ProductModels from "./pages/ProductModels";
+import ProductTracking from "./pages/ProductTracking";
 import { trpc } from "@/lib/trpc";
 import { useEffect } from "react";
 
@@ -75,6 +76,7 @@ function Router() {
               <Route path={"/data-refinement"} component={DataRefinement} />
               <Route path={"/simulator"} component={SimulationPage} />
               <Route path={"/product-models"} component={ProductModels} />
+              <Route path={"/product-tracking"} component={ProductTracking} />
               <Route path={"/404"} component={NotFound} />
               <Route component={NotFound} />
             </Switch>

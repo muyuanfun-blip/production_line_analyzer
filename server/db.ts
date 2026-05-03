@@ -9,6 +9,8 @@ import {
   analysisSnapshots, InsertAnalysisSnapshot,
   simulationScenarios, InsertSimulationScenario,
   productModels, InsertProductModel,
+  productInstances, InsertProductInstance,
+  productFlowRecords, InsertProductFlowRecord,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -571,4 +573,95 @@ export async function updateScenarioBackground(
   if (!db) throw new Error("Database not available");
   await db.update(simulationScenarios).set(data as any).where(eq(simulationScenarios.id, id));
   return getSimulationById(id);
+}
+
+// ─── Product Instances ─────────────────────────────────────────────────────
+
+
+
+export async function listProductInstances(productionLineId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(productInstances)
+    .where(eq(productInstances.productionLineId, productionLineId))
+    .orderBy(productInstances.createdAt);
+}
+
+export async function getProductInstanceById(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(productInstances).where(eq(productInstances.id, id));
+  return rows[0] ?? null;
+}
+
+export async function createProductInstance(data: InsertProductInstance) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(productInstances).values(data);
+  const id = (result as any)[0]?.insertId as number;
+  return getProductInstanceById(id);
+}
+
+export async function updateProductInstance(id: number, data: Partial<InsertProductInstance>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(productInstances).set(data as any).where(eq(productInstances.id, id));
+  return getProductInstanceById(id);
+}
+
+export async function deleteProductInstance(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // 先刪除所有流程記錄
+  await db.delete(productFlowRecords).where(eq(productFlowRecords.productInstanceId, id));
+  return db.delete(productInstances).where(eq(productInstances.id, id));
+}
+
+// ─── Product Flow Records ─────────────────────────────────────────────────────
+
+export async function listFlowRecordsByInstance(productInstanceId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(productFlowRecords)
+    .where(eq(productFlowRecords.productInstanceId, productInstanceId))
+    .orderBy(productFlowRecords.sequenceOrder);
+}
+
+export async function getFlowRecordById(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(productFlowRecords).where(eq(productFlowRecords.id, id));
+  return rows[0] ?? null;
+}
+
+export async function createFlowRecord(data: InsertProductFlowRecord) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(productFlowRecords).values(data);
+  const id = (result as any)[0]?.insertId as number;
+  return getFlowRecordById(id);
+}
+
+export async function updateFlowRecord(id: number, data: Partial<InsertProductFlowRecord>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(productFlowRecords).set(data as any).where(eq(productFlowRecords.id, id));
+  return getFlowRecordById(id);
+}
+
+export async function deleteFlowRecord(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(productFlowRecords).where(eq(productFlowRecords.id, id));
+}
+
+export async function upsertFlowRecords(productInstanceId: number, records: InsertProductFlowRecord[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // 刪除舊記錄後重新插入（批量更新）
+  await db.delete(productFlowRecords).where(eq(productFlowRecords.productInstanceId, productInstanceId));
+  if (records.length > 0) {
+    await db.insert(productFlowRecords).values(records);
+  }
+  return listFlowRecordsByInstance(productInstanceId);
 }

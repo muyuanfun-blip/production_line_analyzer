@@ -21,6 +21,10 @@ import {
   updateScenarioBackground,
   getProductModelsByLine, getProductModelById, createProductModel,
   updateProductModel, deleteProductModel,
+  listProductInstances, getProductInstanceById, createProductInstance,
+  updateProductInstance, deleteProductInstance,
+  listFlowRecordsByInstance, createFlowRecord, updateFlowRecord,
+  deleteFlowRecord, upsertFlowRecords,
 } from "./db";
 import bcrypt from "bcryptjs";
 import { sdk } from "./_core/sdk";
@@ -965,6 +969,128 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
       .mutation(async ({ input }) => {
         await deleteProductModel(input.id);
         return { success: true };
+      }),
+  }),
+
+  // ─── Product Tracking ───────────────────────────────────────────────────────────────
+  productTracking: router({
+    // 產品個體管理
+    listInstances: protectedProcedure
+      .input(z.object({ productionLineId: z.number() }))
+      .query(async ({ input }) => listProductInstances(input.productionLineId)),
+
+    getInstance: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => getProductInstanceById(input.id)),
+
+    createInstance: protectedProcedure
+      .input(z.object({
+        productionLineId: z.number(),
+        productModelId: z.number().optional(),
+        serialNumber: z.string().min(1),
+        batchNumber: z.string().optional(),
+        status: z.enum(["in_progress", "completed", "rework", "scrapped"]).optional(),
+        startTime: z.date().optional(),
+        endTime: z.date().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const instance = await createProductInstance(input as any);
+        return { success: true, instance };
+      }),
+
+    updateInstance: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        serialNumber: z.string().min(1).optional(),
+        batchNumber: z.string().optional(),
+        status: z.enum(["in_progress", "completed", "rework", "scrapped"]).optional(),
+        startTime: z.date().optional().nullable(),
+        endTime: z.date().optional().nullable(),
+        totalLeadTime: z.number().optional().nullable(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        const instance = await updateProductInstance(id, data as any);
+        return { success: true, instance };
+      }),
+
+    deleteInstance: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteProductInstance(input.id);
+        return { success: true };
+      }),
+
+    // 流程記錄管理
+    listFlowRecords: protectedProcedure
+      .input(z.object({ productInstanceId: z.number() }))
+      .query(async ({ input }) => listFlowRecordsByInstance(input.productInstanceId)),
+
+    createFlowRecord: protectedProcedure
+      .input(z.object({
+        productInstanceId: z.number(),
+        workstationId: z.number(),
+        workstationName: z.string(),
+        sequenceOrder: z.number().default(0),
+        entryTime: z.date().optional().nullable(),
+        exitTime: z.date().optional().nullable(),
+        actualCycleTime: z.number().optional().nullable(),
+        waitTime: z.number().optional().default(0),
+        status: z.enum(["normal", "rework", "waiting", "skipped"]).optional(),
+        operatorName: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const record = await createFlowRecord(input as any);
+        return { success: true, record };
+      }),
+
+    updateFlowRecord: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        entryTime: z.date().optional().nullable(),
+        exitTime: z.date().optional().nullable(),
+        actualCycleTime: z.number().optional().nullable(),
+        waitTime: z.number().optional(),
+        status: z.enum(["normal", "rework", "waiting", "skipped"]).optional(),
+        operatorName: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        const record = await updateFlowRecord(id, data as any);
+        return { success: true, record };
+      }),
+
+    deleteFlowRecord: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteFlowRecord(input.id);
+        return { success: true };
+      }),
+
+    upsertFlowRecords: protectedProcedure
+      .input(z.object({
+        productInstanceId: z.number(),
+        records: z.array(z.object({
+          productInstanceId: z.number(),
+          workstationId: z.number(),
+          workstationName: z.string(),
+          sequenceOrder: z.number().default(0),
+          entryTime: z.date().optional().nullable(),
+          exitTime: z.date().optional().nullable(),
+          actualCycleTime: z.number().optional().nullable(),
+          waitTime: z.number().optional().default(0),
+          status: z.enum(["normal", "rework", "waiting", "skipped"]).optional(),
+          operatorName: z.string().optional(),
+          notes: z.string().optional(),
+        }))
+      }))
+      .mutation(async ({ input }) => {
+        const records = await upsertFlowRecords(input.productInstanceId, input.records as any);
+        return { success: true, records };
       }),
   }),
 });

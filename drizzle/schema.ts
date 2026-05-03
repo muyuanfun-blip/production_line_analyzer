@@ -170,3 +170,51 @@ export const productModels = mysqlTable("product_models", {
 });
 export type ProductModel = typeof productModels.$inferSelect;
 export type InsertProductModel = typeof productModels.$inferInsert;
+
+// 產品個體資料表（每一件產品的序號）
+export const productInstances = mysqlTable("product_instances", {
+  id: int("id").autoincrement().primaryKey(),
+  productionLineId: int("productionLineId").notNull(),
+  productModelId: int("productModelId"),               // 對應型號（可選）
+  serialNumber: varchar("serialNumber", { length: 128 }).notNull(), // 產品序號
+  batchNumber: varchar("batchNumber", { length: 64 }),  // 批次號
+  status: mysqlEnum("status", [
+    "in_progress",  // 生產中
+    "completed",    // 完成
+    "rework",       // 重工中
+    "scrapped",     // 報廢
+  ]).default("in_progress").notNull(),
+  startTime: timestamp("startTime"),                   // 進入產線時間
+  endTime: timestamp("endTime"),                       // 離開產線時間
+  totalLeadTime: decimal("totalLeadTime", { precision: 10, scale: 2 }), // 總 Lead Time（秒）
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ProductInstance = typeof productInstances.$inferSelect;
+export type InsertProductInstance = typeof productInstances.$inferInsert;
+
+// 產品流程記錄資料表（每件產品在每個工站的時間記錄）
+export const productFlowRecords = mysqlTable("product_flow_records", {
+  id: int("id").autoincrement().primaryKey(),
+  productInstanceId: int("productInstanceId").notNull(), // 對應產品個體
+  workstationId: int("workstationId").notNull(),          // 對應工站
+  workstationName: varchar("workstationName", { length: 255 }).notNull(), // 工站名稱（快照）
+  sequenceOrder: int("sequenceOrder").notNull().default(0), // 工站順序
+  entryTime: timestamp("entryTime"),                    // 進入工站時間
+  exitTime: timestamp("exitTime"),                      // 離開工站時間
+  actualCycleTime: decimal("actualCycleTime", { precision: 10, scale: 2 }), // 實際加工時間（秒）
+  waitTime: decimal("waitTime", { precision: 10, scale: 2 }).default("0"),  // 等待時間（秒）
+  status: mysqlEnum("status", [
+    "normal",   // 正常
+    "rework",   // 重工
+    "waiting",  // 等待
+    "skipped",  // 跳過
+  ]).default("normal").notNull(),
+  operatorName: varchar("operatorName", { length: 128 }), // 作業員
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ProductFlowRecord = typeof productFlowRecords.$inferSelect;
+export type InsertProductFlowRecord = typeof productFlowRecords.$inferInsert;

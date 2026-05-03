@@ -498,7 +498,7 @@
 
 ## 產品追蹤系統（六階段實作，每階段 ~150 積分後暫停）
 - [x] 第一階段：product_models 資料表 + 型號管理頁面（型號代碼、名稱、目標節拍、批量大小）
-- [ ] 第二階段：product_instances + product_flow_records 資料表 + 手動輸入流程記錄
+- [x] 第二階段：product_instances + product_flow_records 資料表 + 手動輸入流程記錄
 - [ ] 第三階段：產品流程時間軸視圖（單一序號追蹤，標準 CT vs 實際 CT）
 - [ ] 第四階段：產品追蹤甘特圖（多序號並排，工站 × 時間）
 - [ ] 第五階段：配置模擬整合模擬執行模式（自動產生 product_instances）
