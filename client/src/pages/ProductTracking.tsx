@@ -1,10 +1,10 @@
 import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import DashboardLayout from "@/components/DashboardLayout";
+import ProductTimeline from "@/components/ProductTimeline";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -18,12 +18,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   Plus, Trash2, ChevronRight, ArrowLeft, Edit2, Save, Clock, CheckCircle2,
-  AlertCircle, RotateCcw, XCircle, ClipboardList,
+  AlertCircle, RotateCcw, XCircle, ClipboardList, BarChart2, List,
 } from "lucide-react";
 
 // ─── 型別 ─────────────────────────────────────────────────────────────────────
 type InstanceStatus = "in_progress" | "completed" | "rework" | "scrapped";
 type FlowStatus = "normal" | "rework" | "waiting" | "skipped";
+type ViewTab = "records" | "timeline";
 
 const INSTANCE_STATUS_META: Record<InstanceStatus, { label: string; color: string; icon: React.ReactNode }> = {
   in_progress: { label: "生產中", color: "bg-blue-500/15 text-blue-400 border-blue-500/30", icon: <Clock className="w-3 h-3" /> },
@@ -41,13 +42,13 @@ const FLOW_STATUS_META: Record<FlowStatus, { label: string; color: string }> = {
 
 // ─── 主元件 ───────────────────────────────────────────────────────────────────
 export default function ProductTracking() {
-  
   const [selectedLineId, setSelectedLineId] = useState<number | null>(null);
   const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(null);
   const [showNewInstanceDialog, setShowNewInstanceDialog] = useState(false);
   const [showFlowDialog, setShowFlowDialog] = useState(false);
   const [editingFlowId, setEditingFlowId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<ViewTab>("records");
 
   // 新增產品個體表單
   const [newInstance, setNewInstance] = useState({
@@ -162,7 +163,7 @@ export default function ProductTracking() {
   function handleSubmitFlowForm() {
     if (!selectedInstanceId) return;
     const wsId = parseInt(flowForm.workstationId);
-    const wsName = flowForm.workstationName || workstations.find(w => w.id === wsId)?.name || "未知工站";
+    const wsName = flowForm.workstationName || workstations.find((w: typeof workstations[0]) => w.id === wsId)?.name || "未知工站";
     const payload = {
       productInstanceId: selectedInstanceId,
       workstationId: wsId,
@@ -254,7 +255,7 @@ export default function ProductTracking() {
                 return (
                   <div
                     key={inst.id}
-                    onClick={() => setSelectedInstanceId(inst.id)}
+                    onClick={() => { setSelectedInstanceId(inst.id); setActiveTab("records"); }}
                     className={`px-4 py-3 cursor-pointer border-b border-border/50 transition-colors hover:bg-accent/40 ${isSelected ? "bg-accent/60 border-l-2 border-l-primary" : ""}`}
                   >
                     <div className="flex items-center justify-between">
@@ -276,7 +277,7 @@ export default function ProductTracking() {
           </div>
         </div>
 
-        {/* 右欄：流程記錄 */}
+        {/* 右欄：流程記錄 / 時間軸 */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {!selectedInstanceId ? (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -311,6 +312,21 @@ export default function ProductTracking() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {/* Tab 切換 */}
+                    <div className="flex rounded-md border border-border overflow-hidden">
+                      <button
+                        onClick={() => setActiveTab("records")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors ${activeTab === "records" ? "bg-primary text-primary-foreground" : "hover:bg-accent/50"}`}
+                      >
+                        <List className="w-3.5 h-3.5" />記錄
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("timeline")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors ${activeTab === "timeline" ? "bg-primary text-primary-foreground" : "hover:bg-accent/50"}`}
+                      >
+                        <BarChart2 className="w-3.5 h-3.5" />時間軸
+                      </button>
+                    </div>
                     {/* 狀態快速切換 */}
                     <Select
                       value={selectedInstance?.status ?? "in_progress"}
@@ -335,8 +351,8 @@ export default function ProductTracking() {
                   </div>
                 </div>
 
-                {/* KPI 統計列 */}
-                {flowRecords.length > 0 && (
+                {/* KPI 統計列（僅在記錄 Tab 顯示，時間軸 Tab 有自己的 KPI） */}
+                {activeTab === "records" && flowRecords.length > 0 && (
                   <div className="flex gap-6 mt-3 pt-3 border-t border-border/50">
                     <div className="text-center">
                       <p className="text-xs text-muted-foreground">流經工站</p>
@@ -365,82 +381,105 @@ export default function ProductTracking() {
                     <div className="text-center">
                       <p className="text-xs text-muted-foreground">重工/等待工站</p>
                       <p className="text-lg font-bold text-amber-400">
-                        {flowRecords.filter(r => r.status === "rework" || r.status === "waiting").length}
+                        {flowRecords.filter((r: typeof flowRecords[0]) => r.status === "rework" || r.status === "waiting").length}
                       </p>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* 流程記錄表格 */}
-              <div className="flex-1 overflow-auto p-6">
-                {flowRecords.length === 0 ? (
-                  <div className="text-center py-16 text-muted-foreground">
-                    <AlertCircle className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                    <p className="text-sm">尚無工站流程記錄</p>
-                    <p className="text-xs mt-1 opacity-60">點擊「新增工站記錄」開始記錄此產品的流程</p>
-                    <Button size="sm" className="mt-4" onClick={openNewFlowDialog}>
-                      <Plus className="w-3.5 h-3.5 mr-1" />新增第一筆記錄
-                    </Button>
+              {/* 內容區：根據 Tab 切換 */}
+              <div className="flex-1 overflow-auto">
+                {activeTab === "records" ? (
+                  /* ── 記錄表格 ── */
+                  <div className="p-6">
+                    {flowRecords.length === 0 ? (
+                      <div className="text-center py-16 text-muted-foreground">
+                        <AlertCircle className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                        <p className="text-sm">尚無工站流程記錄</p>
+                        <p className="text-xs mt-1 opacity-60">點擊「新增工站記錄」開始記錄此產品的流程</p>
+                        <Button size="sm" className="mt-4" onClick={openNewFlowDialog}>
+                          <Plus className="w-3.5 h-3.5 mr-1" />新增第一筆記錄
+                        </Button>
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-10">#</TableHead>
+                            <TableHead>工站名稱</TableHead>
+                            <TableHead>進入時間</TableHead>
+                            <TableHead>離開時間</TableHead>
+                            <TableHead className="text-right">加工時間</TableHead>
+                            <TableHead className="text-right">等待時間</TableHead>
+                            <TableHead>狀態</TableHead>
+                            <TableHead>作業員</TableHead>
+                            <TableHead className="w-20">操作</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {flowRecords.map((record: typeof flowRecords[0]) => {
+                            const fMeta = FLOW_STATUS_META[record.status as FlowStatus];
+                            return (
+                              <TableRow key={record.id}>
+                                <TableCell className="text-muted-foreground text-xs">{record.sequenceOrder}</TableCell>
+                                <TableCell className="font-medium">{record.workstationName}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground">
+                                  {record.entryTime ? new Date(record.entryTime).toLocaleString() : "—"}
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground">
+                                  {record.exitTime ? new Date(record.exitTime).toLocaleString() : "—"}
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-sm">
+                                  {record.actualCycleTime != null ? formatSeconds(parseFloat(String(record.actualCycleTime))) : "—"}
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-sm text-amber-400">
+                                  {record.waitTime != null && parseFloat(String(record.waitTime)) > 0
+                                    ? formatSeconds(parseFloat(String(record.waitTime)))
+                                    : "—"}
+                                </TableCell>
+                                <TableCell>
+                                  <span className={`inline-flex items-center text-xs px-1.5 py-0.5 rounded border ${fMeta.color}`}>
+                                    {fMeta.label}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground">{record.operatorName ?? "—"}</TableCell>
+                                <TableCell>
+                                  <div className="flex gap-1">
+                                    <button onClick={() => openEditFlowDialog(record)} className="p-1 hover:text-primary">
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button onClick={() => { if (confirm("確定刪除此記錄？")) deleteFlow.mutate({ id: record.id }); }}
+                                      className="p-1 hover:text-destructive">
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    )}
                   </div>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-10">#</TableHead>
-                        <TableHead>工站名稱</TableHead>
-                        <TableHead>進入時間</TableHead>
-                        <TableHead>離開時間</TableHead>
-                        <TableHead className="text-right">加工時間</TableHead>
-                        <TableHead className="text-right">等待時間</TableHead>
-                        <TableHead>狀態</TableHead>
-                        <TableHead>作業員</TableHead>
-                        <TableHead className="w-20">操作</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {flowRecords.map((record) => {
-                        const fMeta = FLOW_STATUS_META[record.status as FlowStatus];
-                        return (
-                          <TableRow key={record.id}>
-                            <TableCell className="text-muted-foreground text-xs">{record.sequenceOrder}</TableCell>
-                            <TableCell className="font-medium">{record.workstationName}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
-                              {record.entryTime ? new Date(record.entryTime).toLocaleString() : "—"}
-                            </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
-                              {record.exitTime ? new Date(record.exitTime).toLocaleString() : "—"}
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-sm">
-                              {record.actualCycleTime != null ? formatSeconds(parseFloat(String(record.actualCycleTime))) : "—"}
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-sm text-amber-400">
-                              {record.waitTime != null && parseFloat(String(record.waitTime)) > 0
-                                ? formatSeconds(parseFloat(String(record.waitTime)))
-                                : "—"}
-                            </TableCell>
-                            <TableCell>
-                              <span className={`inline-flex items-center text-xs px-1.5 py-0.5 rounded border ${fMeta.color}`}>
-                                {fMeta.label}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">{record.operatorName ?? "—"}</TableCell>
-                            <TableCell>
-                              <div className="flex gap-1">
-                                <button onClick={() => openEditFlowDialog(record)} className="p-1 hover:text-primary">
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                                <button onClick={() => { if (confirm("確定刪除此記錄？")) deleteFlow.mutate({ id: record.id }); }}
-                                  className="p-1 hover:text-destructive">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                  /* ── 時間軸視圖 ── */
+                  <ProductTimeline
+                    records={flowRecords.map((r: typeof flowRecords[0]) => ({
+                      id: r.id,
+                      workstationId: r.workstationId,
+                      workstationName: r.workstationName,
+                      sequenceOrder: r.sequenceOrder,
+                      entryTime: r.entryTime,
+                      exitTime: r.exitTime,
+                      actualCycleTime: r.actualCycleTime,
+                      waitTime: r.waitTime,
+                      status: r.status,
+                      operatorName: r.operatorName,
+                      notes: r.notes,
+                    }))}
+                    serialNumber={selectedInstance?.serialNumber ?? ""}
+                  />
                 )}
               </div>
             </>
@@ -491,7 +530,7 @@ export default function ProductTracking() {
                   <SelectTrigger><SelectValue placeholder="選擇型號（可選）" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">無</SelectItem>
-                    {models.map((m) => (
+                    {models.map((m: typeof models[0]) => (
                       <SelectItem key={m.id} value={String(m.id)}>{m.modelCode} {m.modelName}</SelectItem>
                     ))}
                   </SelectContent>
