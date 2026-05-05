@@ -21,7 +21,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { BookOpen, Factory, Home, LogOut, PanelLeft, PencilLine, ShieldCheck, Users, FlaskConical, Package, ScanBarcode } from "lucide-react";
+import { BookOpen, Factory, Home, LogOut, PanelLeft, PencilLine, ShieldCheck, Users, FlaskConical, Package, ScanBarcode, GanttChartSquare } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -33,6 +33,7 @@ const menuItems = [
   { icon: FlaskConical, label: "配置模擬", path: "/simulator" },
   { icon: Package, label: "產品型號", path: "/product-models" },
   { icon: ScanBarcode, label: "產品追蹤", path: "/product-tracking" },
+  { icon: GanttChartSquare, label: "甘特比較", path: "/gantt" },
   { icon: BookOpen, label: "使用指南", path: "/guide" },
 ];
 

@@ -503,3 +503,25 @@
 - [ ] 第四階段：產品追蹤甘特圖（多序號並排，工站 × 時間）
 - [ ] 第五階段：配置模擬整合模擬執行模式（自動產生 product_instances）
 - [ ] 第六階段：工站效率熱圖（工站 × 時段效率矩陣）
+
+## 第四階段：多序號甘特圖比較（完成）
+
+- [x] db.ts：新增 listFlowRecordsByInstances（批次查詢多個 instance 的流程記錄，使用 inArray）
+- [x] routers.ts：新增 productTracking.listFlowRecordsBatch procedure
+- [x] ProductGantt.tsx：多序號並排甘特圖元件（橫軸時間、縱軸序號）
+  - [x] 甘特條：加工時間（實色）+ 等待時間（半透明）
+  - [x] 雙模式：有時間戳按實際時間排列；無時間戳按累積時間排列
+  - [x] 縮放：滾輪縮放（30%–800%）、+/- 按鈕、重置
+  - [x] 拖曳平移：滑鼠拖曳橫向平移
+  - [x] Hover Tooltip：懸停顯示工站詳細資訊（加工/等待時間、進出時間、作業員、狀態）
+  - [x] 顏色模式切換：按工站 / 按狀態
+  - [x] 序號篩選（全部/生產中/完成/重工/報廢）
+  - [x] 時間刻度自動計算（選擇合適間隔）
+  - [x] 圖例顯示
+- [x] GanttPage.tsx：甘特圖頁面（左側控制面板 + 右側甘特圖）
+  - [x] 產線選擇
+  - [x] 序號多選（含全選/取消全選/搜尋/狀態篩選）
+  - [x] 空狀態引導
+  - [x] 載入狀態
+- [x] App.tsx：新增 /gantt 路由
+- [x] DashboardLayout.tsx：新增「甘特比較」側邊欄入口（GanttChartSquare icon）

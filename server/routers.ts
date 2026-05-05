@@ -23,7 +23,7 @@ import {
   updateProductModel, deleteProductModel,
   listProductInstances, getProductInstanceById, createProductInstance,
   updateProductInstance, deleteProductInstance,
-  listFlowRecordsByInstance, createFlowRecord, updateFlowRecord,
+  listFlowRecordsByInstance, listFlowRecordsByInstances, createFlowRecord, updateFlowRecord,
   deleteFlowRecord, upsertFlowRecords,
 } from "./db";
 import bcrypt from "bcryptjs";
@@ -1027,6 +1027,10 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
     listFlowRecords: protectedProcedure
       .input(z.object({ productInstanceId: z.number() }))
       .query(async ({ input }) => listFlowRecordsByInstance(input.productInstanceId)),
+
+    listFlowRecordsBatch: protectedProcedure
+      .input(z.object({ instanceIds: z.array(z.number()) }))
+      .query(async ({ input }) => listFlowRecordsByInstances(input.instanceIds)),
 
     createFlowRecord: protectedProcedure
       .input(z.object({

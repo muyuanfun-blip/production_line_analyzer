@@ -1,4 +1,4 @@
-import { eq, asc, desc } from "drizzle-orm";
+import { eq, asc, desc, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser, users,
@@ -664,4 +664,14 @@ export async function upsertFlowRecords(productInstanceId: number, records: Inse
     await db.insert(productFlowRecords).values(records);
   }
   return listFlowRecordsByInstance(productInstanceId);
+}
+
+// 批次查詢多個 instance 的所有流程記錄（用於甘特圖）
+export async function listFlowRecordsByInstances(instanceIds: number[]) {
+  if (instanceIds.length === 0) return [];
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(productFlowRecords)
+    .where(inArray(productFlowRecords.productInstanceId, instanceIds))
+    .orderBy(productFlowRecords.productInstanceId, productFlowRecords.sequenceOrder);
 }
