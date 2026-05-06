@@ -19,6 +19,10 @@ import {
 } from "recharts";
 import { HandGanttChart, type GanttStep } from "@/components/HandGanttChart";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { FileJson, FileSpreadsheet, Package } from "lucide-react";
 
 // ─── 型別定義 ─────────────────────────────────────────────────────────────────
 
@@ -478,7 +482,13 @@ export default function ActionAnalysis() {
     }
   }, [dbSteps, dbHandActions]);
 
-  // ── Mutations ─────────────────────────────────────────────────────────────
+  // 全工站動作資料（用於全工站匯出）
+  const { data: allLineSteps = [] } = trpc.actionStep.listByLine.useQuery(
+    { productionLineId: lineIdNum },
+    { enabled: lineIdNum > 0 }
+  );
+
+  // ── Mutations ──────────────────────────────────────────────────────────────────────────────────────
   const createStep = trpc.actionStep.create.useMutation();
   const updateStep = trpc.actionStep.update.useMutation();
   const deleteStep = trpc.actionStep.delete.useMutation();
@@ -714,6 +724,69 @@ export default function ActionAnalysis() {
     toast.success("CSV 已下載（含雙手資料）");
   }
 
+  function handleExportAllCSV() {
+    if (!allLineSteps.length) { toast.error("尚無工站資料"); return; }
+    const lineName = line?.name ?? "";
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const headerRow = "工站名稱,工站序號,工站CT(s),人力,步驟序號,動作名稱,類型,時間(s),備註,左手動作,右手動作\n";
+    const rows: string[] = [];
+    for (const ws of (allLineSteps as any[])) {
+      const ctSec = parseFloat(ws.cycleTime as string);
+      const totalStepSec = ws.steps.reduce((a: number, s: any) => a + parseDuration(s.duration), 0);
+      if (ws.steps.length === 0) {
+        rows.push(`"${ws.workstationName}",${ws.sequenceOrder},${ctSec.toFixed(2)},${ws.manpower},,(尚無動作步驟),,,,`);
+      } else {
+        for (const s of ws.steps) {
+          const sec = parseDuration(s.duration);
+          const pct = totalStepSec > 0 ? ((sec / totalStepSec) * 100).toFixed(1) : "0";
+          const leftStr = s.handActions.filter((h: any) => h.hand === "left").map((h: any) => `${h.actionName}(${parseDuration(h.duration).toFixed(1)}s)`).join(";");
+          const rightStr = s.handActions.filter((h: any) => h.hand === "right").map((h: any) => `${h.actionName}(${parseDuration(h.duration).toFixed(1)}s)`).join(";");
+          const typeLabel = ACTION_TYPE_CONFIG[s.actionType as ActionType]?.label ?? s.actionType;
+          rows.push(`"${ws.workstationName}",${ws.sequenceOrder},${ctSec.toFixed(2)},${ws.manpower},${s.stepOrder + 1},"${s.stepName}","${typeLabel}",${sec.toFixed(2)},"${s.description ?? ""}","${leftStr}","${rightStr}"`);
+        }
+      }
+    }
+    const blob = new Blob(["\uFEFF" + headerRow + rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `全工站動作拆解_${lineName}_${dateStr}.csv`; a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`已匯出 ${(allLineSteps as any[]).length} 個工站的動作資料 CSV`);
+  }
+
+  function handleExportAllJSON() {
+    if (!allLineSteps.length) { toast.error("尚無工站資料"); return; }
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      productionLine: line?.name ?? "",
+      workstationCount: (allLineSteps as any[]).length,
+      workstations: (allLineSteps as any[]).map((ws: any) => ({
+        workstationId: ws.workstationId,
+        workstationName: ws.workstationName,
+        sequenceOrder: ws.sequenceOrder,
+        cycleTime: parseFloat(ws.cycleTime),
+        manpower: ws.manpower,
+        stepCount: ws.steps.length,
+        totalStepSec: ws.steps.reduce((a: number, s: any) => a + parseDuration(s.duration), 0),
+        steps: ws.steps.map((s: any) => ({
+          stepOrder: s.stepOrder,
+          stepName: s.stepName,
+          actionType: s.actionType,
+          durationSec: parseDuration(s.duration),
+          description: s.description,
+          handActions: s.handActions,
+        })),
+      })),
+    };
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `全工站動作拆解_${line?.name ?? ""}_${dateStr}.json`; a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`已匯出 ${(allLineSteps as any[]).length} 個工站的動作資料 JSON`);
+  }
+
   function handleClearAll() {
     if (!confirm(`確定要清除「${selectedWs?.name}」的所有動作步驟嗎？`)) return;
     steps.forEach(s => {
@@ -745,9 +818,40 @@ export default function ActionAnalysis() {
               有未儲存的變更
             </Badge>
           )}
-          <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={steps.length === 0} className="text-xs h-8">
-            <Download className="w-3.5 h-3.5 mr-1.5" />匯出 CSV
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="text-xs h-8 gap-1.5">
+                <Download className="w-3.5 h-3.5" />匯出
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem
+                className="gap-2 cursor-pointer text-xs"
+                disabled={steps.length === 0}
+                onClick={handleExportCSV}
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                此工站 CSV（單站）
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="gap-2 cursor-pointer text-xs"
+                disabled={(allLineSteps as any[]).length === 0}
+                onClick={handleExportAllCSV}
+              >
+                <Package className="w-3.5 h-3.5 text-cyan-400" />
+                全工站 CSV（全產線）
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="gap-2 cursor-pointer text-xs"
+                disabled={(allLineSteps as any[]).length === 0}
+                onClick={handleExportAllJSON}
+              >
+                <FileJson className="w-3.5 h-3.5 text-blue-400" />
+                全工站 JSON（全產線）
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button variant="outline" size="sm" onClick={() => navigate(`/lines/${lineId}/balance`)} className="text-xs h-8">
             <BarChart3 className="w-3.5 h-3.5 mr-1.5" />平衡分析
           </Button>

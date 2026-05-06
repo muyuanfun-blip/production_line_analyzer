@@ -8,7 +8,7 @@ import {
   updateProductionLine, deleteProductionLine,
   getWorkstationsByLine, getWorkstationById, createWorkstation,
   updateWorkstation, deleteWorkstation, bulkCreateWorkstations,
-  getActionStepsByWorkstation, createActionStep, updateActionStep,
+  getActionStepsByWorkstation, getActionStepsByWorkstationIds, createActionStep, updateActionStep,
   deleteActionStep, bulkCreateActionSteps,
   getSnapshotsByLine, getSnapshotById, createSnapshot, deleteSnapshot, updateSnapshotData,
   getAllLinesLatestSnapshot,
@@ -349,6 +349,45 @@ export const appRouter = router({
         }));
         await bulkCreateActionSteps(data);
         return { success: true, count: data.length };
+      }),
+
+    // 查詢整條產線所有工站的動作步驟（並附帶手部動作）
+    listByLine: publicProcedure
+      .input(z.object({ productionLineId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const ws = await getWorkstationsByLine(input.productionLineId);
+        if (ws.length === 0) return [];
+        const wsIds = ws.map(w => w.id);
+        const steps = await getActionStepsByWorkstationIds(wsIds);
+        const stepIds = steps.map((s: any) => s.id as number);
+        const handActions = stepIds.length > 0 ? await getHandActionsByStepIds(stepIds) : [];
+        // 組合資料：工站 → 步驟 → 手部動作
+        return ws.map(w => ({
+          workstationId: w.id,
+          workstationName: w.name,
+          sequenceOrder: w.sequenceOrder,
+          cycleTime: w.cycleTime,
+          manpower: w.manpower,
+          steps: steps
+            .filter((s: any) => s.workstationId === w.id)
+            .map((s: any) => ({
+              id: s.id,
+              stepName: s.stepName,
+              stepOrder: s.stepOrder,
+              duration: s.duration,
+              actionType: s.actionType,
+              description: s.description,
+              handActions: handActions
+                .filter((h: any) => h.actionStepId === s.id)
+                .map((h: any) => ({
+                  id: h.id,
+                  hand: h.hand,
+                  actionName: h.actionName,
+                  duration: h.duration,
+                  handActionType: h.handActionType,
+                })),
+            })),
+        }));
       }),
   }),
 

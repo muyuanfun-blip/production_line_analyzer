@@ -251,6 +251,14 @@ export async function bulkCreateActionSteps(data: InsertActionStep[]) {
   return db.insert(actionSteps).values(data);
 }
 
+export async function getActionStepsByWorkstationIds(workstationIds: number[]) {
+  const db = await getDb();
+  if (!db || workstationIds.length === 0) return [];
+  return db.select().from(actionSteps)
+    .where(inArray(actionSteps.workstationId, workstationIds))
+    .orderBy(asc(actionSteps.workstationId), asc(actionSteps.stepOrder));
+}
+
 // ─── Hand Actions ──────────────────────────────────────────────────────────────────────────────────────
 
 export async function getHandActionsByStep(actionStepId: number) {

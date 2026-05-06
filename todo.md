@@ -537,3 +537,10 @@
 - [x] SnapshotHistory.tsx：每張快照卡片新增「匯出」DropdownMenu 按鈕（CSV / JSON）
 - [x] 新增 lucide-react icons：FileJson、FileSpreadsheet、Package
 - [x] 新增 DropdownMenu import（@/components/ui/dropdown-menu）
+
+## 動作分析全工站匯出功能（完成）
+
+- [x] db.ts 新增 getActionStepsByWorkstationIds 批次查詢函式
+- [x] routers.ts 新增 actionStep.listByLine procedure（含手部動作）
+- [x] ActionAnalysis.tsx 新增 handleExportAllCSV / handleExportAllJSON 函式
+- [x] 頁首匯出按鈕改為 DropdownMenu（此工站 CSV / 全工站 CSV / 全工站 JSON）
