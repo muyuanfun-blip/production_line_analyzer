@@ -22,8 +22,11 @@ import {
   Camera, Trash2, GitCompare, ArrowLeft, Clock,
   TrendingUp, TrendingDown, Minus, BarChart3, Target, Users,
   ChevronDown, ChevronUp, Flame, Activity, BarChart2, Download, Loader2,
-  AlertTriangle, CheckCircle, XCircle, Zap,
+  AlertTriangle, CheckCircle, XCircle, Zap, FileJson, FileSpreadsheet, Package,
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type WorkstationData = {
   id: number;
@@ -60,6 +63,123 @@ type Snapshot = {
   workstationsData: unknown;
   createdAt: Date;
 };
+
+// ─── 匯出工具函式 ───────────────────────────────────────────────────────────
+
+function downloadBlob(content: string, filename: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function fmtDateFile(d: Date) {
+  const dt = new Date(d);
+  return `${dt.getFullYear()}${String(dt.getMonth() + 1).padStart(2, "0")}${String(dt.getDate()).padStart(2, "0")}`;
+}
+
+function buildSnapKPI(snap: Snapshot) {
+  const upphResult = calcSnapUPPH(snap);
+  return {
+    balanceRate: snap.balanceRate,
+    balanceLoss: snap.balanceLoss,
+    maxTime: snap.maxTime,
+    minTime: snap.minTime,
+    avgTime: snap.avgTime,
+    totalTime: snap.totalTime,
+    workstationCount: snap.workstationCount,
+    totalManpower: snap.totalManpower,
+    taktTime: snap.taktTime,
+    taktPassRate: snap.taktPassRate,
+    taktPassCount: snap.taktPassCount,
+    bottleneckName: snap.bottleneckName,
+    upph: upphResult?.value ?? null,
+  };
+}
+
+function exportSnapshotCSV(snap: Snapshot, lineName: string) {
+  const ws = Array.isArray(snap.workstationsData) ? (snap.workstationsData as WorkstationData[]) : [];
+  const kpi = buildSnapKPI(snap);
+  const rows: string[][] = [];
+  rows.push(["# 快照摘要"]);
+  rows.push(["快照名稱", snap.name]);
+  rows.push(["產線", lineName]);
+  rows.push(["備註", snap.note ?? ""]);
+  rows.push(["建立時間", new Date(snap.createdAt).toLocaleString("zh-TW")]);
+  rows.push(["平衡率 (%)", kpi.balanceRate.toFixed(2)]);
+  rows.push(["平衡損失 (%)", kpi.balanceLoss.toFixed(2)]);
+  rows.push(["瓶頸時間 (s)", kpi.maxTime.toFixed(2)]);
+  rows.push(["最短CT (s)", kpi.minTime.toFixed(2)]);
+  rows.push(["平均CT (s)", kpi.avgTime.toFixed(2)]);
+  rows.push(["工站總時間 (s)", kpi.totalTime.toFixed(2)]);
+  rows.push(["工站數", String(kpi.workstationCount)]);
+  rows.push(["總人力", String(kpi.totalManpower)]);
+  rows.push(["Takt Time (s)", kpi.taktTime != null ? String(kpi.taktTime) : ""]);
+  rows.push(["Takt 達標率 (%)", kpi.taktPassRate != null ? kpi.taktPassRate.toFixed(2) : ""]);
+  rows.push(["瓶頸工站", kpi.bottleneckName ?? ""]);
+  rows.push(["UPPH (件/人/時)", kpi.upph != null ? kpi.upph.toFixed(2) : ""]);
+  rows.push([]);
+  rows.push(["# 工站明細"]);
+  rows.push(["序號", "工站名稱", "週期時間 (s)", "人力", "增值時間 (s)", "非增值時間 (s)", "必要浪費 (s)", "增值率 (%)"]);
+  ws.forEach((w, i) => {
+    rows.push([
+      String(i + 1), w.name, w.cycleTime.toFixed(2), String(w.manpower),
+      w.valueAddedSec != null ? w.valueAddedSec.toFixed(2) : "",
+      w.nonValueAddedSec != null ? w.nonValueAddedSec.toFixed(2) : "",
+      w.necessaryWasteSec != null ? w.necessaryWasteSec.toFixed(2) : "",
+      w.valueAddedRate != null ? (w.valueAddedRate * 100).toFixed(1) : "",
+    ]);
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  downloadBlob("\uFEFF" + csv, `快照_${snap.name}_${fmtDateFile(snap.createdAt)}.csv`, "text/csv;charset=utf-8;");
+}
+
+function exportSnapshotJSON(snap: Snapshot, lineName: string) {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    lineName,
+    snapshot: { id: snap.id, name: snap.name, note: snap.note, createdAt: snap.createdAt, kpi: buildSnapKPI(snap), workstations: snap.workstationsData },
+  };
+  downloadBlob(JSON.stringify(payload, null, 2), `快照_${snap.name}_${fmtDateFile(snap.createdAt)}.json`, "application/json");
+}
+
+function exportAllSnapshotsCSV(snapshots: Snapshot[], lineName: string) {
+  const rows: string[][] = [];
+  rows.push(["產線", lineName, "匯出時間", new Date().toLocaleString("zh-TW"), "快照數量", String(snapshots.length)]);
+  rows.push([]);
+  rows.push(["快照名稱", "備註", "建立時間", "平衡率(%)", "平衡損失(%)", "瓶頸時間(s)", "最短CT(s)", "平均CT(s)", "工站數", "總人力", "TaktTime(s)", "Takt達標率(%)", "瓶頸工站", "UPPH"]);
+  snapshots.forEach(snap => {
+    const kpi = buildSnapKPI(snap);
+    rows.push([
+      snap.name, snap.note ?? "", new Date(snap.createdAt).toLocaleString("zh-TW"),
+      kpi.balanceRate.toFixed(2), kpi.balanceLoss.toFixed(2), kpi.maxTime.toFixed(2),
+      kpi.minTime.toFixed(2), kpi.avgTime.toFixed(2), String(kpi.workstationCount),
+      String(kpi.totalManpower), kpi.taktTime != null ? String(kpi.taktTime) : "",
+      kpi.taktPassRate != null ? kpi.taktPassRate.toFixed(2) : "",
+      kpi.bottleneckName ?? "", kpi.upph != null ? kpi.upph.toFixed(2) : "",
+    ]);
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  downloadBlob("\uFEFF" + csv, `歷史快照_${lineName}_${dateStr}.csv`, "text/csv;charset=utf-8;");
+}
+
+function exportAllSnapshotsJSON(snapshots: Snapshot[], lineName: string) {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    lineName,
+    snapshotCount: snapshots.length,
+    snapshots: snapshots.map(snap => ({
+      id: snap.id, name: snap.name, note: snap.note, createdAt: snap.createdAt,
+      kpi: buildSnapKPI(snap), workstations: snap.workstationsData,
+    })),
+  };
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  downloadBlob(JSON.stringify(payload, null, 2), `歷史快照_${lineName}_${dateStr}.json`, "application/json");
+}
 
 // 補算 UPPH（當快照 upph 欄位為 null 時，用 maxTime 與 totalManpower 計算）
 function calcSnapUPPH(snap: Snapshot): { value: number; isCalc: boolean } | null {
@@ -658,6 +778,32 @@ export default function SnapshotHistory() {
               已選 1/2，再選 1 個即可比較
             </div>
           )}
+          {snapshots.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2 text-sm">
+                  <Package className="w-4 h-4" />
+                  匯出全部
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem
+                  className="gap-2 cursor-pointer"
+                  onClick={() => { exportAllSnapshotsCSV(snapshots as Snapshot[], line?.name ?? ""); toast.success("已匯出全部快照 CSV"); }}
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                  匯出全部快照 CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="gap-2 cursor-pointer"
+                  onClick={() => { exportAllSnapshotsJSON(snapshots as Snapshot[], line?.name ?? ""); toast.success("已匯出全部快照 JSON"); }}
+                >
+                  <FileJson className="w-4 h-4 text-blue-400" />
+                  匯出全部快照 JSON
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
@@ -844,6 +990,36 @@ export default function SnapshotHistory() {
                           <><ChevronDown className="w-3.5 h-3.5" />{wsCount > 0 ? `展開 ${wsCount} 站` : "展開工站"}</>
                         )}
                       </Button>
+
+                      {/* 單一快照匯出 */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-muted-foreground hover:text-foreground hover:bg-white/5 gap-1.5 text-xs"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <Download className="w-3.5 h-3.5" />匯出
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-44" onClick={e => e.stopPropagation()}>
+                          <DropdownMenuItem
+                            className="gap-2 cursor-pointer text-xs"
+                            onClick={() => { exportSnapshotCSV(snap, line?.name ?? ""); toast.success("已匯出 CSV"); }}
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                            匯出此快照 CSV
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="gap-2 cursor-pointer text-xs"
+                            onClick={() => { exportSnapshotJSON(snap, line?.name ?? ""); toast.success("已匯出 JSON"); }}
+                          >
+                            <FileJson className="w-3.5 h-3.5 text-blue-400" />
+                            匯出此快照 JSON
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
 
                       {/* 刪除 */}
                       <AlertDialog>

@@ -499,8 +499,8 @@
 ## 產品追蹤系統（六階段實作，每階段 ~150 積分後暫停）
 - [x] 第一階段：product_models 資料表 + 型號管理頁面（型號代碼、名稱、目標節拍、批量大小）
 - [x] 第二階段：product_instances + product_flow_records 資料表 + 手動輸入流程記錄
-- [ ] 第三階段：產品流程時間軸視圖（單一序號追蹤，標準 CT vs 實際 CT）
-- [ ] 第四階段：產品追蹤甘特圖（多序號並排，工站 × 時間）
+- [x] 第三階段：產品流程時間軸視圖（單一序號追蹤，標準 CT vs 實際 CT）
+- [x] 第四階段：產品追蹤甘特圖（多序號並排，工站 × 時間）
 - [ ] 第五階段：配置模擬整合模擬執行模式（自動產生 product_instances）
 - [ ] 第六階段：工站效率熱圖（工站 × 時段效率矩陣）
 
@@ -525,3 +525,15 @@
   - [x] 載入狀態
 - [x] App.tsx：新增 /gantt 路由
 - [x] DashboardLayout.tsx：新增「甘特比較」側邊欄入口（GanttChartSquare icon）
+
+## 歷史快照匯出功能（完成）
+
+- [x] SnapshotHistory.tsx：新增 downloadBlob / fmtDateFile / buildSnapKPI 匯出工具函式
+- [x] SnapshotHistory.tsx：新增 exportSnapshotCSV（單一快照 CSV，含 KPI 摘要 + 工站明細）
+- [x] SnapshotHistory.tsx：新增 exportSnapshotJSON（單一快照 JSON，含完整工站資料）
+- [x] SnapshotHistory.tsx：新增 exportAllSnapshotsCSV（全部快照 KPI 摘要 CSV）
+- [x] SnapshotHistory.tsx：新增 exportAllSnapshotsJSON（全部快照完整 JSON）
+- [x] SnapshotHistory.tsx：頁首新增「匯出全部」DropdownMenu 按鈕（CSV / JSON）
+- [x] SnapshotHistory.tsx：每張快照卡片新增「匯出」DropdownMenu 按鈕（CSV / JSON）
+- [x] 新增 lucide-react icons：FileJson、FileSpreadsheet、Package
+- [x] 新增 DropdownMenu import（@/components/ui/dropdown-menu）
