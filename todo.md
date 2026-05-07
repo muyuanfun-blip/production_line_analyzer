@@ -544,3 +544,12 @@
 - [x] routers.ts 新增 actionStep.listByLine procedure（含手部動作）
 - [x] ActionAnalysis.tsx 新增 handleExportAllCSV / handleExportAllJSON 函式
 - [x] 頁首匯出按鈕改為 DropdownMenu（此工站 CSV / 全工站 CSV / 全工站 JSON）
+
+## 數據修整 - 快照雙手動作編輯（完成）
+
+- [x] 擴充 updateData procedure 接受 actionSteps（含 handActions）
+- [x] DataRefinement.tsx 工站列可展開顯示動作步驟
+- [x] 動作步驟可新增/刪除/修改（名稱、類型、時間）
+- [x] 每個步驟可展開雙手動作（左手/右手分色）
+- [x] 雙手動作可新增/刪除/修改（名稱、類型、時間、空手勾選）
+- [x] 儲存時自動重算增值率 KPI

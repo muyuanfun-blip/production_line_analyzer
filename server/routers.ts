@@ -656,11 +656,47 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
           nonValueAddedSec: z.number().optional(),
           necessaryWasteSec: z.number().optional(),
           valueAddedRate: z.number().nullable().optional(),
+          // 動作步驟詳細資料（含雙手動作）
+          actionSteps: z.array(z.object({
+            id: z.number().optional(),
+            stepName: z.string().min(1),
+            stepOrder: z.number().int().min(0),
+            duration: z.number().min(0),
+            actionType: z.enum(["value_added", "non_value_added", "necessary_waste"]),
+            description: z.string().optional(),
+            handActions: z.array(z.object({
+              id: z.number().optional(),
+              hand: z.enum(["left", "right"]),
+              actionName: z.string(),
+              duration: z.number().min(0),
+              handActionType: z.enum(["value_added", "non_value_added", "necessary_waste", "idle"]),
+              isIdle: z.boolean().optional(),
+              note: z.string().optional(),
+            })).optional(),
+          })).optional(),
         })).min(1),
       }))
       .mutation(async ({ input }) => {
-        const { id, ...data } = input;
-        await updateSnapshotData(id, data);
+        const { id, workstationsData, ...rest } = input;
+        // 重算增値率摘要（如果有動作步驟資料）
+        const enriched = workstationsData.map(ws => {
+          if (!ws.actionSteps || ws.actionSteps.length === 0) return ws;
+          const totalStepSec = ws.actionSteps.reduce((a, s) => a + s.duration, 0);
+          const valueAddedSec = ws.actionSteps.filter(s => s.actionType === 'value_added').reduce((a, s) => a + s.duration, 0);
+          const nonValueAddedSec = ws.actionSteps.filter(s => s.actionType === 'non_value_added').reduce((a, s) => a + s.duration, 0);
+          const necessaryWasteSec = ws.actionSteps.filter(s => s.actionType === 'necessary_waste').reduce((a, s) => a + s.duration, 0);
+          const valueAddedRate = totalStepSec > 0 ? parseFloat(((valueAddedSec / totalStepSec) * 100).toFixed(2)) : null;
+          return {
+            ...ws,
+            actionStepCount: ws.actionSteps.length,
+            totalStepSec: parseFloat(totalStepSec.toFixed(2)),
+            valueAddedSec: parseFloat(valueAddedSec.toFixed(2)),
+            nonValueAddedSec: parseFloat(nonValueAddedSec.toFixed(2)),
+            necessaryWasteSec: parseFloat(necessaryWasteSec.toFixed(2)),
+            valueAddedRate,
+          };
+        });
+        await updateSnapshotData(id, { ...rest, workstationsData: enriched });
         return { success: true };
       }),
 
