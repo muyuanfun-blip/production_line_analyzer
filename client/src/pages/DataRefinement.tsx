@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useId } from "react";
+import { useState, useEffect, useCallback, useId, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -181,6 +181,7 @@ export default function DataRefinement() {
   const [snapNote, setSnapNote] = useState("");
   const [taktTimeInput, setTaktTimeInput] = useState("");
   const [isDirty, setIsDirty] = useState(false);
+  const justSavedRef = useRef(false); // 儲存後跳過 useEffect 重置 UI 狀態
   const [showAddForm, setShowAddForm] = useState(false);
   const [newWsName, setNewWsName] = useState("");
   const [newWsCt, setNewWsCt] = useState("");
@@ -203,21 +204,77 @@ export default function DataRefinement() {
     if (!snapDetail) return;
     const ws = (snapDetail.workstationsData as any[] | null) ?? [];
     const sorted = [...ws].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
-    setEditRows(sorted.map(w => ({
-      ...w,
-      cycleTime: Number(w.cycleTime),
-      manpower: Number(w.manpower),
-      _origCycleTime: Number(w.cycleTime),
-      _origManpower: Number(w.manpower),
-      _origName: w.name,
-      _dirty: false,
-      _expanded: false,
-      actionSteps: toStepItems(w.actionSteps ?? []),
-    })));
-    setSnapName(snapDetail.name);
-    setSnapNote(snapDetail.note ?? "");
-    setTaktTimeInput(snapDetail.taktTime ? String(snapDetail.taktTime) : "");
-    setIsDirty(false);
+
+    if (justSavedRef.current) {
+      // 儲存後：只更新基準值（_orig*、_dirty），保留 _expanded / _showHands / _key 等 UI 狀態
+      justSavedRef.current = false;
+      setEditRows(prev => {
+        const byId = new Map(sorted.map(w => [w.id, w]));
+        return prev.map(row => {
+          const fresh = byId.get(row.id);
+          if (!fresh) return row;
+          const ct = Number(fresh.cycleTime);
+          const mp = Number(fresh.manpower);
+          // 合併最新的 actionSteps 資料，但保留 _key / _showHands
+          const freshSteps = fresh.actionSteps ?? [];
+          const mergedSteps = row.actionSteps.map((s, si) => {
+            const fs = freshSteps[si];
+            if (!fs) return s;
+            return {
+              ...s,
+              id: fs.id ?? s.id,
+              stepName: fs.stepName ?? s.stepName,
+              stepOrder: fs.stepOrder ?? s.stepOrder,
+              duration: String(parseFloat(String(fs.duration ?? s.duration))),
+              actionType: (fs.actionType ?? s.actionType) as ActionType,
+              description: fs.description ?? s.description,
+              // 合併 handActions，保留 _key
+              handActions: s.handActions.map((h, hi) => {
+                const fh = (fs.handActions ?? [])[hi];
+                if (!fh) return h;
+                return {
+                  ...h,
+                  id: fh.id ?? h.id,
+                  actionName: fh.actionName ?? h.actionName,
+                  duration: String(parseFloat(String(fh.duration ?? h.duration))),
+                  handActionType: (fh.handActionType ?? h.handActionType) as HandActionType,
+                  isIdle: Boolean(fh.isIdle ?? h.isIdle),
+                  note: fh.note ?? h.note,
+                };
+              }),
+            };
+          });
+          return {
+            ...row,
+            cycleTime: ct,
+            manpower: mp,
+            _origCycleTime: ct,
+            _origManpower: mp,
+            _origName: fresh.name,
+            _dirty: false,
+            actionSteps: mergedSteps,
+          };
+        });
+      });
+      setIsDirty(false);
+    } else {
+      // 初次載入或切換快照：完整重置
+      setEditRows(sorted.map(w => ({
+        ...w,
+        cycleTime: Number(w.cycleTime),
+        manpower: Number(w.manpower),
+        _origCycleTime: Number(w.cycleTime),
+        _origManpower: Number(w.manpower),
+        _origName: w.name,
+        _dirty: false,
+        _expanded: false,
+        actionSteps: toStepItems(w.actionSteps ?? []),
+      })));
+      setSnapName(snapDetail.name);
+      setSnapNote(snapDetail.note ?? "");
+      setTaktTimeInput(snapDetail.taktTime ? String(snapDetail.taktTime) : "");
+      setIsDirty(false);
+    }
   }, [snapDetail]);
 
   // ─── 新增工站 ──────────────────────────────────────────────────────────
@@ -427,6 +484,7 @@ export default function DataRefinement() {
   const updateMutation = trpc.snapshot.updateData.useMutation({
     onSuccess: () => {
       toast.success("快照數據已儲存，KPI 已自動重算");
+      justSavedRef.current = true; // 標記為儲存後刷新，保留 UI 展開狀態
       refetchDetail();
       refetchSnaps();
       utils.snapshot.getAllLinesLatest.invalidate();
