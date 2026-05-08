@@ -42,6 +42,7 @@ import {
   Hand,
   Zap,
   Minus,
+  Loader2,
 } from "lucide-react";
 
 // ─── 型別 ──────────────────────────────────────────────────────────────────
@@ -182,6 +183,8 @@ export default function DataRefinement() {
   const [taktTimeInput, setTaktTimeInput] = useState("");
   const [isDirty, setIsDirty] = useState(false);
   const justSavedRef = useRef(false); // 儲存後跳過 useEffect 重置 UI 狀態
+  const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+  const saveSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newWsName, setNewWsName] = useState("");
   const [newWsCt, setNewWsCt] = useState("");
@@ -483,13 +486,16 @@ export default function DataRefinement() {
   const utils = trpc.useUtils();
   const updateMutation = trpc.snapshot.updateData.useMutation({
     onSuccess: () => {
-      toast.success("快照數據已儲存，KPI 已自動重算");
       justSavedRef.current = true; // 標記為儲存後刷新，保留 UI 展開狀態
       refetchDetail();
       refetchSnaps();
       utils.snapshot.getAllLinesLatest.invalidate();
       utils.snapshot.getAllLinesHistory.invalidate();
       setIsDirty(false);
+      // 顯示成功動畫 Banner（2.5 秒後自動消失）
+      setShowSaveSuccess(true);
+      if (saveSuccessTimerRef.current) clearTimeout(saveSuccessTimerRef.current);
+      saveSuccessTimerRef.current = setTimeout(() => setShowSaveSuccess(false), 2500);
     },
     onError: (err) => {
       toast.error(`儲存失敗：${err.message}`);
@@ -568,7 +574,31 @@ export default function DataRefinement() {
   const dirtyCount = editRows.filter(r => r._dirty).length;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 max-w-7xl mx-auto space-y-6 relative">
+      {/* 儲存中全頁半透明遮罩 */}
+      {updateMutation.isPending && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4 bg-card border border-border rounded-2xl px-10 py-8 shadow-2xl">
+            <Loader2 className="h-10 w-10 text-amber-400 animate-spin" />
+            <div className="text-center">
+              <p className="text-base font-semibold text-foreground">儲存中...</p>
+              <p className="text-sm text-muted-foreground mt-1">正在儲存快照資料與重算 KPI</p>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 儲存成功 Banner */}
+      <div
+        className={[
+          "fixed top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3",
+          "bg-emerald-500/95 text-white px-6 py-3 rounded-full shadow-lg",
+          "transition-all duration-500",
+          showSaveSuccess ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4 pointer-events-none",
+        ].join(" ")}
+      >
+        <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
+        <span className="font-medium text-sm">快照已成功儲存，KPI 已自動重算</span>
+      </div>
       {/* 頁首 */}
       <div className="flex items-center gap-3">
         <div className="p-2 rounded-lg bg-amber-500/10">
@@ -749,10 +779,19 @@ export default function DataRefinement() {
                 size="sm"
                 onClick={handleSave}
                 disabled={!isDirty || updateMutation.isPending}
-                className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-white"
+                className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-white min-w-[96px] relative"
               >
-                <Save className="h-3.5 w-3.5" />
-                {updateMutation.isPending ? "儲存中..." : "儲存變更"}
+                {updateMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    儲存中...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-3.5 w-3.5" />
+                    儲存變更
+                  </>
+                )}
               </Button>
             </div>
           </div>
