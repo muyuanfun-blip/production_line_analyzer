@@ -43,6 +43,8 @@ import {
   Zap,
   Minus,
   Loader2,
+  XCircle,
+  RefreshCw,
 } from "lucide-react";
 
 // ─── 型別 ──────────────────────────────────────────────────────────────────
@@ -185,6 +187,8 @@ export default function DataRefinement() {
   const justSavedRef = useRef(false); // 儲存後跳過 useEffect 重置 UI 狀態
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const saveSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [saveError, setSaveError] = useState<{ message: string; detail?: string } | null>(null);
+  const saveErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newWsName, setNewWsName] = useState("");
   const [newWsCt, setNewWsCt] = useState("");
@@ -492,13 +496,63 @@ export default function DataRefinement() {
       utils.snapshot.getAllLinesLatest.invalidate();
       utils.snapshot.getAllLinesHistory.invalidate();
       setIsDirty(false);
+      setSaveError(null); // 清除先前的錯誤
       // 顯示成功動畫 Banner（2.5 秒後自動消失）
       setShowSaveSuccess(true);
       if (saveSuccessTimerRef.current) clearTimeout(saveSuccessTimerRef.current);
       saveSuccessTimerRef.current = setTimeout(() => setShowSaveSuccess(false), 2500);
     },
     onError: (err) => {
-      toast.error(`儲存失敗：${err.message}`);
+      // 分類錯誤類型
+      let message = "儲存失敗";
+      let detail: string | undefined;
+      const msg = err.message ?? "";
+      if (
+        msg.includes("fetch") ||
+        msg.includes("network") ||
+        msg.includes("Failed to fetch") ||
+        msg.includes("NetworkError") ||
+        msg.includes("ERR_NETWORK")
+      ) {
+        message = "網路連線異常";
+        detail = "請檢查網路連線後再試一次。若問題持續，請重新整理頁面。";
+      } else if (
+        msg.includes("UNAUTHORIZED") ||
+        msg.includes("FORBIDDEN") ||
+        msg.includes("401") ||
+        msg.includes("403")
+      ) {
+        message = "登入已過期或權限不足";
+        detail = "請重新登入後再試。";
+      } else if (
+        msg.includes("BAD_REQUEST") ||
+        msg.includes("PARSE_ERROR") ||
+        msg.includes("ZodError") ||
+        msg.includes("validation") ||
+        msg.includes("invalid")
+      ) {
+        message = "資料格式錯誤";
+        detail = "請檢查工站名稱、CT 與人力欄位是否填寫正確。";
+      } else if (
+        msg.includes("TIMEOUT") ||
+        msg.includes("timeout") ||
+        msg.includes("AbortError")
+      ) {
+        message = "請求逾時";
+        detail = "伺服器回應超時，請稍後再試。";
+      } else if (msg.includes("INTERNAL_SERVER_ERROR") || msg.includes("500")) {
+        message = "伺服器內部錯誤";
+        detail = "伺服器發生未預期錯誤，請稍後再試。";
+      } else {
+        message = "儲存失敗";
+        detail = msg || "未知錯誤，請稍後再試。";
+      }
+      setSaveError({ message, detail });
+      // 永久顯示錯誤 Banner（需手動關閉）
+      if (saveErrorTimerRef.current) clearTimeout(saveErrorTimerRef.current);
+    },
+    onSettled: () => {
+      // 儲存完成（無論成功或失敗）都移除過期的錯誤狀態（成功時清除）
     },
   });
 
@@ -528,6 +582,28 @@ export default function DataRefinement() {
   // ─── 儲存 ──────────────────────────────────────────────────────────────
   const handleSave = useCallback(() => {
     if (!selectedSnapId) return;
+    // 前端資料驗證
+    const invalidWs = editRows.find(r => !r.name?.trim());
+    if (invalidWs) {
+      setSaveError({ message: "資料格式錯誤", detail: `工站「${invalidWs.name || "(空白)"}」的名稱不能為空。` });
+      return;
+    }
+    const invalidCt = editRows.find(r => isNaN(Number(r.cycleTime)) || Number(r.cycleTime) < 0);
+    if (invalidCt) {
+      setSaveError({ message: "資料格式錯誤", detail: `工站「${invalidCt.name}」的週期時間格式不正確，請輸入有效數字。` });
+      return;
+    }
+    const invalidMp = editRows.find(r => isNaN(Number(r.manpower)) || Number(r.manpower) <= 0);
+    if (invalidMp) {
+      setSaveError({ message: "資料格式錯誤", detail: `工站「${invalidMp.name}」的人力必須大於 0。` });
+      return;
+    }
+    const invalidStep = editRows.flatMap(r => r.actionSteps).find(s => !s.stepName?.trim());
+    if (invalidStep) {
+      setSaveError({ message: "資料格式錯誤", detail: "存在名稱為空的動作步驟，請先填寫步驟名稱。" });
+      return;
+    }
+    setSaveError(null); // 清除舊錯誤
     const taktTime = taktTimeInput ? parseFloat(taktTimeInput) : null;
     updateMutation.mutate({
       id: selectedSnapId,
@@ -599,6 +675,34 @@ export default function DataRefinement() {
         <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
         <span className="font-medium text-sm">快照已成功儲存，KPI 已自動重算</span>
       </div>
+      {/* 儲存失敗 Banner */}
+      {saveError && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4">
+          <div className="flex items-start gap-3 bg-red-600/95 text-white px-5 py-4 rounded-2xl shadow-2xl border border-red-400/30">
+            <XCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm">{saveError.message}</p>
+              {saveError.detail && (
+                <p className="text-xs text-red-100 mt-1 leading-relaxed">{saveError.detail}</p>
+              )}
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={handleSave}
+                  className="flex items-center gap-1.5 text-xs font-medium bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  <RefreshCw className="h-3 w-3" />重試
+                </button>
+                <button
+                  onClick={() => setSaveError(null)}
+                  className="flex items-center gap-1.5 text-xs font-medium bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  關閉
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* 頁首 */}
       <div className="flex items-center gap-3">
         <div className="p-2 rounded-lg bg-amber-500/10">
