@@ -6,6 +6,7 @@ import {
   Clock, Users, Target, Camera, AlertTriangle, CheckCircle2, Minus,
   ChevronRight, TrendingDown, LineChart as LineChartIcon,
 } from "lucide-react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -185,89 +186,113 @@ export default function Home() {
     { icon: Brain,    title: "AI 優化建議",   description: "智能分析產線數據，自動生成平衡優化與改善方案",   color: "text-amber-400",   bg: "bg-amber-400/10",   border: "border-amber-400/20" },
   ];
 
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
   return (
-    <div className="min-h-full p-6 space-y-8">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-card via-card to-accent/20 p-8">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl pointer-events-none" />
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center">
-              <Zap className="h-5 w-5 text-primary" />
+    <div className="min-h-full space-y-5 p-5">
+      {/* ── Hero Banner ─────────────────────────────────────────────────── */}
+      <div className="relative overflow-hidden rounded border border-border bg-card grid-bg">
+        <div className="absolute inset-0 bg-gradient-to-r from-card via-card/90 to-transparent pointer-events-none" />
+        <div className="relative z-10 flex items-stretch">
+          {/* Left: brand + title */}
+          <div className="flex-1 min-w-0 p-5 border-r border-border/40">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-4 w-4 rounded-sm bg-primary/20 flex items-center justify-center">
+                <Activity className="h-2.5 w-2.5 text-primary" />
+              </div>
+              <span className="text-[0.625rem] font-bold tracking-[0.15em] uppercase text-primary/70">Production Line Analyzer</span>
+              <span className="text-[0.5625rem] font-mono text-muted-foreground/60 border border-border/40 rounded px-1 py-px">v2.0</span>
             </div>
-            <span className="text-sm font-medium text-primary px-3 py-1 rounded-full bg-primary/10 border border-primary/20">
-              生產效率優化平台
-            </span>
+            <h1 className="text-xl font-bold tracking-tight mb-1.5">
+              <span className="gradient-text">產線平衡分析系統</span>
+            </h1>
+            <p className="text-[0.75rem] text-muted-foreground max-w-lg leading-relaxed">
+              整合工站時間統計、產線平衡分析、動作分析與 AI 優化建議，精確識別瓶頸、提升生產效率。
+            </p>
+            <div className="flex items-center gap-2 mt-3">
+              <Button size="sm" className="h-7 text-xs" onClick={() => setLocation("/lines")}>
+                開始分析 <ArrowRight className="ml-1 h-3 w-3" />
+              </Button>
+              <span className="text-[0.625rem] text-muted-foreground/50">設計者：D.F.</span>
+            </div>
           </div>
-          <h1 className="text-4xl font-bold tracking-tight mb-3">
-            <span className="gradient-text">產線平衡分析系統</span>
-          </h1>
-          <p className="text-muted-foreground text-lg max-w-2xl leading-relaxed">
-            整合工站時間統計、產線平衡分析、動作分析與 AI 優化建議，
-            精確識別瓶頸、提升生產效率、實現精實生產目標。<br />
-            設計者：D.F.
-          </p>
-          <div className="flex items-center gap-4 mt-6">
-            <Button size="lg" className="glow-primary" onClick={() => setLocation("/lines")}>
-              開始分析
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-            <div className="flex items-center gap-6 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span>{activeLines} 條產線運行中</span>
+          {/* Right: system status panel */}
+          <div className="hidden md:flex flex-col justify-center gap-3 px-6 min-w-[200px]">
+            <div className="flex items-center justify-between gap-6">
+              <span className="text-[0.625rem] font-mono text-muted-foreground uppercase tracking-wider">系統狀態</span>
+              <span className="flex items-center gap-1.5 text-[0.625rem] font-mono text-emerald-400">
+                <span className="status-dot status-dot-ok" />ONLINE
+              </span>
+            </div>
+            <div className="h-px bg-border/40" />
+            {([
+              { label: "產線總數", value: String(totalLines), unit: "條", color: "text-cyan-400" },
+              { label: "運行中",   value: String(activeLines), unit: "條", color: "text-emerald-400" },
+              { label: "快照數",   value: String(chartData.length), unit: "筆", color: "text-violet-400" },
+            ] as const).map(r => (
+              <div key={r.label} className="flex items-center justify-between">
+                <span className="text-[0.625rem] font-mono text-muted-foreground">{r.label}</span>
+                <span className={`text-[0.75rem] font-bold num-display ${r.color}`}>{r.value}<span className="text-[0.5625rem] text-muted-foreground ml-0.5">{r.unit}</span></span>
               </div>
-              <div className="flex items-center gap-2">
-                <Factory className="h-4 w-4" />
-                <span>共 {totalLines} 條產線</span>
-              </div>
+            ))}
+            <div className="h-px bg-border/40" />
+            <div className="flex items-center justify-between">
+              <span className="text-[0.625rem] font-mono text-muted-foreground">系統時間</span>
+              <span className="text-[0.625rem] font-mono text-muted-foreground/70">{now.toLocaleTimeString("zh-TW", { hour12: false })}</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ── KPI Stats ───────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { icon: Factory,   label: "生產線總數", value: totalLines,  color: "text-cyan-400",    sub: "條產線" },
-          { icon: TrendingUp, label: "運行中",    value: activeLines, color: "text-emerald-400", sub: "條產線" },
-          { icon: Clock,     label: "分析功能",   value: 4,           color: "text-violet-400",  sub: "項核心功能" },
-          { icon: Target,    label: "優化目標",   value: "AI",        color: "text-amber-400",   sub: "智能建議" },
+          { icon: Factory,      label: "生產線總數", value: totalLines,      unit: "條", color: "text-cyan-400",    iconBg: "bg-cyan-400/10",    bar: Math.min((totalLines / 10) * 100, 100), barColor: "bg-cyan-400" },
+          { icon: CheckCircle2, label: "運行中",     value: activeLines,     unit: "條", color: "text-emerald-400", iconBg: "bg-emerald-400/10", bar: totalLines > 0 ? (activeLines / totalLines) * 100 : 0, barColor: "bg-emerald-400" },
+          { icon: BarChart3,    label: "已分析快照", value: chartData.length, unit: "筆", color: "text-violet-400",  iconBg: "bg-violet-400/10",  bar: Math.min((chartData.length / 20) * 100, 100), barColor: "bg-violet-400" },
+          { icon: Brain,        label: "AI 優化功能", value: 4,              unit: "項", color: "text-amber-400",   iconBg: "bg-amber-400/10",   bar: 100, barColor: "bg-amber-400" },
         ].map((stat) => (
-          <Card key={stat.label} className="border-border bg-card hover:border-primary/30 transition-colors">
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">{stat.label}</p>
-                  <p className={`text-3xl font-bold ${stat.color}`}>{stat.value}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{stat.sub}</p>
-                </div>
-                <div className={`h-10 w-10 rounded-lg flex items-center justify-center`}
-                  style={{ background: `color-mix(in oklch, currentColor 10%, transparent)` }}>
-                  <stat.icon className={`h-5 w-5 ${stat.color}`} />
+          <div key={stat.label} className="kpi-card p-4">
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <p className="text-[0.625rem] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">{stat.label}</p>
+                <div className="flex items-baseline gap-1">
+                  <span className={`text-[1.625rem] font-bold leading-none num-display ${stat.color}`}>{stat.value}</span>
+                  <span className="text-[0.625rem] text-muted-foreground">{stat.unit}</span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+              <div className={`h-7 w-7 rounded ${stat.iconBg} flex items-center justify-center shrink-0`}>
+                <stat.icon className={`h-3.5 w-3.5 ${stat.color}`} />
+              </div>
+            </div>
+            <div className="progress-bar-track">
+              <div className={`progress-bar-fill ${stat.barColor}`} style={{ width: `${stat.bar}%` }} />
+            </div>
+          </div>
         ))}
       </div>
 
       {/* ─── 產線平衡率並排比較圖表 ─────────────────────────────────────────── */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-semibold text-foreground">各產線平衡率比較</h2>
-            <p className="text-sm text-muted-foreground mt-0.5">基於各產線最新快照數據</p>
+        <div className="section-header mb-4">
+          <div className="section-header-accent" />
+          <div className="flex-1">
+            <h2 className="text-[0.875rem] font-semibold text-foreground">各產線平衡率比較</h2>
+            <p className="text-[0.6875rem] text-muted-foreground">基於各產線最新快照數據</p>
           </div>
           {chartData.length > 0 && (
             <Button
               variant="outline"
               size="sm"
               onClick={() => setLocation("/lines")}
-              className="border-border text-muted-foreground hover:text-foreground"
+              className="border-border text-muted-foreground hover:text-foreground h-7 text-[0.75rem]"
             >
               管理產線
-              <ChevronRight className="ml-1 h-4 w-4" />
+              <ChevronRight className="ml-1 h-3 w-3" />
             </Button>
           )}
         </div>
@@ -541,23 +566,21 @@ export default function Home() {
 
       {/* ─── 歷史平衡率趨勢折線圖 ─────────────────────────────────────────── */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
-              <LineChartIcon className="h-5 w-5 text-primary" />
-              歷史平衡率趨勢
-            </h2>
-            <p className="text-sm text-muted-foreground mt-0.5">追蹤各產線長期改善軌跡</p>
+        <div className="section-header mb-4">
+          <div className="section-header-accent" />
+          <div className="flex-1">
+            <h2 className="text-[0.875rem] font-semibold text-foreground">歷史平衡率趨勢</h2>
+            <p className="text-[0.6875rem] text-muted-foreground">追蹤各產線長期改善軌跡</p>
           </div>
           {hasTrendData && (
             <Button
               variant="outline"
               size="sm"
               onClick={() => setLocation("/lines")}
-              className="border-border text-muted-foreground hover:text-foreground"
+              className="border-border text-muted-foreground hover:text-foreground h-7 text-[0.75rem]"
             >
               查看快照
-              <ChevronRight className="ml-1 h-4 w-4" />
+              <ChevronRight className="ml-1 h-3 w-3" />
             </Button>
           )}
         </div>
@@ -821,27 +844,28 @@ export default function Home() {
 
       {/* Feature Cards */}
       <div>
-        <h2 className="text-xl font-semibold mb-4 text-foreground">核心功能</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="section-header mb-3">
+          <div className="section-header-accent" />
+          <h2 className="text-[0.875rem] font-semibold text-foreground">核心功能</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {features.map((feature) => (
-            <Card
+            <div
               key={feature.title}
-              className={`border bg-card hover:bg-accent/30 transition-all cursor-pointer group ${feature.border}`}
+              className={`kpi-card p-4 cursor-pointer group border ${feature.border} hover:bg-accent/10 transition-all`}
               onClick={() => setLocation("/lines")}
             >
-              <CardContent className="p-6">
-                <div className="flex items-start gap-4">
-                  <div className={`h-12 w-12 rounded-xl ${feature.bg} flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform`}>
-                    <feature.icon className={`h-6 w-6 ${feature.color}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-foreground mb-1">{feature.title}</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all shrink-0 mt-1" />
+              <div className="flex items-start gap-3">
+                <div className={`h-8 w-8 rounded ${feature.bg} flex items-center justify-center shrink-0`}>
+                  <feature.icon className={`h-3.5 w-3.5 ${feature.color}`} />
                 </div>
-              </CardContent>
-            </Card>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-[0.8125rem] font-semibold text-foreground mb-0.5">{feature.title}</h3>
+                  <p className="text-[0.75rem] text-muted-foreground leading-relaxed">{feature.description}</p>
+                </div>
+                <ArrowRight className="h-3 w-3 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0 mt-0.5" />
+              </div>
+            </div>
           ))}
         </div>
       </div>
