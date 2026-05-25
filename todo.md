@@ -566,3 +566,86 @@
 - [x] 更新「系統概覽」功能亮點卡片（8 個功能入口）
 - [x] 更新 FAQ 新增「產品追蹤」與「匯出功能」兩個分類（4 題）
 - [x] 側邊欄快速連結新增產品追蹤、甘特比較、數據修整入口
+
+
+## VSM (Value Stream Mapping) 模組 - 第一階段（後端實現）
+
+- [x] 建立 VSM 資料表（vsm_diagrams、vsm_processes、vsm_flows、vsm_versions）
+- [x] 執行資料庫遷移 SQL
+- [x] server/db.ts：實作 VSM CRUD 函式（23 個）
+  - [x] VSM 圖表：list、getById、create、update、delete
+  - [x] VSM 工序：list、getById、create、update、delete、deleteByDiagram
+  - [x] VSM 流線：list、getById、create、update、delete、deleteByDiagram
+  - [x] VSM 版本：list、getById、create、restore
+- [x] server/routers.ts：實作 VSM tRPC procedures（20 個）
+  - [x] 圖表管理：listDiagrams、getDiagramById、createDiagram、updateDiagram、deleteDiagram
+  - [x] 工序管理：listProcesses、getProcessById、createProcess、updateProcess、deleteProcess
+  - [x] 流線管理：listFlows、getFlowById、createFlow、updateFlow、deleteFlow
+  - [x] 版本管理：listVersions、getVersionById、createVersion、restoreVersion
+- [x] TypeScript 0 errors，133/133 Vitest 全通過
+
+## VSM 模組 - 第二階段（前端編輯器）
+
+- [ ] 建立 VSMCanvas.tsx 拖放編輯元件
+  - [ ] SVG 畫布（支援格線背景、縮放、平移）
+  - [ ] 工序節點拖曳移動（支援自動吸附格線）
+  - [ ] 流線連接（貝茲曲線，支援拖曳重新連接）
+  - [ ] 節點/流線選取與屬性編輯
+  - [ ] 撤銷/重做功能（undo/redo stack）
+  - [ ] 複製/貼上工序
+  - [ ] 刪除工序（自動刪除相關流線）
+- [ ] 建立 VSMNodePanel.tsx 工序屬性編輯面板
+  - [ ] 工序名稱、類型、CT、人力、增值率編輯
+  - [ ] 工序尺寸調整（寬/高）
+  - [ ] 工序顏色選擇（按類型預設色系）
+  - [ ] 工站關聯選擇（dropdown）
+  - [ ] 備註編輯
+- [ ] 建立 VSMFlowPanel.tsx 流線屬性編輯面板
+  - [ ] 流線類型選擇（物流/資訊流/看板）
+  - [ ] 流線週期時間、流量編輯
+  - [ ] 流線顏色與寬度調整
+  - [ ] 備註編輯
+- [ ] 建立 VSMPage.tsx 主頁面
+  - [ ] 左側：圖表列表與版本歷史
+  - [ ] 中央：VSMCanvas 編輯區
+  - [ ] 右側：工序/流線屬性面板（context-aware）
+  - [ ] 頂部工具列：新增工序、新增流線、儲存、匯出、版本控制
+  - [ ] 快捷鍵支援（Ctrl+Z 撤銷、Ctrl+S 儲存等）
+
+## VSM 模組 - 第三階段（KPI 覆蓋與分析）
+
+- [ ] VSMCanvas.tsx 新增 KPI 覆蓋層
+  - [ ] 工序節點顯示 CT、人力、增值率小徽章
+  - [ ] 流線顯示流量與搬運時間
+  - [ ] 整體 VSM 統計卡片（總 CT、總人力、增值率、Lead Time）
+- [ ] 建立 VSMAnalysis.tsx 分析面板
+  - [ ] 工序瓶頸分析（識別最長 CT 工序）
+  - [ ] 增值率分析（各工序增值率分佈）
+  - [ ] 人力配置分析（人力負荷均衡度）
+  - [ ] 流線分析（物流 vs 資訊流平衡）
+- [ ] AI 驅動改善建議
+  - [ ] 呼叫 Ollama API 分析 VSM 結構
+  - [ ] 生成改善建議（工序合併、人力調整、流程優化）
+  - [ ] 建議與版本關聯（保存改善說明）
+
+## VSM 模組 - 第四階段（匯出與版本控制）
+
+- [ ] VSM 匯出功能
+  - [ ] 匯出為 PNG（SVG → Canvas → PNG）
+  - [ ] 匯出為 JSON（完整 VSM 結構）
+  - [ ] 匯出為 CSV（工序清單、流線清單）
+  - [ ] 匯出為 PDF（含分析報告）
+- [ ] 版本控制強化
+  - [ ] 版本比較視圖（兩版本並排）
+  - [ ] 版本差異高亮（新增/修改/刪除工序/流線）
+  - [ ] 版本時間軸（timeline view）
+  - [ ] 版本批註與改善記錄
+
+## VSM 模組 - 第五階段（整合與部署）
+
+- [ ] 在 App.tsx 新增 /vsm 路由
+- [ ] 在 DashboardLayout.tsx 側邊欄新增「VSM 設計」導覽入口
+- [ ] 更新 UserGuide.tsx 新增 VSM 使用指南章節
+- [ ] 與配置模擬器整合（從配置模擬匯出至 VSM）
+- [ ] 與產品追蹤整合（VSM 流程對應產品追蹤路徑）
+- [ ] 補強 VSM 相關 Vitest 測試

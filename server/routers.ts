@@ -25,6 +25,12 @@ import {
   updateProductInstance, deleteProductInstance,
   listFlowRecordsByInstance, listFlowRecordsByInstances, createFlowRecord, updateFlowRecord,
   deleteFlowRecord, upsertFlowRecords,
+  listVSMDiagrams, getVSMDiagramById, createVSMDiagram, updateVSMDiagram, deleteVSMDiagram,
+  listVSMProcesses, getVSMProcessById, createVSMProcess, updateVSMProcess, deleteVSMProcess,
+  deleteVSMProcessesByDiagram,
+  listVSMFlows, getVSMFlowById, createVSMFlow, updateVSMFlow, deleteVSMFlow,
+  deleteVSMFlowsByDiagram,
+  listVSMVersions, getVSMVersionById, createVSMVersion, restoreVSMVersion,
 } from "./db";
 import bcrypt from "bcryptjs";
 import { sdk } from "./_core/sdk";
@@ -1170,6 +1176,236 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
       .mutation(async ({ input }) => {
         const records = await upsertFlowRecords(input.productInstanceId, input.records as any);
         return { success: true, records };
+      }),
+  }),
+
+  // ─── VSM (Value Stream Mapping) ──────────────────────────────────────────
+  vsm: router({
+    // VSM 圖表管理
+    listDiagrams: protectedProcedure
+      .input(z.object({ productionLineId: z.number() }))
+      .query(async ({ input }) => listVSMDiagrams(input.productionLineId)),
+
+    getDiagramById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => getVSMDiagramById(input.id)),
+
+    createDiagram: protectedProcedure
+      .input(z.object({
+        productionLineId: z.number(),
+        name: z.string().min(1),
+        description: z.string().optional(),
+        status: z.enum(['draft', 'published', 'archived']).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const diagram = await createVSMDiagram({
+          productionLineId: input.productionLineId,
+          name: input.name,
+          description: input.description ?? null,
+          status: (input.status ?? 'draft') as any,
+        });
+        return { success: true, diagram };
+      }),
+
+    updateDiagram: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).optional(),
+        description: z.string().optional(),
+        status: z.enum(['draft', 'published', 'archived']).optional(),
+        versionNumber: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        const updateData: Record<string, unknown> = {};
+        if (data.name !== undefined) updateData.name = data.name;
+        if (data.description !== undefined) updateData.description = data.description;
+        if (data.status !== undefined) updateData.status = data.status;
+        if (data.versionNumber !== undefined) updateData.versionNumber = data.versionNumber;
+        const diagram = await updateVSMDiagram(id, updateData as any);
+        return { success: true, diagram };
+      }),
+
+    deleteDiagram: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteVSMProcessesByDiagram(input.id);
+        await deleteVSMFlowsByDiagram(input.id);
+        await deleteVSMDiagram(input.id);
+        return { success: true };
+      }),
+
+    // VSM 工序管理
+    listProcesses: protectedProcedure
+      .input(z.object({ vsmDiagramId: z.number() }))
+      .query(async ({ input }) => listVSMProcesses(input.vsmDiagramId)),
+
+    getProcessById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => getVSMProcessById(input.id)),
+
+    createProcess: protectedProcedure
+      .input(z.object({
+        vsmDiagramId: z.number(),
+        workstationId: z.number().optional().nullable(),
+        name: z.string().min(1),
+        type: z.enum(['process', 'supplier', 'customer', 'inventory', 'transport']),
+        cycleTime: z.number().optional().nullable(),
+        manpower: z.number().optional().nullable(),
+        valueAddedRate: z.number().optional().nullable(),
+        positionX: z.number().default(0),
+        positionY: z.number().default(0),
+        width: z.number().default(120),
+        height: z.number().default(80),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const process = await createVSMProcess({
+          vsmDiagramId: input.vsmDiagramId,
+          workstationId: input.workstationId ?? null,
+          name: input.name,
+          type: input.type as any,
+          cycleTime: input.cycleTime ? input.cycleTime.toString() : null,
+          manpower: input.manpower,
+          valueAddedRate: input.valueAddedRate ? input.valueAddedRate.toString() : null,
+          positionX: input.positionX,
+          positionY: input.positionY,
+          width: input.width,
+          height: input.height,
+          notes: input.notes ?? null,
+        });
+        return { success: true, process };
+      }),
+
+    updateProcess: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).optional(),
+        type: z.enum(['process', 'supplier', 'customer', 'inventory', 'transport']).optional(),
+        cycleTime: z.number().optional().nullable(),
+        manpower: z.number().optional().nullable(),
+        valueAddedRate: z.number().optional().nullable(),
+        positionX: z.number().optional(),
+        positionY: z.number().optional(),
+        width: z.number().optional(),
+        height: z.number().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        const updateData: Record<string, unknown> = {};
+        if (data.name !== undefined) updateData.name = data.name;
+        if (data.type !== undefined) updateData.type = data.type;
+        if (data.cycleTime !== undefined) updateData.cycleTime = data.cycleTime ? data.cycleTime.toString() : null;
+        if (data.manpower !== undefined) updateData.manpower = data.manpower;
+        if (data.valueAddedRate !== undefined) updateData.valueAddedRate = data.valueAddedRate ? data.valueAddedRate.toString() : null;
+        if (data.positionX !== undefined) updateData.positionX = data.positionX;
+        if (data.positionY !== undefined) updateData.positionY = data.positionY;
+        if (data.width !== undefined) updateData.width = data.width;
+        if (data.height !== undefined) updateData.height = data.height;
+        if (data.notes !== undefined) updateData.notes = data.notes;
+        const process = await updateVSMProcess(id, updateData as any);
+        return { success: true, process };
+      }),
+
+    deleteProcess: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteVSMProcess(input.id);
+        return { success: true };
+      }),
+
+    // VSM 流線管理
+    listFlows: protectedProcedure
+      .input(z.object({ vsmDiagramId: z.number() }))
+      .query(async ({ input }) => listVSMFlows(input.vsmDiagramId)),
+
+    getFlowById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => getVSMFlowById(input.id)),
+
+    createFlow: protectedProcedure
+      .input(z.object({
+        vsmDiagramId: z.number(),
+        fromProcessId: z.number(),
+        toProcessId: z.number(),
+        flowType: z.enum(['material', 'information', 'kanban']),
+        cycleTime: z.number().optional().nullable(),
+        quantity: z.number().optional().nullable(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const flow = await createVSMFlow({
+          vsmDiagramId: input.vsmDiagramId,
+          fromProcessId: input.fromProcessId,
+          toProcessId: input.toProcessId,
+          flowType: input.flowType as any,
+          cycleTime: input.cycleTime ? input.cycleTime.toString() : null,
+          quantity: input.quantity,
+          notes: input.notes ?? null,
+        });
+        return { success: true, flow };
+      }),
+
+    updateFlow: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        flowType: z.enum(['material', 'information', 'kanban']).optional(),
+        cycleTime: z.number().optional().nullable(),
+        quantity: z.number().optional().nullable(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        const updateData: Record<string, unknown> = {};
+        if (data.flowType !== undefined) updateData.flowType = data.flowType;
+        if (data.cycleTime !== undefined) updateData.cycleTime = data.cycleTime ? data.cycleTime.toString() : null;
+        if (data.quantity !== undefined) updateData.quantity = data.quantity;
+        if (data.notes !== undefined) updateData.notes = data.notes;
+        const flow = await updateVSMFlow(id, updateData as any);
+        return { success: true, flow };
+      }),
+
+    deleteFlow: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteVSMFlow(input.id);
+        return { success: true };
+      }),
+
+    // VSM 版本管理
+    listVersions: protectedProcedure
+      .input(z.object({ vsmDiagramId: z.number() }))
+      .query(async ({ input }) => listVSMVersions(input.vsmDiagramId)),
+
+    getVersionById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => getVSMVersionById(input.id)),
+
+    createVersion: protectedProcedure
+      .input(z.object({
+        vsmDiagramId: z.number(),
+        versionNumber: z.number(),
+        processesSnapshot: z.array(z.any()),
+        flowsSnapshot: z.array(z.any()),
+        improvementNotes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const version = await createVSMVersion({
+          vsmDiagramId: input.vsmDiagramId,
+          versionNumber: input.versionNumber,
+          processesSnapshot: JSON.stringify(input.processesSnapshot),
+          flowsSnapshot: JSON.stringify(input.flowsSnapshot),
+          improvementNotes: input.improvementNotes ?? null,
+        });
+        return { success: true, version };
+      }),
+
+    restoreVersion: protectedProcedure
+      .input(z.object({ versionId: z.number() }))
+      .mutation(async ({ input }) => {
+        const diagram = await restoreVSMVersion(input.versionId);
+        return { success: true, diagram };
       }),
   }),
 });

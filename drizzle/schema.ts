@@ -218,3 +218,73 @@ export const productFlowRecords = mysqlTable("product_flow_records", {
 });
 export type ProductFlowRecord = typeof productFlowRecords.$inferSelect;
 export type InsertProductFlowRecord = typeof productFlowRecords.$inferInsert;
+
+// ===== VSM (價值流圖) 相關表 =====
+
+// VSM 圖表主表
+export const vsmDiagrams = mysqlTable("vsm_diagrams", {
+  id: int("id").autoincrement().primaryKey(),
+  productionLineId: int("productionLineId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
+  versionNumber: int("versionNumber").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type VSMDiagram = typeof vsmDiagrams.$inferSelect;
+export type InsertVSMDiagram = typeof vsmDiagrams.$inferInsert;
+
+// VSM 工序節點表
+export const vsmProcesses = mysqlTable("vsm_processes", {
+  id: int("id").autoincrement().primaryKey(),
+  vsmDiagramId: int("vsmDiagramId").notNull(),
+  workstationId: int("workstationId"), // 可選：關聯到實際工站
+  name: varchar("name", { length: 255 }).notNull(),
+  type: mysqlEnum("type", ["process", "supplier", "customer", "inventory", "transport"]).notNull(),
+  cycleTime: decimal("cycleTime", { precision: 10, scale: 2 }), // 週期時間（秒）
+  manpower: int("manpower"), // 人力數
+  valueAddedRate: decimal("valueAddedRate", { precision: 5, scale: 2 }), // 增值率（%）
+  positionX: int("positionX").default(0).notNull(), // 畫布座標 X
+  positionY: int("positionY").default(0).notNull(), // 畫布座標 Y
+  width: int("width").default(120).notNull(), // 寬度
+  height: int("height").default(80).notNull(), // 高度
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type VSMProcess = typeof vsmProcesses.$inferSelect;
+export type InsertVSMProcess = typeof vsmProcesses.$inferInsert;
+
+// VSM 流線表（物流/資訊流）
+export const vsmFlows = mysqlTable("vsm_flows", {
+  id: int("id").autoincrement().primaryKey(),
+  vsmDiagramId: int("vsmDiagramId").notNull(),
+  fromProcessId: int("fromProcessId").notNull(), // 來源工序
+  toProcessId: int("toProcessId").notNull(), // 目標工序
+  flowType: mysqlEnum("flowType", ["material", "information", "kanban"]).notNull(), // 流類型
+  cycleTime: decimal("cycleTime", { precision: 10, scale: 2 }), // 流週期時間（秒）
+  quantity: int("quantity"), // 流量（件/時）
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type VSMFlow = typeof vsmFlows.$inferSelect;
+export type InsertVSMFlow = typeof vsmFlows.$inferInsert;
+
+// VSM 版本歷史表
+export const vsmVersions = mysqlTable("vsm_versions", {
+  id: int("id").autoincrement().primaryKey(),
+  vsmDiagramId: int("vsmDiagramId").notNull(),
+  versionNumber: int("versionNumber").notNull(),
+  processesSnapshot: json("processesSnapshot").notNull(), // 工序快照（JSON 陣列）
+  flowsSnapshot: json("flowsSnapshot").notNull(), // 流線快照（JSON 陣列）
+  improvementNotes: text("improvementNotes"), // 改善說明
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type VSMVersion = typeof vsmVersions.$inferSelect;
+export type InsertVSMVersion = typeof vsmVersions.$inferInsert;

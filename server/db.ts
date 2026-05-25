@@ -11,6 +11,10 @@ import {
   productModels, InsertProductModel,
   productInstances, InsertProductInstance,
   productFlowRecords, InsertProductFlowRecord,
+  vsmDiagrams, InsertVSMDiagram, VSMDiagram,
+  vsmProcesses, InsertVSMProcess, VSMProcess,
+  vsmFlows, InsertVSMFlow, VSMFlow,
+  vsmVersions, InsertVSMVersion, VSMVersion,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -682,4 +686,225 @@ export async function listFlowRecordsByInstances(instanceIds: number[]) {
   return db.select().from(productFlowRecords)
     .where(inArray(productFlowRecords.productInstanceId, instanceIds))
     .orderBy(productFlowRecords.productInstanceId, productFlowRecords.sequenceOrder);
+}
+
+
+// ============ VSM 工作流程 ============
+
+// VSM 圖表 - 列表查詢
+export async function listVSMDiagrams(productionLineId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(vsmDiagrams)
+    .where(eq(vsmDiagrams.productionLineId, productionLineId))
+    .orderBy(desc(vsmDiagrams.updatedAt));
+}
+
+// VSM 圖表 - 單筆查詢
+export async function getVSMDiagramById(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(vsmDiagrams).where(eq(vsmDiagrams.id, id));
+  return rows[0] ?? null;
+}
+
+// VSM 圖表 - 建立
+export async function createVSMDiagram(data: InsertVSMDiagram) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(vsmDiagrams).values(data);
+  const id = (result as any)[0]?.insertId as number;
+  return getVSMDiagramById(id);
+}
+
+// VSM 圖表 - 更新
+export async function updateVSMDiagram(id: number, data: Partial<InsertVSMDiagram>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(vsmDiagrams).set(data as any).where(eq(vsmDiagrams.id, id));
+  return getVSMDiagramById(id);
+}
+
+// VSM 圖表 - 刪除
+export async function deleteVSMDiagram(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(vsmDiagrams).where(eq(vsmDiagrams.id, id));
+}
+
+// VSM 工序 - 列表查詢
+export async function listVSMProcesses(vsmDiagramId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(vsmProcesses)
+    .where(eq(vsmProcesses.vsmDiagramId, vsmDiagramId))
+    .orderBy(asc(vsmProcesses.positionX), asc(vsmProcesses.positionY));
+}
+
+// VSM 工序 - 單筆查詢
+export async function getVSMProcessById(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(vsmProcesses).where(eq(vsmProcesses.id, id));
+  return rows[0] ?? null;
+}
+
+// VSM 工序 - 建立
+export async function createVSMProcess(data: InsertVSMProcess) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(vsmProcesses).values(data);
+  const id = (result as any)[0]?.insertId as number;
+  return getVSMProcessById(id);
+}
+
+// VSM 工序 - 更新
+export async function updateVSMProcess(id: number, data: Partial<InsertVSMProcess>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(vsmProcesses).set(data as any).where(eq(vsmProcesses.id, id));
+  return getVSMProcessById(id);
+}
+
+// VSM 工序 - 刪除
+export async function deleteVSMProcess(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(vsmProcesses).where(eq(vsmProcesses.id, id));
+}
+
+// VSM 工序 - 批量刪除（用於刪除圖表時）
+export async function deleteVSMProcessesByDiagram(vsmDiagramId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(vsmProcesses).where(eq(vsmProcesses.vsmDiagramId, vsmDiagramId));
+}
+
+// VSM 流線 - 列表查詢
+export async function listVSMFlows(vsmDiagramId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(vsmFlows)
+    .where(eq(vsmFlows.vsmDiagramId, vsmDiagramId))
+    .orderBy(asc(vsmFlows.fromProcessId), asc(vsmFlows.toProcessId));
+}
+
+// VSM 流線 - 單筆查詢
+export async function getVSMFlowById(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(vsmFlows).where(eq(vsmFlows.id, id));
+  return rows[0] ?? null;
+}
+
+// VSM 流線 - 建立
+export async function createVSMFlow(data: InsertVSMFlow) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(vsmFlows).values(data);
+  const id = (result as any)[0]?.insertId as number;
+  return getVSMFlowById(id);
+}
+
+// VSM 流線 - 更新
+export async function updateVSMFlow(id: number, data: Partial<InsertVSMFlow>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(vsmFlows).set(data as any).where(eq(vsmFlows.id, id));
+  return getVSMFlowById(id);
+}
+
+// VSM 流線 - 刪除
+export async function deleteVSMFlow(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(vsmFlows).where(eq(vsmFlows.id, id));
+}
+
+// VSM 流線 - 批量刪除（用於刪除圖表時）
+export async function deleteVSMFlowsByDiagram(vsmDiagramId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(vsmFlows).where(eq(vsmFlows.vsmDiagramId, vsmDiagramId));
+}
+
+// VSM 版本 - 列表查詢
+export async function listVSMVersions(vsmDiagramId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(vsmVersions)
+    .where(eq(vsmVersions.vsmDiagramId, vsmDiagramId))
+    .orderBy(desc(vsmVersions.versionNumber));
+}
+
+// VSM 版本 - 單筆查詢
+export async function getVSMVersionById(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(vsmVersions).where(eq(vsmVersions.id, id));
+  return rows[0] ?? null;
+}
+
+// VSM 版本 - 建立（保存快照）
+export async function createVSMVersion(data: InsertVSMVersion) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(vsmVersions).values(data);
+  const id = (result as any)[0]?.insertId as number;
+  return getVSMVersionById(id);
+}
+
+// VSM 版本 - 恢復到特定版本
+export async function restoreVSMVersion(versionId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const version = await getVSMVersionById(versionId);
+  if (!version) throw new Error("Version not found");
+  
+  // 取得圖表資訊
+  const diagram = await getVSMDiagramById(version.vsmDiagramId);
+  if (!diagram) throw new Error("Diagram not found");
+  
+  // 刪除現有工序和流線
+  await deleteVSMProcessesByDiagram(version.vsmDiagramId);
+  await deleteVSMFlowsByDiagram(version.vsmDiagramId);
+  
+  // 恢復工序
+  const processesSnapshot = version.processesSnapshot as any[];
+  if (Array.isArray(processesSnapshot)) {
+    for (const process of processesSnapshot) {
+      await createVSMProcess({
+        vsmDiagramId: version.vsmDiagramId,
+        name: process.name,
+        type: process.type,
+        cycleTime: process.cycleTime,
+        manpower: process.manpower,
+        valueAddedRate: process.valueAddedRate,
+        positionX: process.positionX,
+        positionY: process.positionY,
+        width: process.width,
+        height: process.height,
+        notes: process.notes,
+        workstationId: process.workstationId,
+      });
+    }
+  }
+  
+  // 恢復流線
+  const flowsSnapshot = version.flowsSnapshot as any[];
+  if (Array.isArray(flowsSnapshot)) {
+    for (const flow of flowsSnapshot) {
+      await createVSMFlow({
+        vsmDiagramId: version.vsmDiagramId,
+        fromProcessId: flow.fromProcessId,
+        toProcessId: flow.toProcessId,
+        flowType: flow.flowType,
+        cycleTime: flow.cycleTime,
+        quantity: flow.quantity,
+        notes: flow.notes,
+      });
+    }
+  }
+  
+  return diagram;
 }

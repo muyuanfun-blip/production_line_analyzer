@@ -78,6 +78,13 @@
       "when": 1777775246789,
       "tag": "0010_solid_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1779429330309,
+      "tag": "0011_careless_wasp",
+      "breakpoints": true
     }
   ]
 }
