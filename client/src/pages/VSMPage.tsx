@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'wouter';
 import { trpc } from '@/lib/trpc';
 import { VSMCanvas } from '@/components/VSMCanvas';
+import { VSMAnalysis } from '@/components/VSMAnalysis';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -60,6 +61,7 @@ export const VSMPage: React.FC = () => {
   const [showNewProcessDialog, setShowNewProcessDialog] = useState(false);
   const [showNewFlowDialog, setShowNewFlowDialog] = useState(false);
   const [showNewDiagramDialog, setShowNewDiagramDialog] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(true);
 
   const lineIdNum = lineId ? parseInt(lineId) : 0;
 
@@ -380,9 +382,49 @@ export const VSMPage: React.FC = () => {
         )}
       </div>
 
-      {/* 右側面板 - 屬性編輯 */}
+      {/* 右側面板 - 屬性編輯 / 分析 */}
       <div className="w-80 border-l border-slate-700 bg-slate-900 flex flex-col overflow-hidden">
-        {selectedProcess ? (
+        {/* 切換按鈕 */}
+        <div className="flex gap-2 p-2 border-b border-slate-700 bg-slate-800">
+          <Button
+            size="sm"
+            variant={!showAnalysis ? 'default' : 'outline'}
+            onClick={() => setShowAnalysis(false)}
+            className="flex-1 text-xs"
+          >
+            屬性
+          </Button>
+          <Button
+            size="sm"
+            variant={showAnalysis ? 'default' : 'outline'}
+            onClick={() => setShowAnalysis(true)}
+            className="flex-1 text-xs"
+          >
+            分析
+          </Button>
+        </div>
+        {showAnalysis ? (
+          <div className="p-4 overflow-y-auto flex-1">
+            <VSMAnalysis
+              processes={(processes || []).map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                type: p.type,
+                cycleTime: p.cycleTime ? parseFloat(p.cycleTime) : undefined,
+                manpower: p.manpower,
+                valueAddedRate: p.valueAddedRate ? parseFloat(p.valueAddedRate) : undefined,
+              }))}
+              flows={(flows || []).map((f: any) => ({
+                id: f.id,
+                fromProcessId: f.fromProcessId,
+                toProcessId: f.toProcessId,
+                flowType: f.flowType,
+                cycleTime: f.cycleTime ? parseFloat(f.cycleTime) : undefined,
+                quantity: f.quantity,
+              }))}
+            />
+          </div>
+        ) : selectedProcess ? (
           <div className="p-4 overflow-y-auto flex-1">
             <h3 className="text-lg font-bold text-white mb-4">工序屬性</h3>
             <Card className="bg-slate-800 border-slate-700">
