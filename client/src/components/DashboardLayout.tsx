@@ -37,6 +37,7 @@ import {
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
+  GitBranch,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -59,6 +60,7 @@ const navGroups = [
       { icon: FlaskConical, label: "配置模擬", path: "/simulator" },
       { icon: Package,     label: "產品型號", path: "/product-models" },
       { icon: ScanBarcode, label: "產品追蹤", path: "/product-tracking" },
+      { icon: GitBranch,   label: "VSM 設計", path: "/lines/1/vsm" },
     ],
   },
   {

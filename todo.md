@@ -586,7 +586,7 @@
 
 ## VSM 模組 - 第二階段（前端編輯器）
 
-- [ ] 建立 VSMCanvas.tsx 拖放編輯元件
+- [x] 建立 VSMCanvas.tsx 拖放編輯元件
   - [ ] SVG 畫布（支援格線背景、縮放、平移）
   - [ ] 工序節點拖曳移動（支援自動吸附格線）
   - [ ] 流線連接（貝茲曲線，支援拖曳重新連接）
@@ -594,23 +594,25 @@
   - [ ] 撤銷/重做功能（undo/redo stack）
   - [ ] 複製/貼上工序
   - [ ] 刪除工序（自動刪除相關流線）
-- [ ] 建立 VSMNodePanel.tsx 工序屬性編輯面板
+- [x] 建立 VSMNodePanel.tsx 工序屬性編輯面板（整合至 VSMPage 右側面板）
   - [ ] 工序名稱、類型、CT、人力、增值率編輯
   - [ ] 工序尺寸調整（寬/高）
   - [ ] 工序顏色選擇（按類型預設色系）
   - [ ] 工站關聯選擇（dropdown）
   - [ ] 備註編輯
-- [ ] 建立 VSMFlowPanel.tsx 流線屬性編輯面板
+- [x] 建立 VSMFlowPanel.tsx 流線屬性編輯面板（整合至 VSMPage 右側面板）
   - [ ] 流線類型選擇（物流/資訊流/看板）
   - [ ] 流線週期時間、流量編輯
   - [ ] 流線顏色與寬度調整
   - [ ] 備註編輯
-- [ ] 建立 VSMPage.tsx 主頁面
+- [x] 建立 VSMPage.tsx 主頁面
   - [ ] 左側：圖表列表與版本歷史
   - [ ] 中央：VSMCanvas 編輯區
   - [ ] 右側：工序/流線屬性面板（context-aware）
   - [ ] 頂部工具列：新增工序、新增流線、儲存、匯出、版本控制
-  - [ ] 快捷鍵支援（Ctrl+Z 撤銷、Ctrl+S 儲存等）
+  - [x] 在 App.tsx 新增 /lines/:lineId/vsm 路由
+- [x] 在 DashboardLayout.tsx 側邊欄新增「VSM 設計」導覽入口（GitBranch icon）
+- [ ] 快捷鍵支援（Ctrl+Z 撤銷、Ctrl+S 儲存等）
 
 ## VSM 模組 - 第三階段（KPI 覆蓋與分析）
 
