@@ -10,7 +10,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Save, Download, RotateCcw, Clock } from 'lucide-react';
+import { Plus, Save, Download, RotateCcw, Clock, FileJson, FileSpreadsheet } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { exportVSMAsJSON, exportVSMProcessesAsCSV, exportVSMFlowsAsCSV, exportVSMAsPNG } from '@/lib/vsmExport';
 
 interface VSMProcessDisplay {
   id: number;
@@ -107,9 +109,47 @@ export const VSMPage: React.FC = () => {
 
   // 更新工序位置
   const updateProcessMutation = trpc.vsm.updateProcess.useMutation();
+  const svgRef = React.useRef<SVGSVGElement>(null);
 
   const handleProcessMove = (processId: number, x: number, y: number) => {
     updateProcessMutation.mutate({ id: processId, positionX: x, positionY: y });
+  };
+
+  const handleExportJSON = () => {
+    if (!selectedDiagramId) return;
+    const diagram = diagrams?.find(d => d.id === selectedDiagramId);
+    if (diagram && processes && flows) {
+      exportVSMAsJSON(diagram, processes, flows);
+    }
+  };
+
+  const handleExportProcessesCSV = () => {
+    if (!selectedDiagramId) return;
+    const diagram = diagrams?.find(d => d.id === selectedDiagramId);
+    if (diagram && processes) {
+      exportVSMProcessesAsCSV(diagram, processes);
+    }
+  };
+
+  const handleExportFlowsCSV = () => {
+    if (!selectedDiagramId) return;
+    const diagram = diagrams?.find(d => d.id === selectedDiagramId);
+    if (diagram && flows && processes) {
+      const processMap = new Map(processes.map(p => [p.id, p.name]));
+      exportVSMFlowsAsCSV(diagram, flows, processMap);
+    }
+  };
+
+  const handleExportPNG = async () => {
+    if (!selectedDiagramId) return;
+    const diagram = diagrams?.find(d => d.id === selectedDiagramId);
+    if (diagram && svgRef.current) {
+      try {
+        await exportVSMAsPNG(diagram, svgRef.current);
+      } catch (error) {
+        console.error('匯出 PNG 失敗:', error);
+      }
+    }
   };
 
   const handleCreateDiagram = (e: React.FormEvent<HTMLFormElement>) => {
@@ -321,10 +361,31 @@ export const VSMPage: React.FC = () => {
                 <Save className="w-4 h-4 mr-2" />
                 儲存
               </Button>
-              <Button size="sm" variant="outline">
-                <Download className="w-4 h-4 mr-2" />
-                匯出
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline">
+                    <Download className="w-4 h-4 mr-2" />
+                    匯出
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleExportPNG}>
+                    匯出為 PNG
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportJSON}>
+                    <FileJson className="w-4 h-4 mr-2" />
+                    匯出為 JSON
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportProcessesCSV}>
+                    <FileSpreadsheet className="w-4 h-4 mr-2" />
+                    匯出工序 CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportFlowsCSV}>
+                    <FileSpreadsheet className="w-4 h-4 mr-2" />
+                    匯出流線 CSV
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button size="sm" variant="outline">
                 <Clock className="w-4 h-4 mr-2" />
                 版本
