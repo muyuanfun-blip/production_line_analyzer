@@ -40,11 +40,13 @@ export const VSMAnalysis: React.FC<VSMAnalysisProps> = ({ processes, flows }) =>
       : 0;
 
     // 識別瓶頸工序（最長 CT）
-    const bottleneckProcess = processes.reduce((max, p) => {
-      const pCT = p.cycleTime || 0;
-      const maxCT = max.cycleTime || 0;
-      return pCT > maxCT ? p : max;
-    });
+    const bottleneckProcess = processes.length > 0
+      ? processes.reduce((max, p) => {
+          const pCT = p.cycleTime || 0;
+          const maxCT = max.cycleTime || 0;
+          return pCT > maxCT ? p : max;
+        })
+      : null;
 
     // 計算 Lead Time（所有流線的 CT 總和）
     const leadTime = flows.reduce((sum, f) => sum + (f.cycleTime || 0), 0);
