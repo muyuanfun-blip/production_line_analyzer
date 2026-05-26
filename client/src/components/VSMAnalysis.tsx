@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, TrendingUp, Users, Zap } from 'lucide-react';
+import { AlertCircle, TrendingUp, Users, Zap, Plus, Inbox } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface VSMProcess {
   id: number;
@@ -23,9 +24,10 @@ interface VSMFlow {
 interface VSMAnalysisProps {
   processes: VSMProcess[];
   flows: VSMFlow[];
+  onAddProcess?: () => void;
 }
 
-export const VSMAnalysis: React.FC<VSMAnalysisProps> = ({ processes, flows }) => {
+export const VSMAnalysis: React.FC<VSMAnalysisProps> = ({ processes, flows, onAddProcess }) => {
   const analysis = useMemo(() => {
     // 計算總 CT
     const totalCT = processes.reduce((sum, p) => sum + (p.cycleTime || 0), 0);
@@ -79,6 +81,31 @@ export const VSMAnalysis: React.FC<VSMAnalysisProps> = ({ processes, flows }) =>
       flowCount: flows.length,
     };
   }, [processes, flows]);
+
+  if (processes.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 px-4">
+        <div className="bg-slate-800 border border-slate-700 rounded-lg p-8 text-center max-w-sm">
+          <div className="flex justify-center mb-4">
+            <Inbox className="w-12 h-12 text-slate-500" />
+          </div>
+          <h3 className="text-lg font-semibold text-white mb-2">尚無工序資料</h3>
+          <p className="text-slate-400 text-sm mb-6">
+            開始建立 VSM 圖表，請先新增工序以進行價值流分析
+          </p>
+          {onAddProcess && (
+            <Button
+              onClick={onAddProcess}
+              className="w-full bg-cyan-600 hover:bg-cyan-700 text-white"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              新增工序
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

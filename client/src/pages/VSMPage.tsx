@@ -518,6 +518,9 @@ export const VSMPage: React.FC = () => {
                 cycleTime: f.cycleTime ? parseFloat(f.cycleTime) : undefined,
                 quantity: f.quantity,
               }))}
+              onAddProcess={() => {
+                setShowNewProcessDialog(true);
+              }}
             />
           </div>
         ) : selectedProcess ? (
