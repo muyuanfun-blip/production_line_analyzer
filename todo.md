@@ -647,9 +647,31 @@
 
 ## VSM 模組 - 第五階段（整合與部署）
 
-- [ ] 在 App.tsx 新增 /vsm 路由
-- [ ] 在 DashboardLayout.tsx 側邊欄新增「VSM 設計」導覽入口
-- [ ] 更新 UserGuide.tsx 新增 VSM 使用指南章節
-- [ ] 與配置模擬器整合（從配置模擬匯出至 VSM）
-- [ ] 與產品追蹤整合（VSM 流程對應產品追蹤路徑）
-- [ ] 補強 VSM 相關 Vitest 測試
+- [x] 在 App.tsx 新增 /lines/:lineId/vsm 路由
+- [x] 在 DashboardLayout.tsx 侧邊欄新增「VSM 設計」導覽入口
+- [ ] 更新 UserGuide.tsx 新增 VSM 使用指南章節—選擇性実現
+- [ ] 與配置模擬器整合（從配置模擬匯出至 VSM）—選擇性実現
+- [ ] 與產品追蹤整合（VSM 流程對應產品追蹤路徑）—選擇性実現
+- [ ] 試強 VSM 相關 Vitest 測試—選擇性実現
+
+
+## VSM 模組完成總結
+
+**已實現的核心功能：**
+- [x] 後端資料層（資料表、CRUD、tRPC procedures）
+- [x] 前端編輯器（SVG 畫布、拖放、屬性面板）
+- [x] KPI 分析（總 CT、人力、增值率、瓶頸分析）
+- [x] 匯出功能（PNG、JSON、CSV）
+- [x] 版本控制與比較
+- [x] 路由與導覽整合
+
+**測試狀態：**
+- TypeScript: 0 errors
+- Vitest: 133/133 tests passed
+- Dev Server: Running
+
+**選擇性實現（未包含在此次交付）：**
+- PDF 匯出
+- AI 改善建議（Ollama API 整合）
+- 版本時間軸
+- 與其他模組整合
