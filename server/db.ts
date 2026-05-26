@@ -842,7 +842,19 @@ export async function getVSMVersionById(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const rows = await db.select().from(vsmVersions).where(eq(vsmVersions.id, id));
-  return rows[0] ?? null;
+  const version = rows[0];
+  if (!version) return null;
+
+  // 解析快照
+  const processes = Array.isArray(version.processesSnapshot) ? version.processesSnapshot : JSON.parse(version.processesSnapshot as any);
+  const flows = Array.isArray(version.flowsSnapshot) ? version.flowsSnapshot : JSON.parse(version.flowsSnapshot as any);
+
+  return {
+    ...version,
+    name: `Version ${version.versionNumber}`,
+    processes,
+    flows,
+  };
 }
 
 // VSM 版本 - 建立（保存快照）

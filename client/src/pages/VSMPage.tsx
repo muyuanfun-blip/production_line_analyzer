@@ -3,6 +3,7 @@ import { useParams } from 'wouter';
 import { trpc } from '@/lib/trpc';
 import { VSMCanvas } from '@/components/VSMCanvas';
 import { VSMAnalysis } from '@/components/VSMAnalysis';
+import { VSMVersionCompare } from '@/components/VSMVersionCompare';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -64,6 +65,8 @@ export const VSMPage: React.FC = () => {
   const [showNewFlowDialog, setShowNewFlowDialog] = useState(false);
   const [showNewDiagramDialog, setShowNewDiagramDialog] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(true);
+  const [compareVersions, setCompareVersions] = useState<[number, number] | null>(null);
+  const [showCompareDialog, setShowCompareDialog] = useState(false);
 
   const lineIdNum = lineId ? parseInt(lineId) : 0;
 
@@ -79,11 +82,39 @@ export const VSMPage: React.FC = () => {
     { enabled: (selectedDiagramId || 0) > 0 }
   );
 
+  // 取得版本詳細資訊
+  const versionAQuery = trpc.vsm.getVersionById.useQuery(
+    { id: compareVersions?.[0] || 0 },
+    { enabled: !!compareVersions?.[0] }
+  );
+  const versionBQuery = trpc.vsm.getVersionById.useQuery(
+    { id: compareVersions?.[1] || 0 },
+    { enabled: !!compareVersions?.[1] }
+  );
+  const versionA = versionAQuery.data;
+  const versionB = versionBQuery.data;
+
+
+
   // 查詢流線
   const { data: flows } = trpc.vsm.listFlows.useQuery(
     { vsmDiagramId: selectedDiagramId || 0 },
     { enabled: (selectedDiagramId || 0) > 0 }
   );
+
+  // 查詢圖表詳細資訊
+  const diagramQuery = trpc.vsm.getDiagramById.useQuery(
+    { id: selectedDiagramId || 0 },
+    { enabled: !!selectedDiagramId }
+  );
+  const diagram = diagramQuery.data;
+
+  // 查詢版本
+  const versionsQuery = trpc.vsm.listVersions.useQuery(
+    { vsmDiagramId: selectedDiagramId || 0 },
+    { enabled: !!selectedDiagramId }
+  );
+  const versions = versionsQuery.data || [];
 
   // 建立圖表 mutation
   const createDiagramMutation = trpc.vsm.createDiagram.useMutation({
@@ -386,7 +417,11 @@ export const VSMPage: React.FC = () => {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button size="sm" variant="outline">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowCompareDialog(true)}
+              >
                 <Clock className="w-4 h-4 mr-2" />
                 版本
               </Button>
@@ -549,6 +584,64 @@ export const VSMPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* 版本比較對話框 */}
+      <Dialog open={showCompareDialog} onOpenChange={setShowCompareDialog}>
+        <DialogContent className="max-w-4xl max-h-96 bg-slate-900 border-slate-700">
+          <DialogHeader>
+            <DialogTitle>版本比較</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-slate-300 text-sm">版本 A</Label>
+                <Select
+                  value={compareVersions?.[0]?.toString() || ''}
+                  onValueChange={(val) =>
+                    setCompareVersions([parseInt(val), compareVersions?.[1] || 0])
+                  }
+                >
+                  <SelectTrigger className="bg-slate-800 border-slate-700">
+                    <SelectValue placeholder="選擇版本" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    {versions.map((v: any) => (
+                      <SelectItem key={v.id} value={v.id.toString()}>
+                        {v.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-slate-300 text-sm">版本 B</Label>
+                <Select
+                  value={compareVersions?.[1]?.toString() || ''}
+                  onValueChange={(val) =>
+                    setCompareVersions([compareVersions?.[0] || 0, parseInt(val)])
+                  }
+                >
+                  <SelectTrigger className="bg-slate-800 border-slate-700">
+                    <SelectValue placeholder="選擇版本" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    {versions.map((v: any) => (
+                      <SelectItem key={v.id} value={v.id.toString()}>
+                        {v.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {versionA && versionB && (
+              <div className="max-h-64 overflow-y-auto">
+                <VSMVersionCompare versionA={versionA} versionB={versionB} />
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
