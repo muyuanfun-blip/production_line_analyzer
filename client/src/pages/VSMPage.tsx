@@ -4,6 +4,7 @@ import { trpc } from '@/lib/trpc';
 import { VSMCanvas } from '@/components/VSMCanvas';
 import { VSMAnalysis } from '@/components/VSMAnalysis';
 import { VSMVersionCompare } from '@/components/VSMVersionCompare';
+import { VSMSkeleton } from '@/components/VSMSkeleton';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -77,7 +78,7 @@ export const VSMPage: React.FC = () => {
   );
 
   // 查詢工序
-  const { data: processes } = trpc.vsm.listProcesses.useQuery(
+  const { data: processes, isLoading: processesLoading } = trpc.vsm.listProcesses.useQuery(
     { vsmDiagramId: selectedDiagramId || 0 },
     { enabled: (selectedDiagramId || 0) > 0 }
   );
@@ -97,7 +98,7 @@ export const VSMPage: React.FC = () => {
 
 
   // 查詢流線
-  const { data: flows } = trpc.vsm.listFlows.useQuery(
+  const { data: flows, isLoading: flowsLoading } = trpc.vsm.listFlows.useQuery(
     { vsmDiagramId: selectedDiagramId || 0 },
     { enabled: (selectedDiagramId || 0) > 0 }
   );
@@ -501,27 +502,31 @@ export const VSMPage: React.FC = () => {
         </div>
         {showAnalysis ? (
           <div className="p-4 overflow-y-auto flex-1">
-            <VSMAnalysis
-              processes={(processes || []).map((p: any) => ({
-                id: p.id,
-                name: p.name,
-                type: p.type,
-                cycleTime: p.cycleTime ? parseFloat(p.cycleTime) : undefined,
-                manpower: p.manpower,
-                valueAddedRate: p.valueAddedRate ? parseFloat(p.valueAddedRate) : undefined,
-              }))}
-              flows={(flows || []).map((f: any) => ({
-                id: f.id,
-                fromProcessId: f.fromProcessId,
-                toProcessId: f.toProcessId,
-                flowType: f.flowType,
-                cycleTime: f.cycleTime ? parseFloat(f.cycleTime) : undefined,
-                quantity: f.quantity,
-              }))}
-              onAddProcess={() => {
-                setShowNewProcessDialog(true);
-              }}
-            />
+            {processesLoading || flowsLoading ? (
+              <VSMSkeleton />
+            ) : (
+              <VSMAnalysis
+                processes={(processes || []).map((p: any) => ({
+                  id: p.id,
+                  name: p.name,
+                  type: p.type,
+                  cycleTime: p.cycleTime ? parseFloat(p.cycleTime) : undefined,
+                  manpower: p.manpower,
+                  valueAddedRate: p.valueAddedRate ? parseFloat(p.valueAddedRate) : undefined,
+                }))}
+                flows={(flows || []).map((f: any) => ({
+                  id: f.id,
+                  fromProcessId: f.fromProcessId,
+                  toProcessId: f.toProcessId,
+                  flowType: f.flowType,
+                  cycleTime: f.cycleTime ? parseFloat(f.cycleTime) : undefined,
+                  quantity: f.quantity,
+                }))}
+                onAddProcess={() => {
+                  setShowNewProcessDialog(true);
+                }}
+              />
+            )}
           </div>
         ) : selectedProcess ? (
           <div className="p-4 overflow-y-auto flex-1">
