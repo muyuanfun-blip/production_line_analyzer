@@ -35,6 +35,11 @@ import {
 import bcrypt from "bcryptjs";
 import { sdk } from "./_core/sdk";
 import { ENV } from "./_core/env";
+import {
+  generateRealtimeLineStatus,
+  generateHistoricalTrend,
+  generateProductFlowRecords,
+} from "./monitoring";
 
 // ─── Zod Schemas ─────────────────────────────────────────────────────────────
 
@@ -1406,6 +1411,80 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
       .mutation(async ({ input }) => {
         const diagram = await restoreVSMVersion(input.versionId);
         return { success: true, diagram };
+      }),
+  }),
+
+  // ─── 戰情監控 ───────────────────────────────────────────────────────────────
+  monitoring: router({
+    getRealTimeStatus: protectedProcedure
+      .input(z.object({
+        productionLineId: z.number(),
+        productionTarget: z.number().default(100),
+      }))
+      .query(async ({ input }) => {
+        const line = await getProductionLineById(input.productionLineId);
+        if (!line) throw new Error("Production line not found");
+        
+        const targetCycleTime = typeof line.targetCycleTime === 'string' 
+          ? parseFloat(line.targetCycleTime) 
+          : (line.targetCycleTime || 60);
+        
+        const status = await generateRealtimeLineStatus(
+          input.productionLineId,
+          line.name,
+          targetCycleTime,
+          input.productionTarget
+        );
+        
+        return status;
+      }),
+
+    getHistoricalTrend: protectedProcedure
+      .input(z.object({
+        productionLineId: z.number(),
+        productionTarget: z.number().default(100),
+      }))
+      .query(async ({ input }) => {
+        const line = await getProductionLineById(input.productionLineId);
+        if (!line) throw new Error("Production line not found");
+        
+        const workstations = await getWorkstationsByLine(input.productionLineId);
+        const targetCycleTime = typeof line.targetCycleTime === 'string' 
+          ? parseFloat(line.targetCycleTime) 
+          : (line.targetCycleTime || 60);
+        
+        const trend = generateHistoricalTrend(
+          workstations as any,
+          targetCycleTime,
+          input.productionTarget
+        );
+        
+        return trend;
+      }),
+
+    getProductFlowRecords: protectedProcedure
+      .input(z.object({
+        productionLineId: z.number(),
+        productCount: z.number().default(10),
+      }))
+      .query(async ({ input }) => {
+        const workstations = await getWorkstationsByLine(input.productionLineId);
+        
+        // 轉換為 RealtimeWorkstation 格式
+        const realtimeWs = workstations.map((ws: any) => ({
+          id: ws.id,
+          name: ws.name,
+          cycleTime: typeof ws.cycleTime === 'string' ? parseFloat(ws.cycleTime) : ws.cycleTime,
+          targetCycleTime: typeof ws.cycleTime === 'string' ? parseFloat(ws.cycleTime) : ws.cycleTime,
+          manpower: typeof ws.manpower === 'string' ? parseFloat(ws.manpower) : ws.manpower,
+          status: 'normal',
+          efficiency: 100,
+          utilization: 80,
+          waitingProducts: 0,
+        })) as any;;
+        
+        const records = generateProductFlowRecords(realtimeWs, input.productCount);
+        return records;
       }),
   }),
 });

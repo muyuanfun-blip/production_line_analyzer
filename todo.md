@@ -675,3 +675,97 @@
 - AI 改善建議（Ollama API 整合）
 - 版本時間軸
 - 與其他模組整合
+
+
+## 產線生產即時戰情監控系統（新增）
+
+### 第一階段：後端 API（模擬資料生成）
+- [ ] 後端：新增 monitoring.getRealTimeStatus procedure（回傳當前產線即時狀態）
+- [ ] 後端：模擬資料生成邏輯（工站 CT 波動、產品流轉、異常工站）
+- [ ] 後端：新增 monitoring.getHistoricalTrend procedure（今日/本週趨勢）
+- [ ] 後端：新增 monitoring.getAnomalies procedure（異常工站與警示）
+
+### 第二階段：前端監控頁面
+- [ ] 建立 MonitoringDashboard.tsx 主頁面
+- [ ] 實時 KPI 儀表板（平衡率、UPPH、Takt 達標率、產能達成率）
+- [ ] 工站狀態面板（5 級風險等級：正常/預警/異常/停機/離線）
+- [ ] 瓶頸工站即時高亮與詳情卡片
+- [ ] 產品流程甘特圖（實時進度、卡料預警）
+- [ ] 工站效率熱圖（時段 × 工站效率矩陣）
+
+### 第三階段：實時更新與動畫
+- [ ] 前端：useEffect + setInterval 實現 3 秒輪詢更新
+- [ ] 前端：KPI 數值變化動畫（上升綠色、下降紅色）
+- [ ] 前端：工站狀態切換動畫（平滑過渡）
+- [ ] 前端：甘特圖即時滾動更新
+
+### 第四階段：警示與建議
+- [ ] 異常工站自動警示卡片（頂部通知欄）
+- [ ] 警示等級分類（提示/預警/緊急）
+- [ ] AI 即時改善建議（基於當前瓶頸）
+- [ ] 歷史對比（今日 vs 昨日、本週平均）
+
+### 第五階段：路由與導覽
+- [ ] 在 App.tsx 新增 /monitoring 路由
+- [ ] 在 DashboardLayout.tsx 側邊欄新增「戰情監控」入口（Activity icon）
+- [ ] 監控頁面與其他頁面的導覽連結
+
+### 第六階段：測試與優化
+- [ ] 撰寫 monitoring procedures 的 Vitest 測試
+- [ ] 前端元件測試（KPI 更新、狀態切換）
+- [ ] 性能優化（輪詢頻率、記憶體使用）
+
+
+## 產線生產即時戰情監控系統（已完成）
+
+### 第一階段：後端 API（已完成）
+
+- [x] server/monitoring.ts：建立模擬資料生成引擎
+  - [x] generateRealtimeWorkstations() - 生成實時工站狀態
+  - [x] calculateLineKPI() - 計算產線 KPI（平衡率、UPPH、Takt 達標率）
+  - [x] generateProductFlowRecords() - 生成產品流程甘特圖資料
+  - [x] generateHistoricalTrend() - 生成 24 小時歷史趨勢
+  - [x] generateRealtimeLineStatus() - 整合完整實時狀態
+
+- [x] server/routers.ts：新增 monitoring tRPC procedures
+  - [x] getRealTimeStatus - 取得產線即時狀態
+  - [x] getHistoricalTrend - 取得過去 24 小時趨勢
+  - [x] getProductFlowRecords - 取得產品流程記錄
+
+### 第二階段：前端監控頁面（已完成）
+
+- [x] MonitoringDashboard.tsx - 完整戰情監控頁面
+  - [x] 實時 KPI 儀表板（平衡率、UPPH、Takt 達標率、產能達成率）
+  - [x] 工站狀態面板（5 級風險等級、效率、利用率、當前產品）
+  - [x] 瓶頸工站高亮提示
+  - [x] 工站時間分佈柱狀圖
+  - [x] 24 小時趨勢折線圖
+  - [x] 緊急警示與預警提示卡片
+  - [x] 自動刷新控制（3 秒輪詢）
+  - [x] 骨架屏載入狀態
+
+- [x] App.tsx - 新增 /lines/:lineId/monitoring 路由
+- [x] DashboardLayout.tsx - 側邊欄新增「戰情監控」導覽入口（BarChart3 icon）
+
+### 第三階段：功能增強（選擇性）
+
+- [ ] 實時警示聲音提醒
+- [ ] 工站詳細分析彈出視窗
+- [ ] 異常工站自動建議
+- [ ] 產品流程甘特圖互動
+- [ ] 歷史資料持久化
+- [ ] 警示規則自訂
+
+### 第四階段：與其他模組整合（選擇性）
+
+- [ ] 與 VSM 流程對應
+- [ ] 與配置模擬器連接
+- [ ] 與產品追蹤整合
+- [ ] 與平衡分析聯動
+
+### 第五階段：完成測試與交付
+
+- [x] TypeScript 0 errors，133/133 Vitest 全通過
+- [ ] 前端頁面瀏覽器測試
+- [ ] 實時資料更新驗證
+- [ ] 響應式設計驗證
