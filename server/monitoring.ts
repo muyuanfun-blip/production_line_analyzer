@@ -100,11 +100,11 @@ export function generateRealtimeWorkstations(
     const cycleTime = baseCT * variation;
 
     // 計算效率
-    const efficiency = Math.min(100, (baseCT / cycleTime) * 100);
+    const efficiency = Math.min(100, isNaN(baseCT / cycleTime) ? 0 : (baseCT / cycleTime) * 100);
 
     // 計算利用率（基於人力配置）
     const baseManpower = typeof ws.manpower === 'string' ? parseFloat(ws.manpower) : ws.manpower;
-    const utilization = Math.min(100, (cycleTime / (baseCT * baseManpower)) * 100);
+    const utilization = Math.min(100, isNaN(cycleTime / (baseCT * baseManpower)) ? 0 : (cycleTime / (baseCT * baseManpower)) * 100);
 
     // 隨機決定工站狀態
     const statusRandom = random();
@@ -165,13 +165,15 @@ export function calculateLineKPI(
 
   // 計算 UPPH = 3600 / maxCT / totalManpower
   const totalManpower = workstations.reduce((sum, ws) => sum + ws.manpower, 0);
-  const upph = Math.round(3600 / maxCT / totalManpower);
+  const upph = totalManpower === 0 || maxCT === 0 ? 0 : Math.round(3600 / maxCT / totalManpower);
+  // 確保 upph 不是 NaN 或 Infinity
+  const safeUpph = isNaN(upph) || !isFinite(upph) ? 0 : upph;
 
   // 計算 Takt 達標率
   const taktAchievingWs = workstations.filter((ws) => ws.cycleTime <= targetCycleTime).length;
   const taktAchievement = Math.round((taktAchievingWs / workstations.length) * 100);
 
-  return { balanceRate, upph, taktAchievement, bottleneckWsId };
+  return { balanceRate, upph: safeUpph, taktAchievement, bottleneckWsId };
 }
 
 /**
