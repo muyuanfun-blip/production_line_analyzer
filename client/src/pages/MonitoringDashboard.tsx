@@ -84,11 +84,14 @@ const KPICard = ({ label, value, unit, status }: { label: string; value: number 
     critical: "text-red-400",
   };
 
+  // 確保 value 不是 NaN
+  const displayValue = typeof value === 'number' && isNaN(value) ? '0' : value;
+
   return (
     <div className="rounded-lg border border-cyan-500/30 bg-gradient-to-br from-slate-900 to-slate-800 p-4 shadow-lg shadow-cyan-500/20">
       <p className="text-xs font-semibold uppercase tracking-widest text-cyan-400">{label}</p>
       <div className={`mt-2 text-3xl font-bold ${status ? statusColor[status] : "text-cyan-300"}`}>
-        {value}
+        {displayValue}
         {unit && <span className="text-lg text-cyan-400">{unit}</span>}
       </div>
     </div>
