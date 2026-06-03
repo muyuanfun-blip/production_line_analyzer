@@ -179,29 +179,29 @@ export default function MonitoringDashboard() {
         </div>
       </div>
 
-      {/* KPI 儀表板 */}
+      {/* KPI 一表板 */}
       <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
         <KPICard
           label="平衡率"
-          value={realtimeStatus.balanceRate}
+          value={isNaN(realtimeStatus.balanceRate) ? 0 : realtimeStatus.balanceRate}
           unit="%"
           status={realtimeStatus.balanceRate >= 80 ? "good" : realtimeStatus.balanceRate >= 70 ? "warning" : "critical"}
         />
         <KPICard
           label="UPPH"
-          value={realtimeStatus.upph}
+          value={isNaN(realtimeStatus.upph) ? 0 : realtimeStatus.upph}
           unit="件/h"
           status="good"
         />
         <KPICard
           label="Takt 達標率"
-          value={realtimeStatus.taktAchievement}
+          value={isNaN(realtimeStatus.taktAchievement) ? 0 : realtimeStatus.taktAchievement}
           unit="%"
           status={realtimeStatus.taktAchievement >= 80 ? "good" : "warning"}
         />
         <KPICard
           label="產能達成率"
-          value={Math.round((realtimeStatus.productionActual / realtimeStatus.productionTarget) * 100)}
+          value={isNaN(realtimeStatus.productionActual / realtimeStatus.productionTarget) ? 0 : Math.round((realtimeStatus.productionActual / realtimeStatus.productionTarget) * 100)}
           unit="%"
           status={Math.round((realtimeStatus.productionActual / realtimeStatus.productionTarget) * 100) >= 80 ? "good" : "warning"}
         />
@@ -225,15 +225,15 @@ export default function MonitoringDashboard() {
                       : "border-cyan-500/20 bg-slate-800/50 hover:border-cyan-500/50"
                   }`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className={`flex items-center gap-2`}>
                     <div className={`h-2 w-2 rounded-full ${getStatusColor(ws.status)}`} />
                     <span className="flex-1 text-xs font-semibold">{ws.name}</span>
                     {ws.id === realtimeStatus.bottleneckWsId && (
-                      <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-xs font-bold text-orange-400">瓶頸</span>
+                      <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-xs font-bold text-orange-400">璶頸</span>
                     )}
                   </div>
                   <div className="mt-1 text-xs text-cyan-400/60">
-                    CT: {ws.cycleTime.toFixed(1)}s / {ws.targetCycleTime}s
+                    CT: {isNaN(ws.cycleTime) ? '0' : ws.cycleTime.toFixed(1)}s / {isNaN(ws.targetCycleTime) ? '0' : ws.targetCycleTime}s
                   </div>
                 </button>
               ))}
@@ -256,7 +256,7 @@ export default function MonitoringDashboard() {
                       className={`rounded-lg border-2 border-cyan-500/30 px-3 py-2 text-center ${getStatusColor(ws.status)} transition`}
                     >
                       <div className="text-xs font-bold">{ws.name}</div>
-                      <div className="text-xs text-white/80">{ws.efficiency.toFixed(0)}%</div>
+                      <div className="text-xs text-white/80">{isNaN(ws.efficiency) ? '0' : ws.efficiency.toFixed(0)}%</div>
                     </div>
                     {idx < realtimeStatus.workstations.length - 1 && (
                       <div className="text-cyan-400">→</div>
@@ -350,10 +350,10 @@ export default function MonitoringDashboard() {
               .filter((ws: RealtimeWorkstation) => ws.id === selectedWs)
               .map((ws: RealtimeWorkstation) => (
                 <div key={ws.id} className="space-y-3">
-                  <KPICard label="效率" value={ws.efficiency.toFixed(1)} unit="%" status={ws.efficiency >= 90 ? "good" : "warning"} />
-                  <KPICard label="利用率" value={ws.utilization.toFixed(1)} unit="%" />
-                  <KPICard label="人力" value={ws.manpower} />
-                  <KPICard label="等待產品" value={ws.waitingProducts} />
+                  <KPICard label="效率" value={isNaN(ws.efficiency) ? '0' : ws.efficiency.toFixed(1)} unit="%" status={ws.efficiency >= 90 ? "good" : "warning"} />
+                  <KPICard label="利用率" value={isNaN(ws.utilization) ? '0' : ws.utilization.toFixed(1)} unit="%" />
+                  <KPICard label="人力" value={isNaN(ws.manpower) ? 0 : ws.manpower} />
+                  <KPICard label="等待產品" value={isNaN(ws.waitingProducts) ? 0 : ws.waitingProducts} />
                 </div>
               ))}
           </div>
