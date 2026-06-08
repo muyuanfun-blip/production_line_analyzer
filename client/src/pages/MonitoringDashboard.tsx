@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+"use client";
+
 import { useParams } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, TrendingUp, ChevronDown, ChevronUp, Zap, Activity, Clock } from "lucide-react";
+import { AlertCircle, TrendingUp, ChevronDown, ChevronUp, Zap, Activity, Clock, Maximize2, Minimize2, RotateCw } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useState, useEffect, useRef } from "react";
 
 interface RealtimeWorkstation {
   id: number;
@@ -103,6 +105,10 @@ export default function MonitoringDashboard() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [selectedWs, setSelectedWs] = useState<number | null>(null);
   const [expandedAlerts, setExpandedAlerts] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [refreshInterval, setRefreshInterval] = useState(30); // 30 秒
+  const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date());
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // 實時狀態查詢
   const { data: realtimeStatus, isLoading: statusLoading, refetch: refetchStatus } = trpc.monitoring.getRealTimeStatus.useQuery(
@@ -116,14 +122,43 @@ export default function MonitoringDashboard() {
     { enabled: !!lineId }
   );
 
-  // 自動刷新效果
+  // 自動刷新效果（30 秒）
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
       refetchStatus();
-    }, 3000);
+      setLastUpdateTime(new Date());
+    }, refreshInterval * 1000);
     return () => clearInterval(interval);
-  }, [autoRefresh, refetchStatus]);
+  }, [autoRefresh, refetchStatus, refreshInterval]);
+
+  // 全螢幕功能
+  const toggleFullscreen = async () => {
+    try {
+      if (!isFullscreen) {
+        if (containerRef.current?.requestFullscreen) {
+          await containerRef.current.requestFullscreen();
+          setIsFullscreen(true);
+        }
+      } else {
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+          setIsFullscreen(false);
+        }
+      }
+    } catch (err) {
+      console.error("全螢幕切換失敗:", err);
+    }
+  };
+
+  // 監聽全螢幕變化
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
 
   if (statusLoading || trendLoading) {
     return (
@@ -138,6 +173,8 @@ export default function MonitoringDashboard() {
     return <div className="p-6 text-center text-gray-500">無法載入監控資料</div>;
   }
 
+  const updateTimeStr = lastUpdateTime.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
   const trendData = historicalTrend?.map((item: HistoricalTrend) => ({
     time: new Date(item.timestamp).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }),
     balanceRate: item.balanceRate,
@@ -149,69 +186,80 @@ export default function MonitoringDashboard() {
   const warningAnomalies = realtimeStatus.anomalies.filter((a: any) => a.level === "warning");
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4 text-white">
-      {/* 掃描線效果背景 */}
-      <div className="pointer-events-none fixed inset-0 opacity-5">
-        <div className="h-full w-full" style={{
-          backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 255, 255, 0.03) 2px, rgba(0, 255, 255, 0.03) 4px)",
-        }} />
-      </div>
-
-      {/* 頂部狀態欄 */}
-      <div className="relative mb-6 rounded-lg border border-cyan-500/30 bg-gradient-to-r from-slate-900/80 to-slate-800/80 p-4 shadow-lg shadow-cyan-500/10 backdrop-blur">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-cyan-300">{realtimeStatus.lineName}</h1>
-            <p className="mt-1 text-xs text-cyan-400/60">
-              ● 系統狀態：{autoRefresh ? "實時監控中" : "暫停"} | 最後更新：{new Date(realtimeStatus.timestamp).toLocaleTimeString("zh-TW")}
-            </p>
-          </div>
+    <div
+      ref={containerRef}
+      className={`bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white ${
+        isFullscreen ? "fixed inset-0 overflow-auto" : "min-h-screen p-6"
+      }`}
+    >
+      {/* 頂部控制欄 */}
+      <div className={`mb-6 flex items-center justify-between ${isFullscreen ? "p-6" : ""} border-b border-cyan-500/20 pb-4`}>
+        <div>
+          <h1 className="text-3xl font-bold text-cyan-400">產線戰情監控</h1>
+          <p className="mt-1 text-xs text-cyan-400/60">最後更新: {updateTimeStr}</p>
+        </div>
+        <div className="flex items-center gap-2">
           <button
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`rounded-lg px-4 py-2 font-semibold transition ${
+            className={`rounded-lg px-4 py-2 font-semibold transition flex items-center gap-2 ${
               autoRefresh
-                ? "border border-green-500/50 bg-green-500/10 text-green-400 hover:bg-green-500/20"
-                : "border border-yellow-500/50 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20"
+                ? "bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                : "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30"
             }`}
           >
-            {autoRefresh ? "● 實時中" : "⏸ 暫停"}
+            <RotateCw size={16} />
+            {autoRefresh ? "自動更新" : "手動模式"}
+          </button>
+          <button
+            onClick={toggleFullscreen}
+            className="rounded-lg bg-cyan-500/20 px-4 py-2 font-semibold text-cyan-400 transition hover:bg-cyan-500/30 flex items-center gap-2"
+          >
+            {isFullscreen ? (
+              <>
+                <Minimize2 size={16} />
+                退出全螢幕
+              </>
+            ) : (
+              <>
+                <Maximize2 size={16} />
+                全螢幕
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      {/* KPI 一表板 */}
-      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <KPICard
-          label="平衡率"
-          value={isNaN(realtimeStatus.balanceRate) ? 0 : realtimeStatus.balanceRate}
-          unit="%"
-          status={realtimeStatus.balanceRate >= 80 ? "good" : realtimeStatus.balanceRate >= 70 ? "warning" : "critical"}
-        />
-        <KPICard
-          label="UPPH"
-          value={isNaN(realtimeStatus.upph) ? 0 : realtimeStatus.upph}
-          unit="件/h"
-          status="good"
-        />
-        <KPICard
-          label="Takt 達標率"
-          value={isNaN(realtimeStatus.taktAchievement) ? 0 : realtimeStatus.taktAchievement}
-          unit="%"
-          status={realtimeStatus.taktAchievement >= 80 ? "good" : "warning"}
-        />
-        <KPICard
-          label="產能達成率"
-          value={isNaN(realtimeStatus.productionActual / realtimeStatus.productionTarget) ? 0 : Math.round((realtimeStatus.productionActual / realtimeStatus.productionTarget) * 100)}
-          unit="%"
-          status={Math.round((realtimeStatus.productionActual / realtimeStatus.productionTarget) * 100) >= 80 ? "good" : "warning"}
-        />
+      {/* 更新間隔設定 */}
+      <div className={`mb-4 flex items-center gap-2 ${isFullscreen ? "px-6" : ""}`}>
+        <span className="text-xs text-cyan-400/60">更新間隔:</span>
+        <select
+          value={refreshInterval}
+          onChange={(e) => setRefreshInterval(parseInt(e.target.value))}
+          className="rounded bg-slate-800 px-2 py-1 text-xs text-cyan-400 border border-cyan-500/20"
+        >
+          <option value={10}>10 秒</option>
+          <option value={30}>30 秒</option>
+          <option value={60}>1 分鐘</option>
+          <option value={120}>2 分鐘</option>
+        </select>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-4">
-        {/* 左側：工站狀態列表 */}
-        <div className="lg:col-span-1">
-          <div className="rounded-lg border border-cyan-500/30 bg-gradient-to-br from-slate-900 to-slate-800 shadow-lg shadow-cyan-500/10">
-            <div className="border-b border-cyan-500/20 px-4 py-3">
+      {/* 主要監控內容 */}
+      <div className={`${isFullscreen ? "px-6" : ""}`}>
+        {/* KPI 儀表板 */}
+        <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-5">
+          <KPICard label="平衡率" value={`${realtimeStatus.balanceRate}%`} status={realtimeStatus.balanceRate >= 80 ? "good" : realtimeStatus.balanceRate >= 60 ? "warning" : "critical"} />
+          <KPICard label="UPPH" value={isNaN(realtimeStatus.upph) ? '0' : realtimeStatus.upph} />
+          <KPICard label="Takt 達標" value={`${realtimeStatus.taktAchievement}%`} status={realtimeStatus.taktAchievement >= 80 ? "good" : "warning"} />
+          <KPICard label="產能達成" value={`${Math.round((realtimeStatus.productionActual / realtimeStatus.productionTarget) * 100)}%`} />
+          <KPICard label="異常工站" value={criticalAnomalies.length} status={criticalAnomalies.length === 0 ? "good" : "critical"} />
+        </div>
+
+        {/* 主監控區 - 工站狀態 */}
+        <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* 左側：工站列表 */}
+          <div className="rounded-lg border border-cyan-500/20 bg-slate-900/50 backdrop-blur">
+            <div className="border-b border-cyan-500/20 p-4">
               <h2 className="text-sm font-bold uppercase tracking-widest text-cyan-400">工站狀態</h2>
             </div>
             <div className="space-y-2 p-4 max-h-96 overflow-y-auto">
@@ -229,7 +277,7 @@ export default function MonitoringDashboard() {
                     <div className={`h-2 w-2 rounded-full ${getStatusColor(ws.status)}`} />
                     <span className="flex-1 text-xs font-semibold">{ws.name}</span>
                     {ws.id === realtimeStatus.bottleneckWsId && (
-                      <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-xs font-bold text-orange-400">璶頸</span>
+                      <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-xs font-bold text-orange-400">瓶頸</span>
                     )}
                   </div>
                   <div className="mt-1 text-xs text-cyan-400/60">
@@ -239,126 +287,90 @@ export default function MonitoringDashboard() {
               ))}
             </div>
           </div>
-        </div>
 
-        {/* 中央：主監控區 */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* 工站流程圖 */}
-          <div className="rounded-lg border border-cyan-500/30 bg-gradient-to-br from-slate-900 to-slate-800 shadow-lg shadow-cyan-500/10">
-            <div className="border-b border-cyan-500/20 px-4 py-3">
-              <h2 className="text-sm font-bold uppercase tracking-widest text-cyan-400">產線流程圖</h2>
-            </div>
-            <div className="p-4">
-              <div className="flex flex-wrap gap-3">
+          {/* 中央：主監控區 */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* 工站流程圖 */}
+            <div className="rounded-lg border border-cyan-500/20 bg-slate-900/50 backdrop-blur p-4">
+              <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-cyan-400">工站流程</h2>
+              <div className="flex flex-wrap gap-2">
                 {realtimeStatus.workstations.map((ws: RealtimeWorkstation, idx: number) => (
-                  <div key={ws.id} className="flex items-center gap-3">
-                    <div
-                      className={`rounded-lg border-2 border-cyan-500/30 px-3 py-2 text-center ${getStatusColor(ws.status)} transition`}
-                    >
-                      <div className="text-xs font-bold">{ws.name}</div>
-                      <div className="text-xs text-white/80">{isNaN(ws.efficiency) ? '0' : ws.efficiency.toFixed(0)}%</div>
+                  <div key={ws.id} className="flex items-center">
+                    <div className={`rounded-full w-12 h-12 flex items-center justify-center font-bold text-xs ${getStatusColor(ws.status)}`}>
+                      {ws.name}
                     </div>
                     {idx < realtimeStatus.workstations.length - 1 && (
-                      <div className="text-cyan-400">→</div>
+                      <div className="mx-2 text-cyan-400">→</div>
                     )}
                   </div>
                 ))}
               </div>
             </div>
-          </div>
 
-          {/* 趨勢圖 */}
-          <div className="rounded-lg border border-cyan-500/30 bg-gradient-to-br from-slate-900 to-slate-800 shadow-lg shadow-cyan-500/10">
-            <div className="border-b border-cyan-500/20 px-4 py-3">
-              <h2 className="text-sm font-bold uppercase tracking-widest text-cyan-400">24 小時趨勢</h2>
-            </div>
-            <div className="p-4">
-              <ResponsiveContainer width="100%" height={250}>
+            {/* 趨勢圖表 */}
+            <div className="rounded-lg border border-cyan-500/20 bg-slate-900/50 backdrop-blur p-4">
+              <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-cyan-400">24 小時趨勢</h2>
+              <ResponsiveContainer width="100%" height={200}>
                 <LineChart data={trendData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0, 255, 255, 0.1)" />
-                  <XAxis dataKey="time" stroke="rgba(0, 255, 255, 0.5)" />
-                  <YAxis stroke="rgba(0, 255, 255, 0.5)" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "rgba(15, 23, 42, 0.9)",
-                      border: "1px solid rgba(0, 255, 255, 0.3)",
-                    }}
-                  />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(34, 211, 238, 0.1)" />
+                  <XAxis dataKey="time" stroke="rgba(34, 211, 238, 0.5)" style={{ fontSize: "12px" }} />
+                  <YAxis stroke="rgba(34, 211, 238, 0.5)" style={{ fontSize: "12px" }} />
+                  <Tooltip contentStyle={{ backgroundColor: "rgba(15, 23, 42, 0.9)", border: "1px solid rgba(34, 211, 238, 0.3)" }} />
                   <Legend />
-                  <Line type="monotone" dataKey="balanceRate" stroke="#10b981" name="平衡率 %" strokeWidth={2} />
-                  <Line type="monotone" dataKey="upph" stroke="#f59e0b" name="UPPH" strokeWidth={2} />
+                  <Line type="monotone" dataKey="balanceRate" stroke="#06b6d4" name="平衡率" />
+                  <Line type="monotone" dataKey="taktAchievement" stroke="#10b981" name="Takt達標" />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </div>
         </div>
 
-        {/* 右側：警示面板 */}
-        <div className="lg:col-span-1">
-          <div className="rounded-lg border border-red-500/30 bg-gradient-to-br from-slate-900 to-slate-800 shadow-lg shadow-red-500/10">
-            <button
-              onClick={() => setExpandedAlerts(!expandedAlerts)}
-              className="w-full border-b border-red-500/20 px-4 py-3 flex items-center justify-between hover:bg-red-500/5 transition"
-            >
-              <h2 className="text-sm font-bold uppercase tracking-widest text-red-400">
-                警示面板 ({criticalAnomalies.length + warningAnomalies.length})
-              </h2>
-              {expandedAlerts ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </button>
-            {expandedAlerts && (
-              <div className="space-y-2 p-4 max-h-96 overflow-y-auto">
-                {/* 緊急警示 */}
-                {criticalAnomalies.map((anomaly: any) => (
-                  <div key={anomaly.id} className="rounded-lg border-l-4 border-red-500 bg-red-500/10 p-3">
-                    <p className="text-xs font-bold text-red-400">🚨 {anomaly.wsName}</p>
-                    <p className="mt-1 text-xs text-red-300">{anomaly.message}</p>
-                    {anomaly.suggestedAction && (
-                      <p className="mt-1 text-xs text-red-200">💡 {anomaly.suggestedAction}</p>
-                    )}
-                  </div>
-                ))}
+        {/* 警示面板 */}
+        <div className="rounded-lg border border-cyan-500/20 bg-slate-900/50 backdrop-blur">
+          <div className="border-b border-cyan-500/20 p-4 cursor-pointer flex items-center justify-between" onClick={() => setExpandedAlerts(!expandedAlerts)}>
+            <h2 className="text-sm font-bold uppercase tracking-widest text-cyan-400">實時警示</h2>
+            {expandedAlerts ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </div>
+          {expandedAlerts && (
+            <div className="space-y-2 p-4 max-h-64 overflow-y-auto">
+              {criticalAnomalies.length === 0 && warningAnomalies.length === 0 ? (
+                <p className="text-xs text-green-400">✓ 系統正常運行</p>
+              ) : (
+                <>
+                  {criticalAnomalies.map((anomaly: any) => (
+                    <div key={anomaly.id} className="rounded-lg border-l-4 border-red-500 bg-red-500/10 p-3">
+                      <p className="text-xs font-bold text-red-400">🚨 {anomaly.wsName}: {anomaly.message}</p>
+                      {anomaly.suggestedAction && <p className="mt-1 text-xs text-red-300">{anomaly.suggestedAction}</p>}
+                    </div>
+                  ))}
+                  {warningAnomalies.map((anomaly: any) => (
+                    <div key={anomaly.id} className="rounded-lg border-l-4 border-yellow-500 bg-yellow-500/10 p-3">
+                      <p className="text-xs font-bold text-yellow-400">⚠️ {anomaly.wsName}: {anomaly.message}</p>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
-                {/* 預警 */}
-                {warningAnomalies.map((anomaly: any) => (
-                  <div key={anomaly.id} className="rounded-lg border-l-4 border-yellow-500 bg-yellow-500/10 p-3">
-                    <p className="text-xs font-bold text-yellow-400">⚠️ {anomaly.wsName}</p>
-                    <p className="mt-1 text-xs text-yellow-300">{anomaly.message}</p>
-                  </div>
-                ))}
-
-                {criticalAnomalies.length === 0 && warningAnomalies.length === 0 && (
-                  <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-center">
-                    <p className="text-xs text-green-400">✓ 系統正常</p>
-                  </div>
-                )}
+        {/* 工站詳細分析 */}
+        {selectedWs && (
+          <div className="mt-6 rounded-lg border border-cyan-500/20 bg-slate-900/50 backdrop-blur p-4">
+            <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-cyan-400">
+              {realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.name} - 詳細分析
+            </h2>
+            {realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs) && (
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                <KPICard label="效率" value={`${isNaN((realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.efficiency) || 0) ? '0' : (realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.efficiency || 0).toFixed(1)}%`} />
+                <KPICard label="利用率" value={`${isNaN((realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.utilization) || 0) ? '0' : (realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.utilization || 0).toFixed(1)}%`} />
+                <KPICard label="等待產品" value={(realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.waitingProducts) || 0} />
+                <KPICard label="狀態" value={getStatusLabel((realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.status) || "")} />
               </div>
             )}
           </div>
-        </div>
+        )}
       </div>
-
-      {/* 選中工站詳細分析 */}
-      {selectedWs && (
-        <div className="mt-6 rounded-lg border border-cyan-500/30 bg-gradient-to-br from-slate-900 to-slate-800 shadow-lg shadow-cyan-500/10">
-          <div className="border-b border-cyan-500/20 px-4 py-3">
-            <h2 className="text-sm font-bold uppercase tracking-widest text-cyan-400">
-              {realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.name} - 詳細分析
-            </h2>
-          </div>
-          <div className="grid grid-cols-2 gap-4 p-4 md:grid-cols-4">
-            {realtimeStatus.workstations
-              .filter((ws: RealtimeWorkstation) => ws.id === selectedWs)
-              .map((ws: RealtimeWorkstation) => (
-                <div key={ws.id} className="space-y-3">
-                  <KPICard label="效率" value={isNaN(ws.efficiency) ? '0' : ws.efficiency.toFixed(1)} unit="%" status={ws.efficiency >= 90 ? "good" : "warning"} />
-                  <KPICard label="利用率" value={isNaN(ws.utilization) ? '0' : ws.utilization.toFixed(1)} unit="%" />
-                  <KPICard label="人力" value={isNaN(ws.manpower) ? 0 : ws.manpower} />
-                  <KPICard label="等待產品" value={isNaN(ws.waitingProducts) ? 0 : ws.waitingProducts} />
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
