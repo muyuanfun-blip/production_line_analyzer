@@ -424,26 +424,39 @@ export async function getAllLinesSnapshotHistory() {
         .select()
         .from(analysisSnapshots)
         .where(eq(analysisSnapshots.productionLineId, line.id))
-        .orderBy(asc(analysisSnapshots.createdAt));
+        .orderBy(desc(analysisSnapshots.createdAt));
+      // 按快照名稱中的日期排序（新到舊）
+      const snapshotsWithDate = snapshots.map((s) => {
+        const dateMatch = s.name.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+        let date = new Date(0);
+        if (dateMatch) {
+          const year = parseInt(dateMatch[1], 10);
+          const month = parseInt(dateMatch[2], 10);
+          const day = parseInt(dateMatch[3], 10);
+          date = new Date(year, month - 1, day);
+        }
+        return { snapshot: s, date };
+      }).sort((a, b) => b.date.getTime() - a.date.getTime());
+      
       return {
         lineId: line.id,
         lineName: line.name,
         lineStatus: line.status,
-        snapshots: snapshots.map((s) => ({
-          id: s.id,
-          name: s.name,
-          balanceRate: Number(s.balanceRate),
-          taktPassRate: s.taktPassRate ? Number(s.taktPassRate) : null,
-          upph: s.upph ? Number(s.upph) : null,
-          maxTime: Number(s.maxTime),
-          avgTime: Number(s.avgTime),
-          workstationCount: s.workstationCount,
-          createdAt: s.createdAt,
+        snapshots: snapshotsWithDate.map((item) => ({
+          id: item.snapshot.id,
+          name: item.snapshot.name,
+          balanceRate: Number(item.snapshot.balanceRate),
+          taktPassRate: item.snapshot.taktPassRate ? Number(item.snapshot.taktPassRate) : null,
+          upph: item.snapshot.upph ? Number(item.snapshot.upph) : null,
+          maxTime: Number(item.snapshot.maxTime),
+          avgTime: Number(item.snapshot.avgTime),
+          workstationCount: item.snapshot.workstationCount,
+          createdAt: item.snapshot.createdAt,
         })),
       };
     })
   );
-  // 只回傳有快照的產線
+      // 只回傳有快照的產線
   return results.filter((r) => r.snapshots.length > 0);
 }
 
