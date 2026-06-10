@@ -920,3 +920,67 @@ export async function restoreVSMVersion(versionId: number) {
   
   return diagram;
 }
+
+
+// 取得快照名稱中日期最新的快照
+export async function getAllLinesLatestSnapshotByDate() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // 取得所有產線
+  const lines = await db.select().from(productionLines).orderBy(asc(productionLines.id));
+  if (lines.length === 0) return [];
+
+  // 對每條產線取得所有快照，按名稱中的日期排序
+  const results = await Promise.all(
+    lines.map(async (line) => {
+      const snapshots = await db
+        .select()
+        .from(analysisSnapshots)
+        .where(eq(analysisSnapshots.productionLineId, line.id));
+      
+      if (snapshots.length === 0) {
+        return {
+          lineId: line.id,
+          lineName: line.name,
+          lineStatus: line.status,
+          targetCycleTime: line.targetCycleTime ? Number(line.targetCycleTime) : null,
+          snapshot: null,
+        };
+      }
+
+      // 從快Snapshot名稱中提取日期並排序
+      const snapshotsWithDate = snapshots
+        .map((s) => {
+          // 嘗試從名稱中提取日期（格式：YYYY-MM-DD 或 YYYY-MM-DD HH:mm）
+          const dateMatch = s.name.match(/(\d{4}-\d{2}-\d{2})/);
+          const date = dateMatch ? new Date(dateMatch[1]) : new Date(0);
+          return { snapshot: s, date };
+        })
+        .sort((a, b) => b.date.getTime() - a.date.getTime());
+
+      const latest = snapshotsWithDate[0]?.snapshot ?? null;
+      return {
+        lineId: line.id,
+        lineName: line.name,
+        lineStatus: line.status,
+        targetCycleTime: line.targetCycleTime ? Number(line.targetCycleTime) : null,
+        snapshot: latest ? {
+          id: latest.id,
+          name: latest.name,
+          balanceRate: Number(latest.balanceRate),
+          balanceLoss: Number(latest.balanceLoss),
+          maxTime: Number(latest.maxTime),
+          avgTime: Number(latest.avgTime),
+          workstationCount: latest.workstationCount,
+          totalManpower: latest.totalManpower,
+          taktPassRate: latest.taktPassRate ? Number(latest.taktPassRate) : null,
+          upph: latest.upph ? Number(latest.upph) : null,
+          bottleneckName: latest.bottleneckName,
+          createdAt: latest.createdAt,
+        } : null,
+      };
+    })
+  );
+  return results;
+}

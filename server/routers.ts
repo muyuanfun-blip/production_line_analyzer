@@ -12,6 +12,7 @@ import {
   deleteActionStep, bulkCreateActionSteps,
   getSnapshotsByLine, getSnapshotById, createSnapshot, deleteSnapshot, updateSnapshotData,
   getAllLinesLatestSnapshot,
+  getAllLinesLatestSnapshotByDate,
   getAllLinesSnapshotHistory,
   getHandActionsByStep, getHandActionsByStepIds,
   upsertHandAction, deleteHandAction, deleteHandActionsByStep,
@@ -719,6 +720,11 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
     getAllLinesHistory: publicProcedure
       .query(async () => {
         const rows = await getAllLinesSnapshotHistory();
+        return rows;
+      }),
+    getAllLinesLatestByDate: publicProcedure
+      .query(async () => {
+        const rows = await getAllLinesLatestSnapshotByDate();
         return rows;
       }),
   }),

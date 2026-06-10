@@ -74,7 +74,7 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: any[] 
 export default function Home() {
   const [, setLocation] = useLocation();
   const { data: lines } = trpc.productionLine.list.useQuery();
-  const { data: allLatest, isLoading: latestLoading } = trpc.snapshot.getAllLinesLatest.useQuery();
+  const { data: allLatest, isLoading: latestLoading } = trpc.snapshot.getAllLinesLatestByDate.useQuery();
   const { data: allHistory, isLoading: historyLoading } = trpc.snapshot.getAllLinesHistory.useQuery();
 
   const totalLines = lines?.length ?? 0;
