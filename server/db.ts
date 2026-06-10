@@ -952,9 +952,14 @@ export async function getAllLinesLatestSnapshotByDate() {
       // 從快Snapshot名稱中提取日期並排序
       const snapshotsWithDate = snapshots
         .map((s) => {
-          // 嘗試從名稱中提取日期（格式：YYYY-MM-DD 或 YYYY-MM-DD HH:mm）
-          const dateMatch = s.name.match(/(\d{4}-\d{2}-\d{2})/);
-          const date = dateMatch ? new Date(dateMatch[1]) : new Date(0);
+          const dateMatch = s.name.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+          let date = new Date(0);
+          if (dateMatch) {
+            const year = parseInt(dateMatch[1], 10);
+            const month = parseInt(dateMatch[2], 10);
+            const day = parseInt(dateMatch[3], 10);
+            date = new Date(year, month - 1, day);
+          }
           return { snapshot: s, date };
         })
         .sort((a, b) => b.date.getTime() - a.date.getTime());
