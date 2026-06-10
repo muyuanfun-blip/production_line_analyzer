@@ -1,6 +1,4 @@
-import {
-  eq, desc, asc,
-} from "drizzle-orm";
+import { eq, asc, desc, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser, users,
@@ -50,77 +48,138 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       values[field] = normalized;
       updateSet[field] = normalized;
     };
-    assignNullable("name");
-    assignNullable("email");
-    assignNullable("loginMethod");
+    textFields.forEach(assignNullable);
+    if (user.lastSignedIn !== undefined) { values.lastSignedIn = user.lastSignedIn; updateSet.lastSignedIn = user.lastSignedIn; }
+    if (user.role !== undefined) { values.role = user.role; updateSet.role = user.role; }
+    else if (user.openId === ENV.ownerOpenId) { values.role = 'admin'; updateSet.role = 'admin'; }
+    if (!values.lastSignedIn) values.lastSignedIn = new Date();
+    if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
     await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
   } catch (error) {
-    console.warn("[Database] upsertUser failed:", error);
+    console.error("[Database] Failed to upsert user:", error);
+    throw error;
   }
+}
+
+export async function getUserByOpenId(openId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
 }
 
 export async function getUserByUsername(username: string) {
   const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(users).where(eq(users.username, username)).limit(1);
-  return rows[0] ?? null;
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.username, username)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
 }
 
 export async function getAllUsers() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(users);
+  return db.select({
+    id: users.id,
+    openId: users.openId,
+    username: users.username,
+    name: users.name,
+    email: users.email,
+    role: users.role,
+    isActive: users.isActive,
+    createdAt: users.createdAt,
+    lastSignedIn: users.lastSignedIn,
+  }).from(users).orderBy(desc(users.createdAt));
 }
 
-export async function createLocalUser(data: InsertUser) {
+export async function createLocalUser(data: {
+  username: string;
+  passwordHash: string;
+  name: string;
+  role: 'user' | 'admin';
+}) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const result = await db.insert(users).values(data);
-  const insertId = (result as any)[0]?.insertId ?? (result as any).insertId;
-  if (!insertId) throw new Error("Failed to get insertId");
-  return db.select().from(users).where(eq(users.id, Number(insertId))).limit(1).then(rows => rows[0]);
+  if (!db) throw new Error('Database not available');
+  const openId = `local_${data.username}_${Date.now()}`;
+  await db.insert(users).values({
+    openId,
+    username: data.username,
+    passwordHash: data.passwordHash,
+    name: data.name,
+    role: data.role,
+    loginMethod: 'local',
+    isActive: 1,
+    lastSignedIn: new Date(),
+  });
+  return getUserByUsername(data.username);
+}
+
+export async function updateUserPassword(userId: number, passwordHash: string) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  await db.update(users).set({ passwordHash }).where(eq(users.id, userId));
+}
+
+export async function toggleUserActive(userId: number, isActive: number) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  await db.update(users).set({ isActive }).where(eq(users.id, userId));
+}
+
+export async function updateUserRole(userId: number, role: 'user' | 'admin') {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  await db.update(users).set({ role }).where(eq(users.id, userId));
+}
+
+export async function updateUserLastSignedIn(userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.id, userId));
 }
 
 // ─── Production Lines ────────────────────────────────────────────────────────
 
-export async function listProductionLines() {
+export async function getAllProductionLines() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(productionLines).orderBy(asc(productionLines.id));
+  return db.select().from(productionLines).orderBy(desc(productionLines.createdAt));
 }
 
 export async function getProductionLineById(id: number) {
   const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(productionLines).where(eq(productionLines.id, id)).limit(1);
-  return rows[0] ?? null;
+  if (!db) return undefined;
+  const result = await db.select().from(productionLines).where(eq(productionLines.id, id)).limit(1);
+  return result[0];
 }
 
 export async function createProductionLine(data: InsertProductionLine) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(productionLines).values(data);
-  const insertId = (result as any)[0]?.insertId ?? (result as any).insertId;
-  if (!insertId) throw new Error("Failed to get insertId");
-  return getProductionLineById(Number(insertId));
+  return result;
 }
 
 export async function updateProductionLine(id: number, data: Partial<InsertProductionLine>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(productionLines).set(data).where(eq(productionLines.id, id));
-  return getProductionLineById(id);
+  return db.update(productionLines).set(data).where(eq(productionLines.id, id));
 }
 
 export async function deleteProductionLine(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  // Delete related workstations and action steps first
+  const ws = await db.select().from(workstations).where(eq(workstations.productionLineId, id));
+  for (const w of ws) {
+    await db.delete(actionSteps).where(eq(actionSteps.workstationId, w.id));
+  }
+  await db.delete(workstations).where(eq(workstations.productionLineId, id));
   return db.delete(productionLines).where(eq(productionLines.id, id));
 }
 
-// ─── Workstations ───────────────────────────────────────────────────────────
+// ─── Workstations ────────────────────────────────────────────────────────────
 
-export async function listWorkstationsByLine(productionLineId: number) {
+export async function getWorkstationsByLine(productionLineId: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(workstations)
@@ -130,77 +189,57 @@ export async function listWorkstationsByLine(productionLineId: number) {
 
 export async function getWorkstationById(id: number) {
   const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(workstations).where(eq(workstations.id, id)).limit(1);
-  return rows[0] ?? null;
+  if (!db) return undefined;
+  const result = await db.select().from(workstations).where(eq(workstations.id, id)).limit(1);
+  return result[0];
 }
 
 export async function createWorkstation(data: InsertWorkstation) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(workstations).values(data);
-  const insertId = (result as any)[0]?.insertId ?? (result as any).insertId;
-  if (!insertId) throw new Error("Failed to get insertId");
-  return getWorkstationById(Number(insertId));
+  return db.insert(workstations).values(data);
 }
 
 export async function updateWorkstation(id: number, data: Partial<InsertWorkstation>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(workstations).set(data).where(eq(workstations.id, id));
-  return getWorkstationById(id);
+  return db.update(workstations).set(data).where(eq(workstations.id, id));
 }
 
 export async function deleteWorkstation(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  await db.delete(actionSteps).where(eq(actionSteps.workstationId, id));
   return db.delete(workstations).where(eq(workstations.id, id));
 }
 
 export async function bulkCreateWorkstations(data: InsertWorkstation[]) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  if (data.length === 0) return [];
-  await db.insert(workstations).values(data);
-  const ids = data.map((_, i) => i + 1);
-  return Promise.all(ids.map(id => getWorkstationById(id)));
+  if (data.length === 0) return;
+  return db.insert(workstations).values(data);
 }
 
-// ─── Action Steps ───────────────────────────────────────────────────────────
+// ─── Action Steps ────────────────────────────────────────────────────────────
 
 export async function getActionStepsByWorkstation(workstationId: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(actionSteps)
     .where(eq(actionSteps.workstationId, workstationId))
-    .orderBy(asc(actionSteps.sequenceOrder));
-}
-
-export async function getActionStepsByWorkstationIds(workstationIds: number[]) {
-  const db = await getDb();
-  if (!db) return [];
-  if (workstationIds.length === 0) return [];
-  return db.select().from(actionSteps).where(
-    (col) => col.inArray(actionSteps.workstationId, workstationIds)
-  );
+    .orderBy(asc(actionSteps.stepOrder));
 }
 
 export async function createActionStep(data: InsertActionStep) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(actionSteps).values(data);
-  const insertId = (result as any)[0]?.insertId ?? (result as any).insertId;
-  if (!insertId) throw new Error("Failed to get insertId");
-  const rows = await db.select().from(actionSteps).where(eq(actionSteps.id, Number(insertId))).limit(1);
-  return rows[0] ?? null;
+  return db.insert(actionSteps).values(data);
 }
 
 export async function updateActionStep(id: number, data: Partial<InsertActionStep>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(actionSteps).set(data).where(eq(actionSteps.id, id));
-  const rows = await db.select().from(actionSteps).where(eq(actionSteps.id, id)).limit(1);
-  return rows[0] ?? null;
+  return db.update(actionSteps).set(data).where(eq(actionSteps.id, id));
 }
 
 export async function deleteActionStep(id: number) {
@@ -212,25 +251,74 @@ export async function deleteActionStep(id: number) {
 export async function bulkCreateActionSteps(data: InsertActionStep[]) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  if (data.length === 0) return [];
-  await db.insert(actionSteps).values(data);
-  const workstationIds = [...new Set(data.map(d => d.workstationId))];
-  return getActionStepsByWorkstationIds(workstationIds);
+  if (data.length === 0) return;
+  return db.insert(actionSteps).values(data);
 }
 
-// ─── Snapshots ──────────────────────────────────────────────────────────────
+export async function getActionStepsByWorkstationIds(workstationIds: number[]) {
+  const db = await getDb();
+  if (!db || workstationIds.length === 0) return [];
+  return db.select().from(actionSteps)
+    .where(inArray(actionSteps.workstationId, workstationIds))
+    .orderBy(asc(actionSteps.workstationId), asc(actionSteps.stepOrder));
+}
 
-export async function getSnapshotsByLine(productionLineId: number) {
+// ─── Hand Actions ──────────────────────────────────────────────────────────────────────────────────────
+
+export async function getHandActionsByStep(actionStepId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(analysisSnapshots)
+  return db.select().from(handActions)
+    .where(eq(handActions.actionStepId, actionStepId))
+    .orderBy(asc(handActions.hand)); // left 先、right 後
+}
+
+export async function getHandActionsByStepIds(actionStepIds: number[]) {
+  if (actionStepIds.length === 0) return [];
+  const db = await getDb();
+  if (!db) return [];
+  const { inArray } = await import("drizzle-orm");
+  return db.select().from(handActions)
+    .where(inArray(handActions.actionStepId, actionStepIds))
+    .orderBy(asc(handActions.actionStepId), asc(handActions.hand));
+}
+
+export async function upsertHandAction(data: InsertHandAction & { id?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (data.id) {
+    const { id, ...rest } = data;
+    return db.update(handActions).set(rest).where(eq(handActions.id, id));
+  }
+  return db.insert(handActions).values(data);
+}
+
+export async function deleteHandAction(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(handActions).where(eq(handActions.id, id));
+}
+
+export async function deleteHandActionsByStep(actionStepId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(handActions).where(eq(handActions.actionStepId, actionStepId));
+}
+
+// ─── Analysis Snapshot Queries ──────────────────────────────────────────────────────
+export async function getSnapshotsByLine(productionLineId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db
+    .select()
+    .from(analysisSnapshots)
     .where(eq(analysisSnapshots.productionLineId, productionLineId))
     .orderBy(desc(analysisSnapshots.createdAt));
 }
 
 export async function getSnapshotById(id: number) {
   const db = await getDb();
-  if (!db) return null;
+  if (!db) throw new Error("Database not available");
   const rows = await db.select().from(analysisSnapshots).where(eq(analysisSnapshots.id, id)).limit(1);
   return rows[0] ?? null;
 }
@@ -238,10 +326,7 @@ export async function getSnapshotById(id: number) {
 export async function createSnapshot(data: InsertAnalysisSnapshot) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(analysisSnapshots).values(data);
-  const insertId = (result as any)[0]?.insertId ?? (result as any).insertId;
-  if (!insertId) throw new Error("Failed to get insertId");
-  return getSnapshotById(Number(insertId));
+  return db.insert(analysisSnapshots).values(data);
 }
 
 export async function deleteSnapshot(id: number) {
@@ -250,52 +335,115 @@ export async function deleteSnapshot(id: number) {
   return db.delete(analysisSnapshots).where(eq(analysisSnapshots.id, id));
 }
 
-export async function updateSnapshotData(id: number, data: Partial<InsertAnalysisSnapshot>) {
+/**
+ * 更新快照的工站數據並重算衍生 KPI
+ */
+export async function updateSnapshotData(
+  id: number,
+  data: {
+    name?: string;
+    note?: string | null;
+    workstationsData: Array<{
+      id: number;
+      name: string;
+      cycleTime: number;
+      manpower: number;
+      sequenceOrder: number;
+      description?: string;
+      // 保留原有動作拆解摘要
+      actionStepCount?: number;
+      totalStepSec?: number;
+      valueAddedSec?: number;
+      nonValueAddedSec?: number;
+      necessaryWasteSec?: number;
+      valueAddedRate?: number | null;
+    }>;
+    taktTime?: number | null;
+  }
+) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(analysisSnapshots).set(data).where(eq(analysisSnapshots.id, id));
-  return getSnapshotById(id);
+
+  const ws = data.workstationsData;
+  const times = ws.map(w => w.cycleTime);
+  const totalTime = times.reduce((s, t) => s + t, 0);
+  const maxTime = Math.max(...times);
+  const minTime = Math.min(...times);
+  const avgTime = times.length > 0 ? totalTime / times.length : 0;
+  const balanceRate = maxTime > 0 ? (totalTime / (maxTime * ws.length)) * 100 : 0;
+  const balanceLoss = 100 - balanceRate;
+  const totalManpower = ws.reduce((s, w) => s + w.manpower, 0);
+  const upph = maxTime > 0 && totalManpower > 0 ? 3600 / maxTime / totalManpower : 0;
+  const bottleneck = ws.find(w => w.cycleTime === maxTime);
+
+  const taktPassStations = data.taktTime
+    ? ws.filter(w => w.cycleTime <= data.taktTime!)
+    : [];
+  const taktPassRate = data.taktTime && ws.length > 0
+    ? (taktPassStations.length / ws.length) * 100
+    : null;
+  const taktPassCount = data.taktTime ? taktPassStations.length : null;
+
+  const updateFields: Record<string, unknown> = {
+    workstationsData: ws,
+    totalTime: String(totalTime.toFixed(2)),
+    maxTime: String(maxTime.toFixed(2)),
+    minTime: String(minTime.toFixed(2)),
+    avgTime: String(avgTime.toFixed(2)),
+    balanceRate: String(balanceRate.toFixed(2)),
+    balanceLoss: String(balanceLoss.toFixed(2)),
+    workstationCount: ws.length,
+    totalManpower: Math.round(totalManpower * 10) / 10, // 保留一位小數精度
+    upph: String(upph.toFixed(4)),
+    bottleneckName: bottleneck?.name ?? null,
+    taktTime: data.taktTime != null ? String(data.taktTime) : null,
+    taktPassRate: taktPassRate != null ? String(taktPassRate.toFixed(2)) : null,
+    taktPassCount: taktPassCount,
+  };
+  if (data.name !== undefined) updateFields.name = data.name;
+  if (data.note !== undefined) updateFields.note = data.note;
+
+  return db.update(analysisSnapshots)
+    .set(updateFields as any)
+    .where(eq(analysisSnapshots.id, id));
 }
 
+/**
+ * 取得所有產線的最新快照摘要（用於首頁並排比較圖表）
+ */
 export async function getAllLinesSnapshotHistory() {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-
+  // 取得所有產線
   const lines = await db.select().from(productionLines).orderBy(asc(productionLines.id));
   if (lines.length === 0) return [];
-
+  // 對每條產線取得所有快照（按時間排序）
   const results = await Promise.all(
     lines.map(async (line) => {
       const snapshots = await db
         .select()
         .from(analysisSnapshots)
         .where(eq(analysisSnapshots.productionLineId, line.id))
-        .orderBy(desc(analysisSnapshots.createdAt))
-        .limit(100);
-
+        .orderBy(asc(analysisSnapshots.createdAt));
       return {
         lineId: line.id,
         lineName: line.name,
         lineStatus: line.status,
-        targetCycleTime: line.targetCycleTime ? Number(line.targetCycleTime) : null,
         snapshots: snapshots.map((s) => ({
           id: s.id,
           name: s.name,
           balanceRate: Number(s.balanceRate),
-          balanceLoss: Number(s.balanceLoss),
+          taktPassRate: s.taktPassRate ? Number(s.taktPassRate) : null,
+          upph: s.upph ? Number(s.upph) : null,
           maxTime: Number(s.maxTime),
           avgTime: Number(s.avgTime),
           workstationCount: s.workstationCount,
-          totalManpower: s.totalManpower,
-          taktPassRate: s.taktPassRate ? Number(s.taktPassRate) : null,
-          upph: s.upph ? Number(s.upph) : null,
-          bottleneckName: s.bottleneckName,
           createdAt: s.createdAt,
         })),
       };
     })
   );
-
+  // 只回傳有快照的產線
   return results.filter((r) => r.snapshots.length > 0);
 }
 
@@ -303,9 +451,11 @@ export async function getAllLinesLatestSnapshot() {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
+  // 取得所有產線
   const lines = await db.select().from(productionLines).orderBy(asc(productionLines.id));
   if (lines.length === 0) return [];
 
+  // 對每條產線取得最新快照
   const results = await Promise.all(
     lines.map(async (line) => {
       const snapshots = await db
@@ -315,73 +465,6 @@ export async function getAllLinesLatestSnapshot() {
         .orderBy(desc(analysisSnapshots.createdAt))
         .limit(1);
       const latest = snapshots[0] ?? null;
-      return {
-        lineId: line.id,
-        lineName: line.name,
-        lineStatus: line.status,
-        targetCycleTime: line.targetCycleTime ? Number(line.targetCycleTime) : null,
-        snapshot: latest ? {
-          id: latest.id,
-          name: latest.name,
-          balanceRate: Number(latest.balanceRate),
-          balanceLoss: Number(latest.balanceLoss),
-          maxTime: Number(latest.maxTime),
-          avgTime: Number(latest.avgTime),
-          workstationCount: latest.workstationCount,
-          totalManpower: latest.totalManpower,
-          taktPassRate: latest.taktPassRate ? Number(latest.taktPassRate) : null,
-          upph: latest.upph ? Number(latest.upph) : null,
-          bottleneckName: latest.bottleneckName,
-          createdAt: latest.createdAt,
-        } : null,
-      };
-    })
-  );
-  return results;
-}
-
-// 取得快照名稱中日期最新的快照
-export async function getAllLinesLatestSnapshotByDate() {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const lines = await db.select().from(productionLines).orderBy(asc(productionLines.id));
-  if (lines.length === 0) return [];
-
-  const results = await Promise.all(
-    lines.map(async (line) => {
-      const snapshots = await db
-        .select()
-        .from(analysisSnapshots)
-        .where(eq(analysisSnapshots.productionLineId, line.id));
-      
-      if (snapshots.length === 0) {
-        return {
-          lineId: line.id,
-          lineName: line.name,
-          lineStatus: line.status,
-          targetCycleTime: line.targetCycleTime ? Number(line.targetCycleTime) : null,
-          snapshot: null,
-        };
-      }
-
-      // 從快照名稱中提取日期並排序
-      const snapshotsWithDate = snapshots
-        .map((s) => {
-          // 嘗試從名稱中提取日期（格式：YYYY/M/D 或 YYYY/MM/DD）
-          const dateMatch = s.name.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})/);
-          let date = new Date(0);
-          if (dateMatch) {
-            const year = parseInt(dateMatch[1], 10);
-            const month = parseInt(dateMatch[2], 10);
-            const day = parseInt(dateMatch[3], 10);
-            date = new Date(year, month - 1, day);
-          }
-          return { snapshot: s, date };
-        })
-        .sort((a, b) => b.date.getTime() - a.date.getTime());
-
-      const latest = snapshotsWithDate[0]?.snapshot ?? null;
       return {
         lineId: line.id,
         lineName: line.name,
@@ -486,20 +569,40 @@ export async function deleteProductModel(id: number) {
   return db.delete(productModels).where(eq(productModels.id, id));
 }
 
-// ─── Product Instances ──────────────────────────────────────────────────────
-
-export async function getProductInstancesByModel(productModelId: number) {
+export async function updateScenarioBackground(
+  id: number,
+  data: {
+    backgroundSvg?: string | null;
+    backgroundLayers?: unknown;
+    backgroundOpacity?: string;
+    backgroundOffsetX?: string;
+    backgroundOffsetY?: string;
+    backgroundScale?: string;
+    backgroundFileName?: string | null;
+  }
+) {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) throw new Error("Database not available");
+  await db.update(simulationScenarios).set(data as any).where(eq(simulationScenarios.id, id));
+  return getSimulationById(id);
+}
+
+// ─── Product Instances ─────────────────────────────────────────────────────
+
+
+
+export async function listProductInstances(productionLineId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
   return db.select().from(productInstances)
-    .where(eq(productInstances.productModelId, productModelId))
-    .orderBy(desc(productInstances.createdAt));
+    .where(eq(productInstances.productionLineId, productionLineId))
+    .orderBy(productInstances.createdAt);
 }
 
 export async function getProductInstanceById(id: number) {
   const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(productInstances).where(eq(productInstances.id, id)).limit(1);
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(productInstances).where(eq(productInstances.id, id));
   return rows[0] ?? null;
 }
 
@@ -507,282 +610,377 @@ export async function createProductInstance(data: InsertProductInstance) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(productInstances).values(data);
-  const insertId = (result as any)[0]?.insertId;
-  if (!insertId) throw new Error("Failed to get insertId");
-  return getProductInstanceById(Number(insertId));
+  const id = (result as any)[0]?.insertId as number;
+  return getProductInstanceById(id);
 }
 
 export async function updateProductInstance(id: number, data: Partial<InsertProductInstance>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(productInstances).set(data).where(eq(productInstances.id, id));
+  await db.update(productInstances).set(data as any).where(eq(productInstances.id, id));
   return getProductInstanceById(id);
 }
 
 export async function deleteProductInstance(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  // 先刪除所有流程記錄
+  await db.delete(productFlowRecords).where(eq(productFlowRecords.productInstanceId, id));
   return db.delete(productInstances).where(eq(productInstances.id, id));
 }
 
-// ─── Product Flow Records ───────────────────────────────────────────────────
+// ─── Product Flow Records ─────────────────────────────────────────────────────
 
-export async function getProductFlowRecordsByInstance(productInstanceId: number) {
+export async function listFlowRecordsByInstance(productInstanceId: number) {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) throw new Error("Database not available");
   return db.select().from(productFlowRecords)
     .where(eq(productFlowRecords.productInstanceId, productInstanceId))
-    .orderBy(asc(productFlowRecords.sequenceOrder));
+    .orderBy(productFlowRecords.sequenceOrder);
 }
 
-export async function getProductFlowRecordById(id: number) {
+export async function getFlowRecordById(id: number) {
   const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(productFlowRecords).where(eq(productFlowRecords.id, id)).limit(1);
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(productFlowRecords).where(eq(productFlowRecords.id, id));
   return rows[0] ?? null;
 }
 
-export async function createProductFlowRecord(data: InsertProductFlowRecord) {
+export async function createFlowRecord(data: InsertProductFlowRecord) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(productFlowRecords).values(data);
-  const insertId = (result as any)[0]?.insertId;
-  if (!insertId) throw new Error("Failed to get insertId");
-  return getProductFlowRecordById(Number(insertId));
+  const id = (result as any)[0]?.insertId as number;
+  return getFlowRecordById(id);
 }
 
-export async function updateProductFlowRecord(id: number, data: Partial<InsertProductFlowRecord>) {
+export async function updateFlowRecord(id: number, data: Partial<InsertProductFlowRecord>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(productFlowRecords).set(data).where(eq(productFlowRecords.id, id));
-  return getProductFlowRecordById(id);
+  await db.update(productFlowRecords).set(data as any).where(eq(productFlowRecords.id, id));
+  return getFlowRecordById(id);
 }
 
-export async function deleteProductFlowRecord(id: number) {
+export async function deleteFlowRecord(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.delete(productFlowRecords).where(eq(productFlowRecords.id, id));
 }
 
-// ─── VSM Diagrams ───────────────────────────────────────────────────────────
+export async function upsertFlowRecords(productInstanceId: number, records: InsertProductFlowRecord[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // 刪除舊記錄後重新插入（批量更新）
+  await db.delete(productFlowRecords).where(eq(productFlowRecords.productInstanceId, productInstanceId));
+  if (records.length > 0) {
+    await db.insert(productFlowRecords).values(records);
+  }
+  return listFlowRecordsByInstance(productInstanceId);
+}
 
+// 批次查詢多個 instance 的所有流程記錄（用於甘特圖）
+export async function listFlowRecordsByInstances(instanceIds: number[]) {
+  if (instanceIds.length === 0) return [];
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(productFlowRecords)
+    .where(inArray(productFlowRecords.productInstanceId, instanceIds))
+    .orderBy(productFlowRecords.productInstanceId, productFlowRecords.sequenceOrder);
+}
+
+
+// ============ VSM 工作流程 ============
+
+// VSM 圖表 - 列表查詢
 export async function listVSMDiagrams(productionLineId: number) {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) throw new Error("Database not available");
   return db.select().from(vsmDiagrams)
     .where(eq(vsmDiagrams.productionLineId, productionLineId))
     .orderBy(desc(vsmDiagrams.updatedAt));
 }
 
+// VSM 圖表 - 單筆查詢
 export async function getVSMDiagramById(id: number) {
   const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(vsmDiagrams).where(eq(vsmDiagrams.id, id)).limit(1);
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(vsmDiagrams).where(eq(vsmDiagrams.id, id));
   return rows[0] ?? null;
 }
 
+// VSM 圖表 - 建立
 export async function createVSMDiagram(data: InsertVSMDiagram) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(vsmDiagrams).values(data);
-  const insertId = (result as any)[0]?.insertId;
-  if (!insertId) throw new Error("Failed to get insertId");
-  return getVSMDiagramById(Number(insertId));
-}
-
-export async function updateVSMDiagram(id: number, data: Partial<InsertVSMDiagram>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await db.update(vsmDiagrams).set(data).where(eq(vsmDiagrams.id, id));
+  const id = (result as any)[0]?.insertId as number;
   return getVSMDiagramById(id);
 }
 
+// VSM 圖表 - 更新
+export async function updateVSMDiagram(id: number, data: Partial<InsertVSMDiagram>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(vsmDiagrams).set(data as any).where(eq(vsmDiagrams.id, id));
+  return getVSMDiagramById(id);
+}
+
+// VSM 圖表 - 刪除
 export async function deleteVSMDiagram(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.delete(vsmDiagrams).where(eq(vsmDiagrams.id, id));
 }
 
-// ─── VSM Processes ──────────────────────────────────────────────────────────
-
-export async function listVSMProcesses(diagramId: number) {
+// VSM 工序 - 列表查詢
+export async function listVSMProcesses(vsmDiagramId: number) {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) throw new Error("Database not available");
   return db.select().from(vsmProcesses)
-    .where(eq(vsmProcesses.diagramId, diagramId))
-    .orderBy(asc(vsmProcesses.sequenceOrder));
+    .where(eq(vsmProcesses.vsmDiagramId, vsmDiagramId))
+    .orderBy(asc(vsmProcesses.positionX), asc(vsmProcesses.positionY));
 }
 
+// VSM 工序 - 單筆查詢
 export async function getVSMProcessById(id: number) {
   const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(vsmProcesses).where(eq(vsmProcesses.id, id)).limit(1);
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(vsmProcesses).where(eq(vsmProcesses.id, id));
   return rows[0] ?? null;
 }
 
+// VSM 工序 - 建立
 export async function createVSMProcess(data: InsertVSMProcess) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(vsmProcesses).values(data);
-  const insertId = (result as any)[0]?.insertId;
-  if (!insertId) throw new Error("Failed to get insertId");
-  return getVSMProcessById(Number(insertId));
-}
-
-export async function updateVSMProcess(id: number, data: Partial<InsertVSMProcess>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await db.update(vsmProcesses).set(data).where(eq(vsmProcesses.id, id));
+  const id = (result as any)[0]?.insertId as number;
   return getVSMProcessById(id);
 }
 
+// VSM 工序 - 更新
+export async function updateVSMProcess(id: number, data: Partial<InsertVSMProcess>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(vsmProcesses).set(data as any).where(eq(vsmProcesses.id, id));
+  return getVSMProcessById(id);
+}
+
+// VSM 工序 - 刪除
 export async function deleteVSMProcess(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.delete(vsmProcesses).where(eq(vsmProcesses.id, id));
 }
 
-export async function deleteVSMProcessesByDiagram(diagramId: number) {
+// VSM 工序 - 批量刪除（用於刪除圖表時）
+export async function deleteVSMProcessesByDiagram(vsmDiagramId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.delete(vsmProcesses).where(eq(vsmProcesses.diagramId, diagramId));
+  return db.delete(vsmProcesses).where(eq(vsmProcesses.vsmDiagramId, vsmDiagramId));
 }
 
-// ─── VSM Flows ──────────────────────────────────────────────────────────────
-
-export async function listVSMFlows(diagramId: number) {
+// VSM 流線 - 列表查詢
+export async function listVSMFlows(vsmDiagramId: number) {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) throw new Error("Database not available");
   return db.select().from(vsmFlows)
-    .where(eq(vsmFlows.diagramId, diagramId));
+    .where(eq(vsmFlows.vsmDiagramId, vsmDiagramId))
+    .orderBy(asc(vsmFlows.fromProcessId), asc(vsmFlows.toProcessId));
 }
 
+// VSM 流線 - 單筆查詢
 export async function getVSMFlowById(id: number) {
   const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(vsmFlows).where(eq(vsmFlows.id, id)).limit(1);
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(vsmFlows).where(eq(vsmFlows.id, id));
   return rows[0] ?? null;
 }
 
+// VSM 流線 - 建立
 export async function createVSMFlow(data: InsertVSMFlow) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(vsmFlows).values(data);
-  const insertId = (result as any)[0]?.insertId;
-  if (!insertId) throw new Error("Failed to get insertId");
-  return getVSMFlowById(Number(insertId));
-}
-
-export async function updateVSMFlow(id: number, data: Partial<InsertVSMFlow>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await db.update(vsmFlows).set(data).where(eq(vsmFlows.id, id));
+  const id = (result as any)[0]?.insertId as number;
   return getVSMFlowById(id);
 }
 
+// VSM 流線 - 更新
+export async function updateVSMFlow(id: number, data: Partial<InsertVSMFlow>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(vsmFlows).set(data as any).where(eq(vsmFlows.id, id));
+  return getVSMFlowById(id);
+}
+
+// VSM 流線 - 刪除
 export async function deleteVSMFlow(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.delete(vsmFlows).where(eq(vsmFlows.id, id));
 }
 
-export async function deleteVSMFlowsByDiagram(diagramId: number) {
+// VSM 流線 - 批量刪除（用於刪除圖表時）
+export async function deleteVSMFlowsByDiagram(vsmDiagramId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.delete(vsmFlows).where(eq(vsmFlows.diagramId, diagramId));
+  return db.delete(vsmFlows).where(eq(vsmFlows.vsmDiagramId, vsmDiagramId));
 }
 
-// ─── VSM Versions ───────────────────────────────────────────────────────────
-
-export async function listVSMVersions(diagramId: number) {
+// VSM 版本 - 列表查詢
+export async function listVSMVersions(vsmDiagramId: number) {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) throw new Error("Database not available");
   return db.select().from(vsmVersions)
-    .where(eq(vsmVersions.diagramId, diagramId))
-    .orderBy(desc(vsmVersions.createdAt));
+    .where(eq(vsmVersions.vsmDiagramId, vsmDiagramId))
+    .orderBy(desc(vsmVersions.versionNumber));
 }
 
+// VSM 版本 - 單筆查詢
 export async function getVSMVersionById(id: number) {
   const db = await getDb();
-  if (!db) return null;
-  const rows = await db.select().from(vsmVersions).where(eq(vsmVersions.id, id)).limit(1);
-  return rows[0] ?? null;
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(vsmVersions).where(eq(vsmVersions.id, id));
+  const version = rows[0];
+  if (!version) return null;
+
+  // 解析快照
+  const processes = Array.isArray(version.processesSnapshot) ? version.processesSnapshot : JSON.parse(version.processesSnapshot as any);
+  const flows = Array.isArray(version.flowsSnapshot) ? version.flowsSnapshot : JSON.parse(version.flowsSnapshot as any);
+
+  return {
+    ...version,
+    name: `Version ${version.versionNumber}`,
+    processes,
+    flows,
+  };
 }
 
+// VSM 版本 - 建立（保存快照）
 export async function createVSMVersion(data: InsertVSMVersion) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(vsmVersions).values(data);
-  const insertId = (result as any)[0]?.insertId;
-  if (!insertId) throw new Error("Failed to get insertId");
-  return getVSMVersionById(Number(insertId));
+  const id = (result as any)[0]?.insertId as number;
+  return getVSMVersionById(id);
 }
 
-export async function restoreVSMVersion(id: number) {
+// VSM 版本 - 恢復到特定版本
+export async function restoreVSMVersion(versionId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const version = await getVSMVersionById(id);
+  const version = await getVSMVersionById(versionId);
   if (!version) throw new Error("Version not found");
   
-  const diagram = await getVSMDiagramById(version.diagramId);
+  // 取得圖表資訊
+  const diagram = await getVSMDiagramById(version.vsmDiagramId);
   if (!diagram) throw new Error("Diagram not found");
   
-  // 清除現有工序和流線
-  await deleteVSMProcessesByDiagram(version.diagramId);
-  await deleteVSMFlowsByDiagram(version.diagramId);
+  // 刪除現有工序和流線
+  await deleteVSMProcessesByDiagram(version.vsmDiagramId);
+  await deleteVSMFlowsByDiagram(version.vsmDiagramId);
   
-  // 恢復版本中的工序和流線
-  const processesSnapshot = JSON.parse(version.processesSnapshot as string) as InsertVSMProcess[];
-  const flowsSnapshot = JSON.parse(version.flowsSnapshot as string) as InsertVSMFlow[];
-  
-  for (const process of processesSnapshot) {
-    await createVSMProcess(process);
+  // 恢復工序
+  const processesSnapshot = version.processesSnapshot as any[];
+  if (Array.isArray(processesSnapshot)) {
+    for (const process of processesSnapshot) {
+      await createVSMProcess({
+        vsmDiagramId: version.vsmDiagramId,
+        name: process.name,
+        type: process.type,
+        cycleTime: process.cycleTime,
+        manpower: process.manpower,
+        valueAddedRate: process.valueAddedRate,
+        positionX: process.positionX,
+        positionY: process.positionY,
+        width: process.width,
+        height: process.height,
+        notes: process.notes,
+        workstationId: process.workstationId,
+      });
+    }
   }
   
-  for (const flow of flowsSnapshot) {
-    await createVSMFlow(flow);
+  // 恢復流線
+  const flowsSnapshot = version.flowsSnapshot as any[];
+  if (Array.isArray(flowsSnapshot)) {
+    for (const flow of flowsSnapshot) {
+      await createVSMFlow({
+        vsmDiagramId: version.vsmDiagramId,
+        fromProcessId: flow.fromProcessId,
+        toProcessId: flow.toProcessId,
+        flowType: flow.flowType,
+        cycleTime: flow.cycleTime,
+        quantity: flow.quantity,
+        notes: flow.notes,
+      });
+    }
   }
   
-  return getVSMDiagramById(version.diagramId);
+  return diagram;
 }
 
-// ─── Hand Actions ───────────────────────────────────────────────────────────
 
-export async function getHandActionsByStep(actionStepId: number) {
+// 取得快照名稱中日期最新的快照
+export async function getAllLinesLatestSnapshotByDate() {
   const db = await getDb();
-  if (!db) return [];
-  return db.select().from(handActions)
-    .where(eq(handActions.actionStepId, actionStepId))
-    .orderBy(asc(handActions.sequenceOrder));
-}
+  if (!db) throw new Error("Database not available");
 
-export async function getHandActionsByStepIds(stepIds: number[]) {
-  const db = await getDb();
-  if (!db) return [];
-  if (stepIds.length === 0) return [];
-  return db.select().from(handActions).where(
-    (col) => col.inArray(handActions.actionStepId, stepIds)
+  // 取得所有產線
+  const lines = await db.select().from(productionLines).orderBy(asc(productionLines.id));
+  if (lines.length === 0) return [];
+
+  // 對每條產線取得所有快照，按名稱中的日期排序
+  const results = await Promise.all(
+    lines.map(async (line) => {
+      const snapshots = await db
+        .select()
+        .from(analysisSnapshots)
+        .where(eq(analysisSnapshots.productionLineId, line.id));
+      
+      if (snapshots.length === 0) {
+        return {
+          lineId: line.id,
+          lineName: line.name,
+          lineStatus: line.status,
+          targetCycleTime: line.targetCycleTime ? Number(line.targetCycleTime) : null,
+          snapshot: null,
+        };
+      }
+
+      // 從快Snapshot名稱中提取日期並排序
+      const snapshotsWithDate = snapshots
+        .map((s) => {
+          // 嘗試從名稱中提取日期（格式：YYYY-MM-DD 或 YYYY-MM-DD HH:mm）
+          const dateMatch = s.name.match(/(\d{4}-\d{2}-\d{2})/);
+          const date = dateMatch ? new Date(dateMatch[1]) : new Date(0);
+          return { snapshot: s, date };
+        })
+        .sort((a, b) => b.date.getTime() - a.date.getTime());
+
+      const latest = snapshotsWithDate[0]?.snapshot ?? null;
+      return {
+        lineId: line.id,
+        lineName: line.name,
+        lineStatus: line.status,
+        targetCycleTime: line.targetCycleTime ? Number(line.targetCycleTime) : null,
+        snapshot: latest ? {
+          id: latest.id,
+          name: latest.name,
+          balanceRate: Number(latest.balanceRate),
+          balanceLoss: Number(latest.balanceLoss),
+          maxTime: Number(latest.maxTime),
+          avgTime: Number(latest.avgTime),
+          workstationCount: latest.workstationCount,
+          totalManpower: latest.totalManpower,
+          taktPassRate: latest.taktPassRate ? Number(latest.taktPassRate) : null,
+          upph: latest.upph ? Number(latest.upph) : null,
+          bottleneckName: latest.bottleneckName,
+          createdAt: latest.createdAt,
+        } : null,
+      };
+    })
   );
-}
-
-export async function upsertHandAction(data: InsertHandAction) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await db.insert(handActions).values(data).onDuplicateKeyUpdate({ set: data });
-  const rows = await db.select().from(handActions)
-    .where(eq(handActions.actionStepId, data.actionStepId))
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-export async function deleteHandAction(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.delete(handActions).where(eq(handActions.id, id));
-}
-
-export async function deleteHandActionsByStep(actionStepId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.delete(handActions).where(eq(handActions.actionStepId, actionStepId));
+  return results;
 }
