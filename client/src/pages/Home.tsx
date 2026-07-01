@@ -18,14 +18,14 @@ import {
 import { useMemo } from "react";
 
 // ─── 平衡率色彩對照 ────────────────────────────────────────────────────────────
-function getBalanceColor(rate: number) {
+export function getBalanceColor(rate: number) {
   if (rate >= 90) return { bar: "#34d399", text: "text-emerald-400", badge: "bg-emerald-400/15 text-emerald-400 border-emerald-400/30" };
   if (rate >= 80) return { bar: "#22d3ee", text: "text-cyan-400",    badge: "bg-cyan-400/15 text-cyan-400 border-cyan-400/30" };
   if (rate >= 70) return { bar: "#f59e0b", text: "text-amber-400",   badge: "bg-amber-400/15 text-amber-400 border-amber-400/30" };
   return           { bar: "#f87171", text: "text-red-400",           badge: "bg-red-400/15 text-red-400 border-red-400/30" };
 }
 
-function getBalanceLabel(rate: number) {
+export function getBalanceLabel(rate: number) {
   if (rate >= 90) return "優秀";
   if (rate >= 80) return "良好";
   if (rate >= 70) return "普通";

@@ -769,3 +769,9 @@
 - [ ] 前端頁面瀏覽器測試
 - [ ] 實時資料更新驗證
 - [ ] 響應式設計驗證
+
+## 平衡率判定條件統一（新增）
+- [x] 提取 getBalanceColor 和 getBalanceLabel 函式為共用函式（Home.tsx）
+- [x] 修正 BalanceAnalysis.tsx 平衡率判定條件，統一使用 4 級標準（≥90%/≥80%/≥70%/<70%）
+- [x] 驗證首頁快照排序邏輯（按快照名稱中的日期從新到舊排序）
+- [x] 確認 getAllLinesLatestSnapshotByDate API 正確返回日期最新的快照

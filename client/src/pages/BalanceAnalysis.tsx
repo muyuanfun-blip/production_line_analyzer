@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { FormulaTooltip } from "@/components/FormulaTooltip";
+import { getBalanceColor, getBalanceLabel } from "./Home";
 
 // ─── Color Tokens ──────────────────────────────────────────────────────────────
 const COLORS = {
@@ -492,10 +493,10 @@ export default function BalanceAnalysis() {
               {
                 label: "產線平衡率",
                 value: `${analysis.balanceRate.toFixed(1)}%`,
-                sub: analysis.balanceRate >= 85 ? "優秀" : analysis.balanceRate >= 70 ? "良好" : "需改善",
+                sub: getBalanceLabel(analysis.balanceRate),
                 icon: TrendingUp,
-                color: analysis.balanceRate >= 85 ? "text-emerald-400" : analysis.balanceRate >= 70 ? "text-amber-400" : "text-orange-400",
-                bg: analysis.balanceRate >= 85 ? "bg-emerald-400/10" : analysis.balanceRate >= 70 ? "bg-amber-400/10" : "bg-orange-400/10",
+                color: getBalanceColor(analysis.balanceRate).text,
+                bg: getBalanceColor(analysis.balanceRate).badge.split(" ")[0],
                 formulaKey: "balanceRate",
                 liveValues: { "總工序時間": `${analysis.totalTime.toFixed(1)}s`, "瓶頸時間": `${analysis.maxTime.toFixed(1)}s`, "工站數": analysis.workstationCount },
               },
@@ -714,7 +715,7 @@ export default function BalanceAnalysis() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">產線平衡率</span>
-                  <span className={`font-bold ${analysis.balanceRate >= 85 ? "text-emerald-400" : analysis.balanceRate >= 70 ? "text-amber-400" : "text-orange-400"}`}>
+                  <span className={`font-bold ${getBalanceColor(analysis.balanceRate).text}`}>
                     {analysis.balanceRate.toFixed(1)}%
                   </span>
                 </div>
@@ -723,11 +724,7 @@ export default function BalanceAnalysis() {
                     className="h-full rounded-full transition-all duration-1000"
                     style={{
                       width: `${analysis.balanceRate}%`,
-                      background: analysis.balanceRate >= 85
-                        ? "linear-gradient(90deg, #4ade80, #22d3ee)"
-                        : analysis.balanceRate >= 70
-                        ? "linear-gradient(90deg, #eab308, #f97316)"
-                        : "linear-gradient(90deg, #f97316, #ef4444)",
+                      background: getBalanceColor(analysis.balanceRate).bar,
                     }}
                   />
                 </div>
