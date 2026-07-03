@@ -25,6 +25,8 @@ type WsFormData = {
   sequenceOrder: string;
   cycleTime: string;
   manpower: string;
+  morningManpower: string;
+  eveningManpower: string;
   description: string;
   notes: string;
 };
@@ -45,10 +47,10 @@ export default function WorkstationManager() {
   const [importText, setImportText] = useState("");
   const [importPreview, setImportPreview] = useState<any[]>([]);
   // 快速內嵌編輯狀態
-  const [inlineEdits, setInlineEdits] = useState<Record<number, { cycleTime: string; manpower: string }>>({});
+  const [inlineEdits, setInlineEdits] = useState<Record<number, { cycleTime: string; manpower: string; morningManpower: string; eveningManpower: string }>>({});
   const [savingInline, setSavingInline] = useState<Record<number, boolean>>({});
   const [form, setForm] = useState<WsFormData>({
-    name: "", sequenceOrder: "", cycleTime: "", manpower: "1", description: "", notes: ""
+    name: "", sequenceOrder: "", cycleTime: "", manpower: "1", morningManpower: "0", eveningManpower: "0", description: "", notes: ""
   });
 
   const createMutation = trpc.workstation.create.useMutation({
@@ -94,7 +96,7 @@ export default function WorkstationManager() {
     onError: () => toast.error("匯入失敗"),
   });
 
-  const resetForm = () => setForm({ name: "", sequenceOrder: "", cycleTime: "", manpower: "1", description: "", notes: "" });
+  const resetForm = () => setForm({ name: "", sequenceOrder: "", cycleTime: "", manpower: "1", morningManpower: "0", eveningManpower: "0", description: "", notes: "" });
 
   const openCreate = () => {
     resetForm();
@@ -110,6 +112,8 @@ export default function WorkstationManager() {
       sequenceOrder: ws.sequenceOrder.toString(),
       cycleTime: ws.cycleTime.toString(),
       manpower: ws.manpower.toString(),
+      morningManpower: ws.morningManpower?.toString() ?? "0",
+      eveningManpower: ws.eveningManpower?.toString() ?? "0",
       description: ws.description ?? "",
       notes: ws.notes ?? "",
     });
@@ -125,6 +129,8 @@ export default function WorkstationManager() {
       sequenceOrder: parseInt(form.sequenceOrder) || 0,
       cycleTime: parseFloat(form.cycleTime),
       manpower: parseFloat(form.manpower) || 1,
+      morningManpower: parseFloat(form.morningManpower) || 0,
+      eveningManpower: parseFloat(form.eveningManpower) || 0,
       description: form.description || undefined,
       notes: form.notes || undefined,
     };
@@ -180,7 +186,12 @@ export default function WorkstationManager() {
   const startInlineEdit = (ws: any) => {
     setInlineEdits(prev => ({
       ...prev,
-      [ws.id]: { cycleTime: ws.cycleTime.toString(), manpower: ws.manpower.toString() }
+      [ws.id]: { 
+        cycleTime: ws.cycleTime.toString(), 
+        manpower: ws.manpower.toString(),
+        morningManpower: ws.morningManpower?.toString() ?? "0",
+        eveningManpower: ws.eveningManpower?.toString() ?? "0"
+      }
     }));
   };
 
@@ -485,6 +496,32 @@ export default function WorkstationManager() {
                   min="0.5"
                   step="0.5"
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>早班人力</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={form.morningManpower}
+                    onChange={e => setForm(f => ({ ...f, morningManpower: e.target.value }))}
+                    className="bg-input border-border"
+                    min="0"
+                    step="0.5"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>晚班人力</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={form.eveningManpower}
+                    onChange={e => setForm(f => ({ ...f, eveningManpower: e.target.value }))}
+                    className="bg-input border-border"
+                    min="0"
+                    step="0.5"
+                  />
+                </div>
               </div>
             </div>
             <div className="space-y-2">

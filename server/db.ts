@@ -350,6 +350,8 @@ export async function updateSnapshotData(
       manpower: number;
       sequenceOrder: number;
       description?: string;
+      morningManpower?: number | string;
+      eveningManpower?: number | string;
       // 保留原有動作拆解摘要
       actionStepCount?: number;
       totalStepSec?: number;
@@ -372,7 +374,13 @@ export async function updateSnapshotData(
   const avgTime = times.length > 0 ? totalTime / times.length : 0;
   const balanceRate = maxTime > 0 ? (totalTime / (maxTime * ws.length)) * 100 : 0;
   const balanceLoss = 100 - balanceRate;
-  const totalManpower = ws.reduce((s, w) => s + w.manpower, 0);
+  // 計算總人力：優先使用早晚班加總，若無則使用 manpower 欄位（相容舊資料）
+  const totalManpower = ws.reduce((s, w) => {
+    const morning = Number(w.morningManpower) || 0;
+    const evening = Number(w.eveningManpower) || 0;
+    const combined = morning + evening;
+    return s + (combined > 0 ? combined : Number(w.manpower) || 0);
+  }, 0);
   const upph = maxTime > 0 && totalManpower > 0 ? 3600 / maxTime / totalManpower : 0;
   const bottleneck = ws.find(w => w.cycleTime === maxTime);
 

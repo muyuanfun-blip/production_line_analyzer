@@ -221,7 +221,13 @@ export default function BalanceAnalysis() {
       };
     });
 
-    const totalManpower = workstations.reduce((s, w) => s + parseFloat(w.manpower.toString()), 0);
+    // 計算總人力：優先使用早晚班加總，若無則使用 manpower 欄位（相容舊資料）
+    const totalManpower = workstations.reduce((s, w) => {
+      const morning = parseFloat(w.morningManpower?.toString() ?? "0") || 0;
+      const evening = parseFloat(w.eveningManpower?.toString() ?? "0") || 0;
+      const combined = morning + evening;
+      return s + (combined > 0 ? combined : parseFloat(w.manpower.toString()));
+    }, 0);
     // UPPH = 3600 ÷ maxTime ÷ totalManpower
     // 意義：在瓶頸工站節拍下，每人每小時可產出的件數
     const upph = totalManpower > 0 && maxTime > 0

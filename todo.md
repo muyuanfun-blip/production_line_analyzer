@@ -775,3 +775,14 @@
 - [x] 修正 BalanceAnalysis.tsx 平衡率判定條件，統一使用 4 級標準（≥90%/≥80%/≥70%/<70%）
 - [x] 驗證首頁快照排序邏輯（按快照名稱中的日期從新到舊排序）
 - [x] 確認 getAllLinesLatestSnapshotByDate API 正確返回日期最新的快照
+
+## 早晚班人力配置支援（新增）
+- [x] 修改 workstations 資料表：新增 morningManpower 和 eveningManpower 欄位
+- [x] 執行資料庫遷移（ALTER TABLE）
+- [ ] 建立資料遷移指令汁：將現有 manpower 資料遷移到 morningManpower
+- [x] 更新後端 workstation CRUD API：支援早晚班人力輸入
+- [x] 更新前端工站管理介面：分別輸入早班和晚班人力
+- [x] 修正 UPPH 計算公式：使用 (morningManpower + eveningManpower) 替代 totalManpower
+- [ ] 更新快照計算邏輯：儲存早晚班人力資訊
+- [ ] 更新前端顯示：工站表格顯示早晚班人力和加總人力
+- [ ] 撰寫相關測試（早晚班人力計算）
