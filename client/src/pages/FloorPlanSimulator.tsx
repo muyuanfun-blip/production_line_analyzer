@@ -35,6 +35,8 @@ export type FloorWs = {
   operatorTime: number; // 人員作業時間（秒）
   machineTime: number;  // 設備作業時間（秒）
   manpower: number;
+  morningManpower?: number;
+  eveningManpower?: number;
   operatorCount: number; // 人員數量（配置人數）
   machineCount: number;  // 設備數量（0=純人工）
   sequenceOrder: number;
@@ -273,7 +275,14 @@ function calcKPI(workstations: FloorWs[], connections: FloorConnection[], scaleP
   const avgCt = totalCt / cts.length;
   const bottleneck = workstations.find(w => Math.max(w.operatorTime, w.machineTime) === maxCt);
   const balanceRate = (totalCt / (maxCt * cts.length)) * 100;
-  const totalManpower = workstations.reduce((s, w) => s + w.manpower, 0);
+  // 計算總人力：優先使用早晚班加總，若無則使用 manpower 欄位（相容舊資料）
+  const totalManpower = workstations.reduce((s, w) => {
+    const morning = parseFloat(w.morningManpower?.toString() ?? "0") || 0;
+    const evening = parseFloat(w.eveningManpower?.toString() ?? "0") || 0;
+    const combined = morning + evening;
+    return s + (combined > 0 ? combined : w.manpower);
+  }, 0);
+
   const totalOperators = workstations.reduce((s, w) => s + (w.operatorCount ?? 1), 0);
   const totalMachines = workstations.reduce((s, w) => s + (w.machineCount ?? 1), 0);
   const upph = totalManpower > 0 && maxCt > 0 ? 3600 / maxCt / totalManpower : 0;

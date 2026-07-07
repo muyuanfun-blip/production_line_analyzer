@@ -31,6 +31,8 @@ type SimWorkstation = {
   name: string;
   cycleTime: number;
   manpower: number;
+  morningManpower?: number;
+  eveningManpower?: number;
   sequenceOrder: number;
   description?: string;
 };
@@ -99,7 +101,13 @@ function calcKPI(workstations: SimWorkstation[], taktTime?: number) {
   const avgTime = totalTime / times.length;
   const balanceRate = (totalTime / (maxTime * times.length)) * 100;
   const balanceLoss = 100 - balanceRate;
-  const totalManpower = workstations.reduce((s, w) => s + w.manpower, 0);
+  // 計算總人力：優先使用早晚班加總，若無則使用 manpower 欄位（相容舊資料）
+  const totalManpower = workstations.reduce((s, w) => {
+    const morning = parseFloat(w.morningManpower?.toString() ?? "0") || 0;
+    const evening = parseFloat(w.eveningManpower?.toString() ?? "0") || 0;
+    const combined = morning + evening;
+    return s + (combined > 0 ? combined : w.manpower);
+  }, 0);
   const upph = totalManpower > 0 && maxTime > 0 ? 3600 / maxTime / totalManpower : 0;
   const taktStats = taktTime ? {
     passRate: (workstations.filter(w => w.cycleTime <= taktTime).length / workstations.length) * 100,

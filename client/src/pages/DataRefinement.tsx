@@ -81,6 +81,8 @@ interface WorkstationRow {
   name: string;
   cycleTime: number;
   manpower: number;
+  morningManpower?: number;
+  eveningManpower?: number;
   sequenceOrder: number;
   description?: string;
   actionStepCount?: number;
@@ -166,7 +168,13 @@ function calcKpi(rows: EditRow[], taktTime: number | null) {
   const minTime = Math.min(...times);
   const avgTime = totalTime / rows.length;
   const balanceRate = maxTime > 0 ? (totalTime / (maxTime * rows.length)) * 100 : 0;
-  const totalManpower = rows.reduce((s, r) => s + r.manpower, 0);
+  // 計算總人力：優先使用早晚班加總，若無則使用 manpower 欄位（相容舊資料）
+  const totalManpower = rows.reduce((s, r) => {
+    const morning = parseFloat(r.morningManpower?.toString() ?? "0") || 0;
+    const evening = parseFloat(r.eveningManpower?.toString() ?? "0") || 0;
+    const combined = morning + evening;
+    return s + (combined > 0 ? combined : r.manpower);
+  }, 0);
   const upph = maxTime > 0 && totalManpower > 0 ? 3600 / maxTime / totalManpower : 0;
   const bottleneck = rows.find(r => r.cycleTime === maxTime);
   const taktPassCount = taktTime ? rows.filter(r => r.cycleTime <= taktTime).length : null;

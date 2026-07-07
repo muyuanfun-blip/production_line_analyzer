@@ -40,7 +40,13 @@ export default function AISuggestions() {
     const avgTime = totalTime / times.length;
     const balanceRate = (totalTime / (maxTime * workstations.length)) * 100;
     const bottleneck = workstations.find(w => parseFloat(w.cycleTime.toString()) === maxTime);
-    const totalManpower = workstations.reduce((s, w) => s + parseFloat(w.manpower.toString()), 0);
+    // 計算總人力：優先使用早晚班加總，若無則使用 manpower 欄位（相容舊資料）
+    const totalManpower = workstations.reduce((s, w) => {
+      const morning = parseFloat(w.morningManpower?.toString() ?? "0") || 0;
+      const evening = parseFloat(w.eveningManpower?.toString() ?? "0") || 0;
+      const combined = morning + evening;
+      return s + (combined > 0 ? combined : parseFloat(w.manpower.toString()));
+    }, 0);
     const upph = maxTime > 0 && totalManpower > 0 ? 3600 / maxTime / totalManpower : null;
     return { totalTime, maxTime, avgTime, balanceRate, bottleneck, totalManpower, upph };
   }, [workstations]);
