@@ -203,12 +203,14 @@ export default function WorkstationManager() {
     const edit = inlineEdits[wsId];
     if (!edit) return;
     const ct = parseFloat(edit.cycleTime);
-    const mp = parseFloat(edit.manpower);
+    const morning = parseFloat(edit.morningManpower ?? "0");
+    const evening = parseFloat(edit.eveningManpower ?? "0");
     if (isNaN(ct) || ct <= 0) { toast.error("請輸入有效的工序時間"); return; }
-    if (isNaN(mp) || mp < 0.5) { toast.error("請輸入有效的人員配置（最小 0.5 人）"); return; }
+    if (isNaN(morning) || morning < 0) { toast.error("請輸入有效的早班人力"); return; }
+    if (isNaN(evening) || evening < 0) { toast.error("請輸入有效的晚班人力"); return; }
     setSavingInline(prev => ({ ...prev, [wsId]: true }));
     try {
-      await updateMutation.mutateAsync({ id: wsId, cycleTime: ct, manpower: mp });
+      await updateMutation.mutateAsync({ id: wsId, cycleTime: ct, morningManpower: morning, eveningManpower: evening });
       cancelInlineEdit(wsId);
       toast.success("工站資料已即時更新，平衡分析將自動重新計算");
     } catch {
@@ -327,7 +329,9 @@ export default function WorkstationManager() {
                     工序時間
                     <span className="ml-1 text-xs text-primary/60">(點擊即可編輯)</span>
                   </th>
-                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3">人員配置</th>
+                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3">早班人力</th>
+                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3">晚班人力</th>
+                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3">合計人力</th>
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">描述</th>
                   <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3 w-32">操作</th>
                 </tr>
@@ -371,11 +375,11 @@ export default function WorkstationManager() {
                       {isInlineEditing ? (
                         <Input
                           type="number"
-                          value={edit?.manpower ?? ''}
-                          onChange={e => setInlineEdits(prev => ({ ...prev, [ws.id]: { ...prev[ws.id]!, manpower: e.target.value } }))}
+                          value={edit?.morningManpower ?? ''}
+                          onChange={e => setInlineEdits(prev => ({ ...prev, [ws.id]: { ...prev[ws.id]!, morningManpower: e.target.value } }))}
                           onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(ws.id); if (e.key === 'Escape') cancelInlineEdit(ws.id); }}
                           className="h-7 w-16 text-right text-sm bg-input border-primary/50 ml-auto"
-                          min="0.5"
+                          min="0"
                           step="0.5"
                         />
                       ) : (
@@ -384,9 +388,38 @@ export default function WorkstationManager() {
                           onClick={() => startInlineEdit(ws)}
                           title="點擊即可快速編輯"
                         >
-                          {ws.manpower} 人
+                          {parseFloat(ws.morningManpower?.toString() ?? "0").toFixed(1)} 人
                         </button>
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {isInlineEditing ? (
+                        <Input
+                          type="number"
+                          value={edit?.eveningManpower ?? ''}
+                          onChange={e => setInlineEdits(prev => ({ ...prev, [ws.id]: { ...prev[ws.id]!, eveningManpower: e.target.value } }))}
+                          onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(ws.id); if (e.key === 'Escape') cancelInlineEdit(ws.id); }}
+                          className="h-7 w-16 text-right text-sm bg-input border-primary/50 ml-auto"
+                          min="0"
+                          step="0.5"
+                        />
+                      ) : (
+                        <button
+                          className="text-sm text-muted-foreground hover:text-foreground hover:underline decoration-dashed cursor-pointer transition-colors"
+                          onClick={() => startInlineEdit(ws)}
+                          title="點擊即可快速編輯"
+                        >
+                          {parseFloat(ws.eveningManpower?.toString() ?? "0").toFixed(1)} 人
+                        </button>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-sm font-medium text-cyan-400">
+                        {(
+                          parseFloat(ws.morningManpower?.toString() ?? "0") +
+                          parseFloat(ws.eveningManpower?.toString() ?? "0")
+                        ).toFixed(1)} 人
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-sm text-muted-foreground truncate max-w-[200px] block">{ws.description ?? "—"}</span>

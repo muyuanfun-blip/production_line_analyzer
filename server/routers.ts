@@ -57,6 +57,8 @@ const workstationInput = z.object({
   sequenceOrder: z.number().int().min(0).optional(),
   cycleTime: z.number().positive(),
   manpower: z.number().min(0.5).optional(),
+  morningManpower: z.number().min(0).optional(),
+  eveningManpower: z.number().min(0).optional(),
   description: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -257,6 +259,8 @@ export const appRouter = router({
         if (data.sequenceOrder !== undefined) updateData.sequenceOrder = data.sequenceOrder;
         if (data.cycleTime !== undefined) updateData.cycleTime = data.cycleTime.toString();
         if (data.manpower !== undefined) updateData.manpower = data.manpower;
+        if (data.morningManpower !== undefined) updateData.morningManpower = data.morningManpower;
+        if (data.eveningManpower !== undefined) updateData.eveningManpower = data.eveningManpower;
         if (data.description !== undefined) updateData.description = data.description;
         if (data.notes !== undefined) updateData.notes = data.notes;
         await updateWorkstation(id, updateData as any);
