@@ -397,9 +397,14 @@ export default function BalanceAnalysis() {
                   <span className="text-muted-foreground">工站數 / 人員</span>
                   <span className="font-medium">{analysis.workstationCount} 站 / {analysis.totalManpower} 人</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span className="text-amber-400 font-medium">UPPH</span>
-                  <span className="font-bold text-amber-400">{analysis.upph.toFixed(2)} 件/人/時</span>
+                  <FormulaTooltip
+                    formulaKey="upph"
+                    liveValues={{ "瓶頸時間": `${analysis.maxTime.toFixed(1)}s`, "合計人力": `${analysis.totalManpower}人` }}
+                  >
+                    <span className="font-bold text-amber-400">{analysis.upph.toFixed(2)} 件/人/時</span>
+                  </FormulaTooltip>
                 </div>
                 <div className="mt-2 pt-2 border-t border-border/50 space-y-1.5">
                   <div className="flex items-center gap-1.5">
@@ -973,9 +978,21 @@ export default function BalanceAnalysis() {
                         )}
                         <td className="px-4 py-3 text-right">
                           {/* 工站級 UPPH = 3600 ÷ ct ÷ manpower */}
-                          <span className="text-sm font-mono font-bold text-amber-400">
-                            {parseFloat(ws.manpower.toString()) > 0 && ct > 0 ? (3600 / ct / parseFloat(ws.manpower.toString())).toFixed(2) : "—"}
-                          </span>
+                          {parseFloat(ws.manpower.toString()) > 0 && ct > 0 ? (
+                            <FormulaTooltip
+                              formulaKey="stationUpph"
+                              liveValues={{ 
+                                "工站時間": `${ct.toFixed(1)}s`, 
+                                "工站人力": `${(parseFloat(ws.morningManpower?.toString() ?? "0") + parseFloat(ws.eveningManpower?.toString() ?? "0")) || parseFloat(ws.manpower.toString())}人` 
+                              }}
+                            >
+                              <span className="text-sm font-mono font-bold text-amber-400">
+                                {(3600 / ct / ((parseFloat(ws.morningManpower?.toString() ?? "0") + parseFloat(ws.eveningManpower?.toString() ?? "0")) || parseFloat(ws.manpower.toString()))).toFixed(2)}
+                              </span>
+                            </FormulaTooltip>
+                          ) : (
+                            <span className="text-sm font-mono font-bold text-amber-400">—</span>
+                          )}
                           <span className="text-xs text-muted-foreground ml-1">件/人/時</span>
                         </td>
                         <td className="px-4 py-3">

@@ -62,7 +62,12 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: any[] 
         {d.upph != null && (
           <div className="flex justify-between gap-4 border-t border-border/50 pt-1 mt-1">
             <span className="text-amber-400 font-medium">UPPH</span>
-            <span className="font-bold text-amber-400">{Number(d.upph).toFixed(2)} 件/人/時</span>
+            <FormulaTooltip
+              formulaKey="upph"
+              liveValues={{ "瓶頸時間": `${d.maxTime.toFixed(1)}s`, "合計人力": `${d.totalManpower}人` }}
+            >
+              <span className="font-bold text-amber-400">{Number(d.upph).toFixed(2)} 件/人/時</span>
+            </FormulaTooltip>
           </div>
         )}
       </div>

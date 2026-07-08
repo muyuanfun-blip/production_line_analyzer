@@ -786,4 +786,5 @@
 - [x] 更新快照計算邏輯：儲存早晚班人力資訊
 - [x] 統一所有頁面的 UPPH 計算邏輯（AISuggestions、DataRefinement、SimulationPage、FloorPlanSimulator）
 - [x] 更新前端顯示：工站表格顯示早晚班人力和加總人力
-- [ ] 撰寫相關測試（早晚班人力計算）
+- [x] 撰寫相關測試（早晚班人力計算）
+- [x] 在各頁面的 UPPH 數佐旁加入 Tooltip（顯示計算公式、瓶頸時間、合計人力）

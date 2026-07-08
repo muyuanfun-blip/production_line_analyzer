@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { parseDxfToSvg, type DxfLayer } from "@/lib/dxfToSvg";
+import { FormulaTooltip } from "@/components/FormulaTooltip";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type FloorWs = {
@@ -1957,7 +1958,12 @@ export default function FloorPlanSimulator() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">人均 UPPH</p>
-                    <p className="text-sm font-bold text-amber-400">{kpi.upphPerOperator.toFixed(2)}</p>
+                    <FormulaTooltip
+                      formulaKey="stationUpph"
+                      liveValues={{ "瓶頸時間": `${kpi.maxCt.toFixed(1)}s`, "人員數": `${kpi.totalOperators}人` }}
+                    >
+                      <p className="text-sm font-bold text-amber-400">{kpi.upphPerOperator.toFixed(2)}</p>
+                    </FormulaTooltip>
                   </div>
                   {kpi.avgMachineUtil > 0 && (
                     <div>

@@ -195,7 +195,7 @@ export default function AISuggestions() {
                   <p className="text-xs text-muted-foreground">{kpi.label}</p>
                   <FormulaTooltip
                     formulaKey={kpi.label === "產線平衡率" ? "balanceRate" : kpi.label === "瓶頸時間" ? "bottleneckTime" : kpi.label === "UPPH" ? "upph" : kpi.label === "總人員" ? "totalManpower" : "workstationCount"}
-                    liveValues={{ [kpi.label]: `${kpi.value}${kpi.unit}` }}
+                    liveValues={kpi.label === "UPPH" ? { "瓶頸時間": `${analysis.maxTime.toFixed(1)}s`, "合計人力": `${analysis.totalManpower}人`, "UPPH": `${kpi.value}${kpi.unit}` } : { [kpi.label]: `${kpi.value}${kpi.unit}` }}
                   >
                     <p className={`text-xl font-bold ${kpi.color}`}>{kpi.value}<span className="text-sm font-normal ml-0.5">{kpi.unit}</span></p>
                   </FormulaTooltip>
