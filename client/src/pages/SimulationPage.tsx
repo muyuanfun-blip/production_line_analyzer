@@ -989,7 +989,7 @@ export default function SimulationPage() {
                   </div>
                   <div>
                     <Label className="text-xs text-muted-foreground">人力（人）</Label>
-                    <Input className="h-7 text-sm mt-1" type="number" min="0.5" step="0.5" value={selectedWs.manpower}
+                    <Input className="h-7 text-sm mt-1" type="number" min="0.25" step="0.25" value={selectedWs.manpower}
                       onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v) && v >= 0.5) updateWs(selectedWs.id, "manpower", v); }} />
                   </div>
                   <div>
@@ -1119,7 +1119,7 @@ export default function SimulationPage() {
             <div><Label>工站名稱</Label><Input value={newWsName} onChange={e => setNewWsName(e.target.value)} placeholder="例：ST-01" className="mt-1" /></div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>工序時間（秒）</Label><Input value={newWsCt} onChange={e => setNewWsCt(e.target.value)} type="number" min="0.1" step="0.1" placeholder="0.0" className="mt-1" /></div>
-              <div><Label>人力（人）</Label><Input value={newWsManpower} onChange={e => setNewWsManpower(e.target.value)} type="number" min="0.5" step="0.5" className="mt-1" /></div>
+              <div><Label>人力（人）</Label><Input value={newWsManpower} onChange={e => setNewWsManpower(e.target.value)} type="number" min="0.25" step="0.25" className="mt-1" /></div>
             </div>
             <div>
               <Label>插入位置</Label>

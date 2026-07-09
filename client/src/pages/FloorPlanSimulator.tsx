@@ -2582,7 +2582,7 @@ export default function FloorPlanSimulator() {
                   <div>
                     <Label className="text-xs text-muted-foreground">人力配置（小數點分配）</Label>
                     <div className="flex items-center gap-2 mt-1">
-                      <Input type="number" min="0.5" step="0.5"
+                      <Input type="number" min="0.25" step="0.25"
                         value={selectedWs.manpower}
                         className="h-7 text-sm w-20"
                         onChange={e => updateWsProp(selectedWs.id, "manpower", parseFloat(e.target.value) || 1)} />
@@ -2799,7 +2799,7 @@ export default function FloorPlanSimulator() {
             </div>
             <div>
               <Label>人力（人）</Label>
-              <Input type="number" min="0.5" step="0.5" value={newWsManpower} onChange={e => setNewWsManpower(e.target.value)} className="mt-1" />
+              <Input type="number" min="0.25" step="0.25" value={newWsManpower} onChange={e => setNewWsManpower(e.target.value)} className="mt-1" />
             </div>
           </div>
           <DialogFooter>

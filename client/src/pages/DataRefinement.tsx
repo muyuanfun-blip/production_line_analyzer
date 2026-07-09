@@ -928,7 +928,7 @@ export default function DataRefinement() {
                   </div>
                   <div className="space-y-1.5 w-28">
                     <Label className="text-xs text-muted-foreground">人力（人）<span className="text-red-400">*</span></Label>
-                    <Input type="number" min="0.5" step="0.5" value={newWsManpower} onChange={e => setNewWsManpower(e.target.value)} className="h-9" onKeyDown={e => e.key === "Enter" && handleAddWorkstation()} />
+                    <Input type="number" min="0.25" step="0.25" value={newWsManpower} onChange={e => setNewWsManpower(e.target.value)} className="h-9" onKeyDown={e => e.key === "Enter" && handleAddWorkstation()} />
                   </div>
                   <div className="space-y-1.5 w-48">
                     <Label className="text-xs text-muted-foreground">插入位置</Label>
@@ -1011,7 +1011,7 @@ export default function DataRefinement() {
                     {/* 人力 */}
                     <div className="flex items-center gap-1 shrink-0">
                       <Input
-                        type="number" min="0.5" step="0.5"
+                        type="number" min="0.25" step="0.25"
                         value={row.manpower}
                         onChange={e => updateRow(wsIdx, "manpower", e.target.value)}
                         className="h-8 text-sm border-transparent bg-transparent hover:border-border focus:border-border px-2 w-16 text-right"

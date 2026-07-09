@@ -322,7 +322,7 @@ export const VSMPage: React.FC = () => {
                     </div>
                     <div>
                       <Label htmlFor="manpower">人力數</Label>
-                      <Input id="manpower" name="manpower" type="number" step="0.5" />
+                      <Input id="manpower" name="manpower" type="number" step="0.25" />
                     </div>
                     <Button type="submit" className="w-full">新增</Button>
                   </form>

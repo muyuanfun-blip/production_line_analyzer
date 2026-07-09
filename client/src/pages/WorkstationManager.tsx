@@ -526,8 +526,8 @@ export default function WorkstationManager() {
                   value={form.manpower}
                   onChange={e => setForm(f => ({ ...f, manpower: e.target.value }))}
                   className="bg-input border-border"
-                  min="0.5"
-                  step="0.5"
+                  min="0.25"
+                  step="0.25"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -540,7 +540,7 @@ export default function WorkstationManager() {
                     onChange={e => setForm(f => ({ ...f, morningManpower: e.target.value }))}
                     className="bg-input border-border"
                     min="0"
-                    step="0.5"
+                    step="0.25"
                   />
                 </div>
                 <div className="space-y-2">
@@ -552,7 +552,7 @@ export default function WorkstationManager() {
                     onChange={e => setForm(f => ({ ...f, eveningManpower: e.target.value }))}
                     className="bg-input border-border"
                     min="0"
-                    step="0.5"
+                    step="0.25"
                   />
                 </div>
               </div>
