@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 type WsFormData = {
   name: string;
@@ -326,6 +327,81 @@ export default function WorkstationManager() {
                 ))}
               </div>
             </CardContent>
+
+          {/* 人力分佈圖表 */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* 長條圖：各工站人力分佈 */}
+            <Card className="border-cyan-500/30 bg-cyan-500/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-cyan-400" />
+                  各工站人力分佈
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div style={{ width: "100%", height: "300px" }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={(() => {
+                      if (!workstations || workstations.length === 0) return [];
+                      return workstations.map(w => ({
+                        name: w.name.length > 8 ? w.name.substring(0, 8) + "..." : w.name,
+                        早班: parseFloat(w.morningManpower?.toString() ?? "0"),
+                        晚班: parseFloat(w.eveningManpower?.toString() ?? "0"),
+                      }));
+                    })()}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                      <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 12 }} />
+                      <Tooltip contentStyle={{ backgroundColor: "rgba(0,0,0,0.8)", border: "1px solid rgba(255,255,255,0.2)" }} />
+                      <Legend />
+                      <Bar dataKey="早班" stackId="a" fill="#fbbf24" />
+                      <Bar dataKey="晚班" stackId="a" fill="#f97316" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 圓餅圖：早晚班人力比例 */}
+            <Card className="border-violet-500/30 bg-violet-500/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-violet-400" />
+                  早晚班人力比例
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div style={{ width: "100%", height: "300px" }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={(() => {
+                          if (!workstations || workstations.length === 0) return [];
+                          const totalMorning = workstations.reduce((s, w) => s + parseFloat(w.morningManpower?.toString() ?? "0"), 0);
+                          const totalEvening = workstations.reduce((s, w) => s + parseFloat(w.eveningManpower?.toString() ?? "0"), 0);
+                          return [
+                            { name: "早班", value: totalMorning },
+                            { name: "晚班", value: totalEvening },
+                          ];
+                        })()}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, value, percent }) => `${name} ${value.toFixed(1)}人 (${(percent * 100).toFixed(0)}%)`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        <Cell fill="#fbbf24" />
+                        <Cell fill="#f97316" />
+                      </Pie>
+                      <Tooltip formatter={(value) => typeof value === 'number' ? value.toFixed(2) : value} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
           </Card>
 
       {/* Workstations Table */}
