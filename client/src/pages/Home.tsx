@@ -80,7 +80,8 @@ export default function Home() {
   const [, setLocation] = useLocation();
   const { data: lines } = trpc.productionLine.list.useQuery();
   const { data: allLatest, isLoading: latestLoading } = trpc.snapshot.getAllLinesLatestByDate.useQuery();
-  const { data: allHistory, isLoading: historyLoading } = trpc.snapshot.getAllLinesHistory.useQuery();
+  // 暫時禁用歷史查詢以修復 API 超時問題
+  const { data: allHistory = [] as any[], isLoading: historyLoading } = { data: [], isLoading: false }; // trpc.snapshot.getAllLinesHistory.useQuery();
 
   const totalLines = lines?.length ?? 0;
   const activeLines = lines?.filter(l => l.status === "active").length ?? 0;
@@ -706,60 +707,8 @@ export default function Home() {
                 </LineChart>
               </ResponsiveContainer>
 
-              {/* 各產線最新改善幅度摘要 */}
-              {allHistory && allHistory.length > 0 && (
-                <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 px-4">
-                  {allHistory
-                    .filter(line => line.snapshots.length >= 2)
-                    .map(line => {
-                      const first = line.snapshots[0]!;
-                      const last = line.snapshots[line.snapshots.length - 1]!;
-                      const delta = last.balanceRate - first.balanceRate;
-                      const isImproved = delta > 0;
-                      return (
-                        <div
-                          key={line.lineId}
-                          className="rounded-xl border border-border bg-card/60 p-3 cursor-pointer hover:bg-accent/20 transition-colors"
-                          onClick={() => setLocation(`/lines/${line.lineId}/balance`)}
-                        >
-                          <p className="text-xs text-muted-foreground truncate mb-1">{line.lineName}</p>
-                          <div className="flex items-center gap-1.5">
-                            {isImproved
-                              ? <TrendingUp className="h-4 w-4 text-emerald-400 shrink-0" />
-                              : delta < 0
-                                ? <TrendingDown className="h-4 w-4 text-red-400 shrink-0" />
-                                : <Minus className="h-4 w-4 text-muted-foreground shrink-0" />
-                            }
-                            <span className={`text-sm font-bold ${
-                              isImproved ? "text-emerald-400" : delta < 0 ? "text-red-400" : "text-muted-foreground"
-                            }`}>
-                              {isImproved ? "+" : ""}{delta.toFixed(1)}%
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            共 {line.snapshots.length} 次快照
-                          </p>
-                        </div>
-                      );
-                    })}
-                  {allHistory.filter(line => line.snapshots.length === 1).map(line => (
-                    <div
-                      key={line.lineId}
-                      className="rounded-xl border border-dashed border-border bg-card/40 p-3 cursor-pointer hover:bg-accent/20 transition-colors"
-                      onClick={() => setLocation(`/lines/${line.lineId}/balance`)}
-                    >
-                      <p className="text-xs text-muted-foreground truncate mb-1">{line.lineName}</p>
-                      <div className="flex items-center gap-1.5">
-                        <Camera className="h-4 w-4 text-muted-foreground/50 shrink-0" />
-                        <span className="text-sm font-bold" style={{ color: lineColors[line.lineName] }}>
-                          {line.snapshots[0]!.balanceRate.toFixed(1)}%
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">僅 1 次快照</p>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/* 暫時隱藏歷史計算以修復 API 超時問題 */}
+              {/* allHistory 歷史查詢已禁用 */}
             </CardContent>
           </Card>
 
