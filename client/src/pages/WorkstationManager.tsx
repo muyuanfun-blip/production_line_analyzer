@@ -296,6 +296,38 @@ export default function WorkstationManager() {
         </div>
       )}
 
+          {/* 總人力統計區塊 */}
+          <Card className="border-amber-500/30 bg-amber-500/5">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Users className="h-5 w-5 text-amber-400" />
+                總人力統計
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-4 gap-4">
+                {(() => {
+                  if (!workstations || workstations.length === 0) return [];
+                  const totalMorning = workstations.reduce((s, w) => s + parseFloat(w.morningManpower?.toString() ?? "0"), 0);
+                  const totalEvening = workstations.reduce((s, w) => s + parseFloat(w.eveningManpower?.toString() ?? "0"), 0);
+                  const totalCombined = totalMorning + totalEvening;
+                  return [
+                    { label: "早班總人力", value: totalMorning.toFixed(2), unit: "人", color: "text-amber-400" },
+                    { label: "晚班總人力", value: totalEvening.toFixed(2), unit: "人", color: "text-orange-400" },
+                    { label: "合計人力", value: totalCombined.toFixed(2), unit: "人", color: "text-amber-500" },
+                    { label: "平均人力/工站", value: (totalCombined / workstations.length).toFixed(2), unit: "人", color: "text-yellow-400" },
+                  ];
+                })().map(stat => (
+                  <div key={stat.label} className="p-3 rounded-lg bg-background/50 border border-border/50">
+                    <p className="text-xs text-muted-foreground mb-1">{stat.label}</p>
+                    <p className={`text-lg font-bold ${stat.color}`}>{stat.value}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{stat.unit}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
       {/* Workstations Table */}
       {isLoading ? (
         <div className="space-y-3">
