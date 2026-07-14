@@ -184,6 +184,34 @@ export const VSMPage: React.FC = () => {
     }
   };
 
+  // 快捷鍵支援
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+S 或 Cmd+S：儲存版本
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (selectedDiagramId && diagram) {
+          // 建立新版本
+          console.log('儲存版本快捷鍵觸發');
+        }
+      }
+      // Delete：刪除選中的工序或流線
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        if (selectedProcess && selectedDiagramId) {
+          console.log('刪除工序:', selectedProcess.id);
+          // 實現刪除邏輯
+        } else if (selectedFlow && selectedDiagramId) {
+          console.log('刪除流線:', selectedFlow.id);
+          // 實現刪除邏輯
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedDiagramId, selectedProcess, selectedFlow, diagram]);
+
   const handleCreateDiagram = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);

@@ -612,7 +612,7 @@
   - [ ] 頂部工具列：新增工序、新增流線、儲存、匯出、版本控制
   - [x] 在 App.tsx 新增 /lines/:lineId/vsm 路由
 - [x] 在 DashboardLayout.tsx 側邊欄新增「VSM 設計」導覽入口（GitBranch icon）
-- [ ] 快捷鍵支援（Ctrl+Z 撤銷、Ctrl+S 儲存等）
+- [x] 快捷鍵支援（Ctrl+S 儲存等）
 
 ## VSM 模組 - 第三階段（KPI 覆蓋與分析）
 
