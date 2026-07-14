@@ -72,7 +72,7 @@ function CustomTooltip({ active, payload, taktTime }: any) {
         </div>
         <div className="flex items-center justify-between gap-4">
           <span className="text-muted-foreground">人員配置</span>
-          <span className="text-foreground">{d.manpower} 人</span>
+          <span className="text-foreground">{parseFloat(d.manpower.toString()).toFixed(2)} 人</span>
         </div>
         {taktTime && (
           <div className="flex items-center justify-between gap-4">
@@ -955,7 +955,7 @@ export default function BalanceAnalysis() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <span className="text-sm text-muted-foreground">{ws.manpower}</span>
+                          <span className="text-sm text-muted-foreground">{parseFloat(ws.manpower.toString()).toFixed(2)}</span>
                         </td>
                         <td className="px-4 py-3 text-right">
                           <span className="text-sm text-muted-foreground">{pct}%</span>

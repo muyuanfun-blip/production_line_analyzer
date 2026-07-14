@@ -142,7 +142,7 @@ function SnapshotBarChart({ ws, taktTime, label, labelColor }: {
         </div>
         <div className="flex items-center gap-1 mt-0.5">
           <span className="text-muted-foreground">人員數：</span>
-          <span className="text-foreground">{d.manpower}人</span>
+          <span className="text-foreground">{parseFloat(d.manpower.toString()).toFixed(2)}人</span>
         </div>
         {taktTime && (
           <div className="flex items-center gap-1 mt-0.5">

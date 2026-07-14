@@ -627,7 +627,10 @@ export default function WorkstationManager() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>人員配置（人）</Label>
+                <div className="flex items-center gap-2">
+                  <Label>人員配置（人）</Label>
+                  <span className="text-xs text-muted-foreground">(預設值，当早晩班人力为 0 時使用)</span>
+                </div>
                 <Input
                   type="number"
                   placeholder="1"
@@ -640,7 +643,10 @@ export default function WorkstationManager() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>早班人力</Label>
+                  <div className="flex items-center gap-2">
+                    <Label>早班人力</Label>
+                    <span className="text-xs text-muted-foreground">(0.25 = 1/4 人)</span>
+                  </div>
                   <Input
                     type="number"
                     placeholder="0"
@@ -652,7 +658,10 @@ export default function WorkstationManager() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>晚班人力</Label>
+                  <div className="flex items-center gap-2">
+                    <Label>晩班人力</Label>
+                    <span className="text-xs text-muted-foreground">(0.5 = 1/2 人)</span>
+                  </div>
                   <Input
                     type="number"
                     placeholder="0"

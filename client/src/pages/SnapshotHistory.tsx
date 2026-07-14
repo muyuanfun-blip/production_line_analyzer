@@ -271,7 +271,7 @@ function SnapCustomTooltip({ active, payload, taktTime }: { active?: boolean; pa
         </div>
         <div className="flex items-center justify-between gap-4">
           <span className="text-muted-foreground">人員配置</span>
-          <span className="text-foreground">{d.manpower} 人</span>
+          <span className="text-foreground">{parseFloat(d.manpower.toString()).toFixed(2)} 人</span>
         </div>
         {taktTime && (
           <div className="flex items-center justify-between gap-4">

@@ -319,7 +319,7 @@ function WsCard({
             )}
           </div>
           <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-            <span className="flex items-center gap-0.5"><Users className="w-2.5 h-2.5" />{ws.manpower}人</span>
+            <span className="flex items-center gap-0.5"><Users className="w-2.5 h-2.5" />{parseFloat(ws.manpower.toString()).toFixed(2)}人</span>
             <span className="px-1.5 py-0.5 rounded-full text-[9px] font-medium"
               style={{ background: meta.color + "20", color: meta.color }}>{meta.label}</span>
           </div>
@@ -737,7 +737,7 @@ export default function SimulationPage() {
                           <span className="text-base shrink-0">🏭</span>
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-medium truncate">{lw.name}</p>
-                            <p className="text-[10px] text-muted-foreground">CT {parseFloat(lw.cycleTime.toString()).toFixed(1)}s · {parseFloat(lw.manpower.toString())}人</p>
+                            <p className="text-[10px] text-muted-foreground">CT {parseFloat(lw.cycleTime.toString()).toFixed(1)}s · {parseFloat(lw.manpower.toString()).toFixed(2)}人</p>
                           </div>
                         </div>
                       ))}

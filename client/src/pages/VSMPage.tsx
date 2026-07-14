@@ -321,8 +321,11 @@ export const VSMPage: React.FC = () => {
                       <Input id="cycleTime" name="cycleTime" type="number" step="0.1" />
                     </div>
                     <div>
-                      <Label htmlFor="manpower">人力數</Label>
-                      <Input id="manpower" name="manpower" type="number" step="0.25" />
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="manpower">人力數</Label>
+                        <span className="text-xs text-muted-foreground">(0.25 = 1/4 人)</span>
+                      </div>
+                      <Input id="manpower" name="manpower" type="number" step="0.25" min="0.25" />
                     </div>
                     <Button type="submit" className="w-full">新增</Button>
                   </form>

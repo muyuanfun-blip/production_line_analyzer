@@ -900,7 +900,7 @@ export default function ActionAnalysis() {
                             <Clock className="w-2.5 h-2.5" />{ct.toFixed(1)}s
                           </span>
                           <span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
-                            <Users className="w-2.5 h-2.5" />{w.manpower}人
+                            <Users className="w-2.5 h-2.5" />{parseFloat(w.manpower.toString()).toFixed(2)}人
                           </span>
                           {stepCount > 0 && (
                             <span className="text-[11px] text-purple-400/70">{stepCount}步驟</span>
