@@ -1422,6 +1422,119 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         const diagram = await restoreVSMVersion(input.versionId);
         return { success: true, diagram };
       }),
+
+    getAISuggestions: protectedProcedure
+      .input(z.object({
+        vsmDiagramId: z.number(),
+        processes: z.array(z.object({
+          id: z.number(),
+          name: z.string(),
+          cycleTime: z.number().optional(),
+          manpower: z.number().optional(),
+          valueAddedRate: z.number().optional(),
+        })),
+        flows: z.array(z.object({
+          id: z.number(),
+          fromProcessId: z.number(),
+          toProcessId: z.number(),
+          flowType: z.string(),
+        })),
+      }))
+      .query(async ({ input }) => {
+        // 本地部署：若未設定 OLLAMA_API_KEY，回傳友善錯誤訊息
+        if (!ENV.ollamaApiKey) {
+          return {
+            suggestion: 'AI 分析功能需要設定 OLLAMA_API_KEY 環境變數。請在 .env 檔案中設定 OLLAMA_API_KEY，並確認本地 Ollama 服務已啟動（預設 http://localhost:11434）。',
+            error: true,
+          };
+        }
+
+        // 計算 VSM 統計資訊
+        const totalCT = input.processes.reduce((sum, p) => sum + (p.cycleTime || 0), 0);
+        const totalManpower = input.processes.reduce((sum, p) => sum + (p.manpower || 0), 0);
+        const avgVAR = input.processes.length > 0
+          ? input.processes.reduce((sum, p) => sum + (p.valueAddedRate || 0), 0) / input.processes.length
+          : 0;
+        const bottleneck = input.processes.reduce((max, p) =>
+          (p.cycleTime || 0) > (max.cycleTime || 0) ? p : max
+        );
+
+        const processList = input.processes
+          .map(p => `  - ${p.name}：CT ${p.cycleTime || 0}s，人力 ${p.manpower || 0} 人，增值率 ${(p.valueAddedRate || 0).toFixed(1)}%`)
+          .join('\n');
+
+        const prompt = `你是一位精通精實生產（Lean Manufacturing）和工業工程的專家顧問。請根據以下 VSM 數據，提供專業的改善建議：
+
+**VSM 統計資訊：**
+- 總工序時間（CT）：${totalCT.toFixed(1)}s
+- 總人力數：${totalManpower}
+- 平均增值率：${avgVAR.toFixed(1)}%
+- 瓶頸工序：${bottleneck?.name || '無'} (${bottleneck?.cycleTime || 0}s)
+- 流線數量：${input.flows.length}
+
+**各工序詳細資訊：**
+${processList}
+
+請提供以下分析（使用繁體中文，格式清晰）：
+
+## 1. 現況診斷
+分析目前 VSM 的主要問題和瓶頸。
+
+## 2. 瓶頸改善方案
+針對瓶頸工序提出 3-5 個具體可行的改善措施。
+
+## 3. 增值率優化建議
+針對低增值率工序提出改善方案。
+
+## 4. 人力配置建議
+基於當前人力配置提出優化建議。
+
+## 5. 流程優化建議
+針對流線結構提出優化建議。
+
+## 6. 預期效益
+估算優化後的效益提升幅度。`;
+
+        try {
+          // 呼叫 Ollama API（OpenAI 相容格式）
+          const ollamaRes = await fetch(`${ENV.ollamaBaseUrl}/api/chat`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${ENV.ollamaApiKey}`,
+            },
+            body: JSON.stringify({
+              model: ENV.ollamaModel,
+              messages: [
+                { role: "system", content: "你是一位精通精實生產（Lean Manufacturing）和工業工程的專家顧問，擅長 VSM 分析和改善建議。請用繁體中文回答，格式清晰專業。" },
+                { role: "user", content: prompt },
+              ],
+              stream: false,
+            }),
+          });
+
+          if (!ollamaRes.ok) {
+            const errText = await ollamaRes.text();
+            return {
+              suggestion: `Ollama API 錯誤 (${ollamaRes.status}): ${errText}`,
+              error: true,
+            };
+          }
+
+          const ollamaData = await ollamaRes.json() as {
+            message?: { content?: string };
+            error?: string;
+          };
+
+          const content = ollamaData.message?.content ?? "無法生成建議，請稍後再試。";
+          return { suggestion: content, error: false };
+        } catch (err) {
+          return {
+            suggestion: `連接 Ollama 服務失敗：${err instanceof Error ? err.message : '未知錯誤'}`,
+            error: true,
+          };
+        }
+      }),
   }),
 
   // ─── 戰情監控 ───────────────────────────────────────────────────────────────
