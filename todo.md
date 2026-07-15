@@ -618,10 +618,10 @@
 
 - [x] VSMAnalysis.tsx 分析面板（總 CT、總人力、平均增值率、Lead Time、璶頸分析、人力均衡度、流線分析）
 - [x] VSMPage 右側面板新增切換按鈕（屬性 / 分析）
-- [ ] VSMCanvas.tsx 新增 KPI 覆蓋層
-  - [ ] 工序節點顯示 CT、人力、增值率小徽章
-  - [ ] 流線顯示流量與搬運時間
-  - [ ] 整體 VSM 統計卡片（總 CT、總人力、增值率、Lead Time）
+- [x] VSMCanvas.tsx 新增 KPI 覆蓋層
+  - [x] 工序節點顯示 CT、人力、增值率小徽章
+  - [x] 流線顯示流量與搬運時間
+  - [x] 整體 VSM 統計卡片（總 CT、總人力、增值率、Lead Time）
 - [x] 建立 VSMAnalysis.tsx 分析面板
   - [x] 工序瘩頸分析（識別最長 CT 工序）
   - [x] 增值率分析（各工序增值率分佈）

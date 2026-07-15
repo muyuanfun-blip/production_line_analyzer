@@ -209,6 +209,9 @@ export const VSMCanvas: React.FC<VSMCanvasProps> = ({
           const isSelected = selectedFlowId === flow.id;
           const flowColor = flow.flowType === 'material' ? '#3b82f6' : flow.flowType === 'information' ? '#10b981' : '#f59e0b';
 
+          const midX = (fromProcess.positionX + fromProcess.width + toProcess.positionX) / 2;
+          const midY = (fromProcess.positionY + fromProcess.height / 2 + toProcess.positionY + toProcess.height / 2) / 2;
+          
           return (
             <g key={flow.id}>
               <path
@@ -222,6 +225,34 @@ export const VSMCanvas: React.FC<VSMCanvasProps> = ({
                 }}
                 className="cursor-pointer hover:stroke-yellow-300"
               />
+              
+              {/* 流線標籤（流量和搬運時間） */}
+              {(flow.quantity || flow.cycleTime) && (
+                <g>
+                  <rect
+                    x={midX - 30}
+                    y={midY - 10}
+                    width={60}
+                    height={20}
+                    fill="#1f2937"
+                    stroke={flowColor}
+                    strokeWidth={1}
+                    rx={3}
+                    pointerEvents="none"
+                  />
+                  <text
+                    x={midX}
+                    y={midY}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill="white"
+                    fontSize={9}
+                    pointerEvents="none"
+                  >
+                    {flow.quantity ? `${flow.quantity}` : ''}{flow.quantity && flow.cycleTime ? ' / ' : ''}{flow.cycleTime ? `${flow.cycleTime}s` : ''}
+                  </text>
+                </g>
+              )}
             </g>
           );
         })}
@@ -299,6 +330,31 @@ export const VSMCanvas: React.FC<VSMCanvasProps> = ({
                   pointerEvents="none"
                 >
                   {process.manpower}
+                </text>
+              )}
+
+              {/* 增值率徽章 */}
+              {process.valueAddedRate !== null && process.valueAddedRate !== undefined && (
+                <circle
+                  cx={process.positionX + process.width - 8}
+                  cy={process.positionY + process.height - 8}
+                  r={6}
+                  fill="#8b5cf6"
+                  pointerEvents="none"
+                />
+              )}
+              {process.valueAddedRate !== null && process.valueAddedRate !== undefined && (
+                <text
+                  x={process.positionX + process.width - 8}
+                  y={process.positionY + process.height - 8}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill="white"
+                  fontSize={8}
+                  fontWeight="bold"
+                  pointerEvents="none"
+                >
+                  {Math.round(process.valueAddedRate)}%
                 </text>
               )}
             </g>
