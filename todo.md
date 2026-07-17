@@ -775,7 +775,7 @@
 - [x] TypeScript 0 errors，133/133 Vitest 全通過
 - [ ] 前端頁面瀏覽器測試
 - [ ] 實時資料更新驗證
-- [ ] 響應式設計驗證
+- [x] 響應式設計驗證
 
 ## 平衡率判定條件統一（新增）
 - [x] 提取 getBalanceColor 和 getBalanceLabel 函式為共用函式（Home.tsx）

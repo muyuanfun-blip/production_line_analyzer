@@ -231,36 +231,39 @@ export default function MonitoringDashboard() {
       }`}
     >
       {/* 頂部控制欄 */}
-      <div className={`mb-6 flex items-center justify-between ${isFullscreen ? "p-6" : ""} border-b border-cyan-500/20 pb-4`}>
+      <div className={`mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between ${isFullscreen ? "p-6" : ""} border-b border-cyan-500/20 pb-3 sm:pb-4 gap-3 sm:gap-0`}>
         <div>
-          <h1 className="text-3xl font-bold text-cyan-400">產線戰情監控</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-cyan-400">產線戰情監控</h1>
           <p className="mt-1 text-xs text-cyan-400/60">最後更新: {updateTimeStr}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`rounded-lg px-4 py-2 font-semibold transition flex items-center gap-2 ${
+            className={`rounded-lg px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold transition flex items-center gap-1 sm:gap-2 ${
               autoRefresh
                 ? "bg-green-500/20 text-green-400 hover:bg-green-500/30"
                 : "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30"
             }`}
           >
-            <RotateCw size={16} />
-            {autoRefresh ? "自動更新" : "手動模式"}
+            <RotateCw size={14} className="sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">{autoRefresh ? "自動更新" : "手動模式"}</span>
+            <span className="sm:hidden">{autoRefresh ? "自動" : "手動"}</span>
           </button>
           <button
             onClick={toggleFullscreen}
-            className="rounded-lg bg-cyan-500/20 px-4 py-2 font-semibold text-cyan-400 transition hover:bg-cyan-500/30 flex items-center gap-2"
+            className="rounded-lg bg-cyan-500/20 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-cyan-400 transition hover:bg-cyan-500/30 flex items-center gap-1 sm:gap-2"
           >
             {isFullscreen ? (
               <>
-                <Minimize2 size={16} />
-                退出全螢幕
+                <Minimize2 size={14} className="sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">退出全螢幕</span>
+                <span className="sm:hidden">退出</span>
               </>
             ) : (
               <>
-                <Maximize2 size={16} />
-                全螢幕
+                <Maximize2 size={14} className="sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">全螢幕</span>
+                <span className="sm:hidden">全螢</span>
               </>
             )}
           </button>
@@ -268,12 +271,12 @@ export default function MonitoringDashboard() {
       </div>
 
       {/* 更新間隔設定 */}
-      <div className={`mb-4 flex items-center gap-2 ${isFullscreen ? "px-6" : ""}`}>
-        <span className="text-xs text-cyan-400/60">更新間隔:</span>
+      <div className={`mb-4 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 ${isFullscreen ? "px-6" : ""}`}>
+        <span className="text-xs text-cyan-400/60 whitespace-nowrap">更新間隔:</span>
         <select
           value={refreshInterval}
           onChange={(e) => setRefreshInterval(parseInt(e.target.value))}
-          className="rounded bg-slate-800 px-2 py-1 text-xs text-cyan-400 border border-cyan-500/20"
+          className="rounded bg-slate-800 px-2 py-1 text-xs text-cyan-400 border border-cyan-500/20 w-full sm:w-auto"
         >
           <option value={10}>10 秒</option>
           <option value={30}>30 秒</option>
@@ -285,7 +288,7 @@ export default function MonitoringDashboard() {
       {/* 主要監控內容 */}
       <div className={`${isFullscreen ? "px-6" : ""}`}>
         {/* KPI 儀表板 */}
-        <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-5">
+        <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
           <KPICard 
             label="平衡率" 
             value={`${realtimeStatus.balanceRate}%`} 
@@ -316,13 +319,13 @@ export default function MonitoringDashboard() {
         </div>
 
         {/* 主監控區 - 工站狀態 */}
-        <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
           {/* 左側：工站列表 */}
           <div className="rounded-lg border border-cyan-500/20 bg-slate-900/50 backdrop-blur">
             <div className="border-b border-cyan-500/20 p-4">
               <h2 className="text-sm font-bold uppercase tracking-widest text-cyan-400">工站狀態</h2>
             </div>
-            <div className="space-y-2 p-4 max-h-96 overflow-y-auto">
+            <div className="space-y-2 p-3 sm:p-4 max-h-64 sm:max-h-96 overflow-y-auto">
               {realtimeStatus.workstations.map((ws: RealtimeWorkstation) => (
                 <button
                   key={ws.id}
@@ -368,9 +371,10 @@ export default function MonitoringDashboard() {
             </div>
 
             {/* 趨勢圖表 */}
-            <div className="rounded-lg border border-cyan-500/20 bg-slate-900/50 backdrop-blur p-4">
-              <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-cyan-400">24 小時趨勢</h2>
-              <ResponsiveContainer width="100%" height={200}>
+            <div className="rounded-lg border border-cyan-500/20 bg-slate-900/50 backdrop-blur p-3 sm:p-4">
+              <h2 className="mb-3 sm:mb-4 text-xs sm:text-sm font-bold uppercase tracking-widest text-cyan-400">24 小時趨勢</h2>
+              <div style={{height: '150px'}} className="sm:h-[200px]">
+              <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={trendData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(34, 211, 238, 0.1)" />
                   <XAxis dataKey="time" stroke="rgba(34, 211, 238, 0.5)" style={{ fontSize: "12px" }} />
@@ -381,6 +385,7 @@ export default function MonitoringDashboard() {
                   <Line type="monotone" dataKey="taktAchievement" stroke="#10b981" name="Takt達標" />
                 </LineChart>
               </ResponsiveContainer>
+              </div>
             </div>
           </div>
         </div>
@@ -399,7 +404,7 @@ export default function MonitoringDashboard() {
             {expandedAlerts ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </div>
           {expandedAlerts && (
-            <div className="space-y-3 p-4 max-h-80 overflow-y-auto">
+            <div className="space-y-2 sm:space-y-3 p-3 sm:p-4 max-h-64 sm:max-h-80 overflow-y-auto">
               {criticalAnomalies.length === 0 && warningAnomalies.length === 0 ? (
                 <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3">
                   <p className="text-xs font-bold text-green-400">✓ 系統正常運行</p>
@@ -449,12 +454,12 @@ export default function MonitoringDashboard() {
 
         {/* 工站詳細分析 */}
         {selectedWs && (
-          <div className="mt-6 rounded-lg border border-cyan-500/20 bg-slate-900/50 backdrop-blur p-4">
-            <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-cyan-400">
+          <div className="mt-4 sm:mt-6 rounded-lg border border-cyan-500/20 bg-slate-900/50 backdrop-blur p-3 sm:p-4">
+            <h2 className="mb-3 sm:mb-4 text-xs sm:text-sm font-bold uppercase tracking-widest text-cyan-400">
               {realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.name} - 詳細分析
             </h2>
             {realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs) && (
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
                 <KPICard label="效率" value={`${isNaN((realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.efficiency) || 0) ? '0' : (realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.efficiency || 0).toFixed(1)}%`} />
                 <KPICard label="利用率" value={`${isNaN((realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.utilization) || 0) ? '0' : (realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.utilization || 0).toFixed(1)}%`} />
                 <KPICard label="等待產品" value={(realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.waitingProducts) || 0} />
