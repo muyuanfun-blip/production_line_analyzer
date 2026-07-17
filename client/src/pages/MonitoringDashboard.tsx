@@ -388,26 +388,59 @@ export default function MonitoringDashboard() {
         {/* 警示面板 */}
         <div className="rounded-lg border border-cyan-500/20 bg-slate-900/50 backdrop-blur">
           <div className="border-b border-cyan-500/20 p-4 cursor-pointer flex items-center justify-between" onClick={() => setExpandedAlerts(!expandedAlerts)}>
-            <h2 className="text-sm font-bold uppercase tracking-widest text-cyan-400">實時警示</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold uppercase tracking-widest text-cyan-400">實時警示</h2>
+              {(criticalAnomalies.length > 0 || warningAnomalies.length > 0) && (
+                <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-xs font-bold text-red-400">
+                  {criticalAnomalies.length + warningAnomalies.length}
+                </span>
+              )}
+            </div>
             {expandedAlerts ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </div>
           {expandedAlerts && (
-            <div className="space-y-2 p-4 max-h-64 overflow-y-auto">
+            <div className="space-y-3 p-4 max-h-80 overflow-y-auto">
               {criticalAnomalies.length === 0 && warningAnomalies.length === 0 ? (
-                <p className="text-xs text-green-400">✓ 系統正常運行</p>
+                <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3">
+                  <p className="text-xs font-bold text-green-400">✓ 系統正常運行</p>
+                  <p className="mt-1 text-xs text-green-300">所有工站狀態正常，繼續監控。</p>
+                </div>
               ) : (
                 <>
-                  {criticalAnomalies.map((anomaly: any) => (
-                    <div key={anomaly.id} className="rounded-lg border-l-4 border-red-500 bg-red-500/10 p-3">
-                      <p className="text-xs font-bold text-red-400">🚨 {anomaly.wsName}: {anomaly.message}</p>
-                      {anomaly.suggestedAction && <p className="mt-1 text-xs text-red-300">{anomaly.suggestedAction}</p>}
+                  {criticalAnomalies.length > 0 && (
+                    <div>
+                      <p className="mb-2 text-xs font-bold text-red-400">🚨 緊急警示 ({criticalAnomalies.length})</p>
+                      <div className="space-y-2">
+                        {criticalAnomalies.map((anomaly: any) => {
+                          const selectedWsData = realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === anomaly.wsId);
+                          const suggestion = getAISuggestions(anomaly.wsName, "critical");
+                          return (
+                            <div key={anomaly.id} className="rounded-lg border-l-4 border-red-500 bg-red-500/10 p-3 hover:bg-red-500/20 transition">
+                              <p className="text-xs font-bold text-red-400">{anomaly.wsName}: {anomaly.message}</p>
+                              {anomaly.suggestedAction && <p className="mt-1 text-xs text-red-300">{anomaly.suggestedAction}</p>}
+                              <p className="mt-2 text-xs text-red-300 italic">💡 {suggestion}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  ))}
-                  {warningAnomalies.map((anomaly: any) => (
-                    <div key={anomaly.id} className="rounded-lg border-l-4 border-yellow-500 bg-yellow-500/10 p-3">
-                      <p className="text-xs font-bold text-yellow-400">⚠️ {anomaly.wsName}: {anomaly.message}</p>
+                  )}
+                  {warningAnomalies.length > 0 && (
+                    <div>
+                      <p className="mb-2 text-xs font-bold text-yellow-400">⚠️ 預警提示 ({warningAnomalies.length})</p>
+                      <div className="space-y-2">
+                        {warningAnomalies.map((anomaly: any) => {
+                          const suggestion = getAISuggestions(anomaly.wsName, "warning");
+                          return (
+                            <div key={anomaly.id} className="rounded-lg border-l-4 border-yellow-500 bg-yellow-500/10 p-3 hover:bg-yellow-500/20 transition">
+                              <p className="text-xs font-bold text-yellow-400">{anomaly.wsName}: {anomaly.message}</p>
+                              <p className="mt-2 text-xs text-yellow-300 italic">💡 {suggestion}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  ))}
+                  )}
                 </>
               )}
             </div>
