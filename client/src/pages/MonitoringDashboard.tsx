@@ -3,10 +3,10 @@
 import { useParams } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, TrendingUp, ChevronDown, ChevronUp, Zap, Activity, Clock, Maximize2, Minimize2, RotateCw } from "lucide-react";
+import { AlertCircle, TrendingUp, ChevronDown, ChevronUp, Zap, Activity, Clock, Maximize2, Minimize2, RotateCw, ArrowUp, ArrowDown } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 
 interface RealtimeWorkstation {
   id: number;
@@ -79,7 +79,7 @@ const getStatusLabel = (status: string) => {
   return labels[status] || status;
 };
 
-const KPICard = ({ label, value, unit, status }: { label: string; value: number | string; unit?: string; status?: "good" | "warning" | "critical" }) => {
+const KPICard = ({ label, value, unit, status, previousValue }: { label: string; value: number | string; unit?: string; status?: "good" | "warning" | "critical"; previousValue?: number }) => {
   const statusColor = {
     good: "text-green-400",
     warning: "text-yellow-400",
@@ -88,14 +88,26 @@ const KPICard = ({ label, value, unit, status }: { label: string; value: number 
 
   // 確保 value 不是 NaN
   const displayValue = typeof value === 'number' && isNaN(value) ? '0' : value;
+  
+  // 計算數值變化方向
+  const trend = previousValue !== undefined && typeof value === 'number' && typeof previousValue === 'number'
+    ? value > previousValue ? 'up' : value < previousValue ? 'down' : 'stable'
+    : null;
 
   return (
-    <div className="rounded-lg border border-cyan-500/30 bg-gradient-to-br from-slate-900 to-slate-800 p-4 shadow-lg shadow-cyan-500/20">
+    <div className="rounded-lg border border-cyan-500/30 bg-gradient-to-br from-slate-900 to-slate-800 p-4 shadow-lg shadow-cyan-500/20 transition-all duration-300 hover:shadow-lg hover:shadow-cyan-500/40">
       <p className="text-xs font-semibold uppercase tracking-widest text-cyan-400">{label}</p>
-      <div className={`mt-2 text-3xl font-bold ${status ? statusColor[status] : "text-cyan-300"}`}>
+      <div className={`mt-2 text-3xl font-bold ${status ? statusColor[status] : "text-cyan-300"} transition-colors duration-300`}>
         {displayValue}
         {unit && <span className="text-lg text-cyan-400">{unit}</span>}
       </div>
+      {trend && (
+        <div className="mt-2 flex items-center gap-1">
+          {trend === 'up' && <ArrowUp className="w-3 h-3 text-green-400" />}
+          {trend === 'down' && <ArrowDown className="w-3 h-3 text-red-400" />}
+          {trend === 'stable' && <span className="text-xs text-gray-400">—</span>}
+        </div>
+      )}
     </div>
   );
 };
@@ -109,6 +121,7 @@ export default function MonitoringDashboard() {
   const [refreshInterval, setRefreshInterval] = useState(30); // 30 秒
   const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date());
   const containerRef = useRef<HTMLDivElement>(null);
+  const [previousKPI, setPreviousKPI] = useState<any>(null);
 
   // 實時狀態查詢
   const { data: realtimeStatus, isLoading: statusLoading, refetch: refetchStatus } = trpc.monitoring.getRealTimeStatus.useQuery(
@@ -126,11 +139,20 @@ export default function MonitoringDashboard() {
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
+      // 保存前一次的 KPI 數據
+      if (realtimeStatus) {
+        setPreviousKPI({
+          balanceRate: realtimeStatus.balanceRate,
+          upph: realtimeStatus.upph,
+          taktAchievement: realtimeStatus.taktAchievement,
+          productionActual: realtimeStatus.productionActual,
+        });
+      }
       refetchStatus();
       setLastUpdateTime(new Date());
     }, refreshInterval * 1000);
     return () => clearInterval(interval);
-  }, [autoRefresh, refetchStatus, refreshInterval]);
+  }, [autoRefresh, refetchStatus, refreshInterval, realtimeStatus]);
 
   // 全螢幕功能
   const toggleFullscreen = async () => {
@@ -182,8 +204,24 @@ export default function MonitoringDashboard() {
     taktAchievement: item.taktAchievement,
   })) || [];
 
-  const criticalAnomalies = realtimeStatus.anomalies.filter((a: any) => a.level === "critical");
-  const warningAnomalies = realtimeStatus.anomalies.filter((a: any) => a.level === "warning");
+  const criticalAnomalies = useMemo(() => realtimeStatus.anomalies.filter((a: any) => a.level === "critical"), [realtimeStatus.anomalies]);
+  const warningAnomalies = useMemo(() => realtimeStatus.anomalies.filter((a: any) => a.level === "warning"), [realtimeStatus.anomalies]);
+  
+  // 生成 AI 改善建議
+  const getAISuggestions = (wsName: string, status: string) => {
+    const suggestions: Record<string, Record<string, string>> = {
+      critical: {
+        default: `立即檢查「${wsName}」工站，可能存在設備故障或工序瓶頸。建議優先排查。`,
+      },
+      warning: {
+        default: `「${wsName}」工站效率下降，建議檢查是否有人員不足或物料延遲。`,
+      },
+      normal: {
+        default: `「${wsName}」工站運行正常，繼續監控。`,
+      },
+    };
+    return suggestions[status]?.default || `監控「${wsName}」工站狀態。`;
+  };
 
   return (
     <div
@@ -248,11 +286,33 @@ export default function MonitoringDashboard() {
       <div className={`${isFullscreen ? "px-6" : ""}`}>
         {/* KPI 儀表板 */}
         <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-5">
-          <KPICard label="平衡率" value={`${realtimeStatus.balanceRate}%`} status={realtimeStatus.balanceRate >= 80 ? "good" : realtimeStatus.balanceRate >= 60 ? "warning" : "critical"} />
-          <KPICard label="UPPH" value={isNaN(realtimeStatus.upph) ? '0' : realtimeStatus.upph} />
-          <KPICard label="Takt 達標" value={`${realtimeStatus.taktAchievement}%`} status={realtimeStatus.taktAchievement >= 80 ? "good" : "warning"} />
-          <KPICard label="產能達成" value={`${Math.round((realtimeStatus.productionActual / realtimeStatus.productionTarget) * 100)}%`} />
-          <KPICard label="異常工站" value={criticalAnomalies.length} status={criticalAnomalies.length === 0 ? "good" : "critical"} />
+          <KPICard 
+            label="平衡率" 
+            value={`${realtimeStatus.balanceRate}%`} 
+            status={realtimeStatus.balanceRate >= 80 ? "good" : realtimeStatus.balanceRate >= 60 ? "warning" : "critical"}
+            previousValue={previousKPI?.balanceRate}
+          />
+          <KPICard 
+            label="UPPH" 
+            value={isNaN(realtimeStatus.upph) ? '0' : realtimeStatus.upph}
+            previousValue={previousKPI?.upph}
+          />
+          <KPICard 
+            label="Takt 達標" 
+            value={`${realtimeStatus.taktAchievement}%`} 
+            status={realtimeStatus.taktAchievement >= 80 ? "good" : "warning"}
+            previousValue={previousKPI?.taktAchievement}
+          />
+          <KPICard 
+            label="產能達成" 
+            value={`${Math.round((realtimeStatus.productionActual / realtimeStatus.productionTarget) * 100)}%`}
+            previousValue={previousKPI?.productionActual}
+          />
+          <KPICard 
+            label="異常工站" 
+            value={criticalAnomalies.length} 
+            status={criticalAnomalies.length === 0 ? "good" : "critical"} 
+          />
         </div>
 
         {/* 主監控區 - 工站狀態 */}
