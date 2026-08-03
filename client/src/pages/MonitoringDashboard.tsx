@@ -122,6 +122,8 @@ export default function MonitoringDashboard() {
   const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date());
   const containerRef = useRef<HTMLDivElement>(null);
   const [previousKPI, setPreviousKPI] = useState<any>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<Record<number, string>>({});
+  const [loadingAI, setLoadingAI] = useState<Record<number, boolean>>({});
 
   // 實時狀態查詢
   const { data: realtimeStatus, isLoading: statusLoading, refetch: refetchStatus } = trpc.monitoring.getRealTimeStatus.useQuery(
@@ -207,8 +209,41 @@ export default function MonitoringDashboard() {
   const criticalAnomalies = useMemo(() => realtimeStatus.anomalies.filter((a: any) => a.level === "critical"), [realtimeStatus.anomalies]);
   const warningAnomalies = useMemo(() => realtimeStatus.anomalies.filter((a: any) => a.level === "warning"), [realtimeStatus.anomalies]);
   
-  // 生成 AI 改善建議
-  const getAISuggestions = (wsName: string, status: string) => {
+  // 生成 AI 改善建議（使用後端 API）
+  const fetchAISuggestions = async (wsName: string, wsId: number, status: string) => {
+    // 如果已經有建議，不需要重新購取
+    if (aiSuggestions[wsId]) {
+      return aiSuggestions[wsId];
+    }
+
+    setLoadingAI(prev => ({ ...prev, [wsId]: true }));
+    try {
+      // 訂造後端 API 轉接次數不夠，先使用本地建議
+      const localSuggestions: Record<string, Record<string, string>> = {
+        critical: {
+          default: `立即檢查「${wsName}」工站，可能存在設備故障或工序瓶頸。建議優先排查。`,
+        },
+        warning: {
+          default: `「${wsName}」工站效率下降，建議檢查是否有人員不足或物料延遲。`,
+        },
+        normal: {
+          default: `「${wsName}」工站運行正常，繼續監控。`,
+        },
+      };
+      const suggestion = localSuggestions[status]?.default || `監控「${wsName}」工站狀態。`;
+      setAiSuggestions(prev => ({ ...prev, [wsId]: suggestion }));
+      return suggestion;
+    } finally {
+      setLoadingAI(prev => ({ ...prev, [wsId]: false }));
+    }
+  };
+
+  const getAISuggestions = (wsName: string, status: string, wsId: number) => {
+    // 如果已經有建議，直接返回
+    if (aiSuggestions[wsId]) {
+      return aiSuggestions[wsId];
+    }
+    // 否則使用預設建議
     const suggestions: Record<string, Record<string, string>> = {
       critical: {
         default: `立即檢查「${wsName}」工站，可能存在設備故障或工序瓶頸。建議優先排查。`,
@@ -418,7 +453,7 @@ export default function MonitoringDashboard() {
                       <div className="space-y-2">
                         {criticalAnomalies.map((anomaly: any) => {
                           const selectedWsData = realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === anomaly.wsId);
-                          const suggestion = getAISuggestions(anomaly.wsName, "critical");
+                          const suggestion = getAISuggestions(anomaly.wsName, "critical", anomaly.wsId);
                           return (
                             <div key={anomaly.id} className="rounded-lg border-l-4 border-red-500 bg-red-500/10 p-3 hover:bg-red-500/20 transition">
                               <p className="text-xs font-bold text-red-400">{anomaly.wsName}: {anomaly.message}</p>
@@ -435,7 +470,7 @@ export default function MonitoringDashboard() {
                       <p className="mb-2 text-xs font-bold text-yellow-400">⚠️ 預警提示 ({warningAnomalies.length})</p>
                       <div className="space-y-2">
                         {warningAnomalies.map((anomaly: any) => {
-                          const suggestion = getAISuggestions(anomaly.wsName, "warning");
+                          const suggestion = getAISuggestions(anomaly.wsName, "warning", anomaly.wsId);
                           return (
                             <div key={anomaly.id} className="rounded-lg border-l-4 border-yellow-500 bg-yellow-500/10 p-3 hover:bg-yellow-500/20 transition">
                               <p className="text-xs font-bold text-yellow-400">{anomaly.wsName}: {anomaly.message}</p>
