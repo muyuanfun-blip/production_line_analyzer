@@ -29,9 +29,42 @@ export default function AISuggestions() {
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
 
+  // 清理 LaTeX 公式為可讀文本
+  const cleanLatexFormulas = (text: string): string => {
+    // 替換 LaTeX 公式為可讀文本
+    return text
+      // 替換 \text{...} 為括號內的文本
+      .replace(/\\text\{([^}]+)\}/g, '$1')
+      // 替換 \frac{a}{b} 為 a/b
+      .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2')
+      // 替換 \times 為 ×
+      .replace(/\\times/g, '×')
+      // 替換 \div 為 ÷
+      .replace(/\\div/g, '÷')
+      // 替換 \% 為 %
+      .replace(/\\%/g, '%')
+      // 替換 \approx 為 ≈
+      .replace(/\\approx/g, '≈')
+      // 替換 \leq 為 ≤
+      .replace(/\\leq/g, '≤')
+      // 替換 \geq 為 ≥
+      .replace(/\\geq/g, '≥')
+      // 替換 \neq 為 ≠
+      .replace(/\\neq/g, '≠')
+      // 移除其他 LaTeX 命令
+      .replace(/\\[a-zA-Z]+\{[^}]*\}/g, '')
+      // 移除美元符號
+      .replace(/\$/g, '')
+      // 移除多餘空白
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
   const aiMutation = trpc.analysis.aiSuggest.useMutation({
     onSuccess: (data) => {
-      const content = typeof data.suggestion === 'string' ? data.suggestion : JSON.stringify(data.suggestion);
+      let content = typeof data.suggestion === 'string' ? data.suggestion : JSON.stringify(data.suggestion);
+      // 清理 LaTeX 公式
+      content = cleanLatexFormulas(content);
       setSuggestion(content);
       setHasAnalyzed(true);
       toast.success("AI 分析完成");
@@ -292,7 +325,7 @@ export default function AISuggestions() {
             <div className="prose prose-invert max-w-none">
               <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-5">
                 <Streamdown className="text-sm leading-relaxed [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-amber-400 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground [&_strong]:text-foreground [&_ul]:text-muted-foreground [&_li]:mb-1 [&_p]:text-muted-foreground [&_p]:leading-relaxed">
-                  {suggestion}
+                  {cleanLatexFormulas(suggestion)}
                 </Streamdown>
               </div>
             </div>
