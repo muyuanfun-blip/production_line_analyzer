@@ -308,6 +308,13 @@ export const appRouter = router({
         return getActionStepsByWorkstation(input.workstationId);
       }),
 
+    listByWorkstations: publicProcedure
+      .input(z.object({ workstationIds: z.array(z.number().int().positive()) }))
+      .query(async ({ input }) => {
+        if (input.workstationIds.length === 0) return [];
+        return getActionStepsByWorkstationIds(input.workstationIds);
+      }),
+
     create: publicProcedure
       .input(actionStepInput)
       .mutation(async ({ input }) => {
@@ -419,6 +426,20 @@ export const appRouter = router({
           cycleTime: z.number(),
           manpower: z.number(),
           sequenceOrder: z.number(),
+          actionSteps: z.array(z.object({
+            stepName: z.string(),
+            duration: z.number(),
+            actionType: z.enum(['value_added', 'non_value_added', 'necessary_waste']),
+            description: z.string().nullable().optional(),
+          })).optional(),
+          actionStatistics: z.object({
+            totalSteps: z.number(),
+            totalDuration: z.number(),
+            valueAddedCount: z.number(),
+            nonValueAddedCount: z.number(),
+            necessaryWasteCount: z.number(),
+            valueAddedRate: z.string(),
+          }).optional(),
         })),
       }))
       .mutation(async ({ input }) => {
@@ -457,7 +478,10 @@ export const appRouter = router({
                 ? ` ⚠️ 超出 Takt Time +${(w.cycleTime - input.targetCycleTime).toFixed(1)}s`
                 : ` ✓ 達標 (${((w.cycleTime / input.targetCycleTime) * 100).toFixed(0)}%)`)
               : "";
-            return `  - ${w.name}：工序時間 ${w.cycleTime}s，人員 ${w.manpower} 人${taktStatus}`;
+            const actionInfo = w.actionStatistics
+              ? `【動作拆解】總步驟: ${w.actionStatistics.totalSteps}, 總時間: ${w.actionStatistics.totalDuration.toFixed(1)}s, 增值率: ${w.actionStatistics.valueAddedRate}% (增值: ${w.actionStatistics.valueAddedCount}, 非增值: ${w.actionStatistics.nonValueAddedCount}, 必要浪費: ${w.actionStatistics.necessaryWasteCount})`
+              : '';
+            return `  - ${w.name}：工序時間 ${w.cycleTime}s，人員 ${w.manpower} 人${taktStatus}\n    ${actionInfo}`;
           })
           .join("\n");
 
@@ -480,6 +504,9 @@ ${workstationList}
 
 ## 1. 現況診斷
 分析目前產線的主要問題和瓶頸，特別說明 Takt Time 達標情況（若有設定）。
+
+## 2. 動作拆解分析
+分析各工站的動作拆解數標（增值動作、非增值動作、必要浪費），識別可消除的浪費。
 
 ## 2. Takt Time 達標改善方案
 ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工序壓縮或人員調配方案。' : '建議設定合理的 Takt Time，並說明如何依客戶需求計算。'}

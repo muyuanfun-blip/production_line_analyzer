@@ -18,6 +18,13 @@ export default function AISuggestions() {
 
   const { data: line } = trpc.productionLine.getById.useQuery({ id: lineId });
   const { data: workstations } = trpc.workstation.listByLine.useQuery({ productionLineId: lineId });
+  
+  // 查詢所有工站的動作拆解資料
+  const workstationIds = workstations?.map(w => w.id) ?? [];
+  const { data: allActionSteps } = trpc.actionStep.listByWorkstations.useQuery(
+    { workstationIds },
+    { enabled: workstationIds.length > 0 }
+  );
 
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
@@ -53,16 +60,42 @@ export default function AISuggestions() {
 
   const handleAnalyze = () => {
     if (!workstations?.length) { toast.error("請先新增工站資料"); return; }
-    aiMutation.mutate({
-      productionLineId: lineId,
-      productionLineName: line?.name ?? "未命名產線",
-      targetCycleTime: line?.targetCycleTime ? parseFloat(line.targetCycleTime.toString()) : undefined,
-      workstations: workstations.map(w => ({
+    
+    // 為每個工站附加動作拆解資料
+    const workstationsWithActions = workstations.map(w => {
+      const wsActionSteps = allActionSteps?.filter((a: any) => a.workstationId === w.id) ?? [];
+      const totalActionDuration = wsActionSteps.reduce((sum: number, a: any) => sum + parseFloat(a.duration.toString()), 0);
+      const valueAddedCount = wsActionSteps.filter((a: any) => a.actionType === 'value_added').length;
+      const nonValueAddedCount = wsActionSteps.filter((a: any) => a.actionType === 'non_value_added').length;
+      const necessaryWasteCount = wsActionSteps.filter((a: any) => a.actionType === 'necessary_waste').length;
+      
+      return {
         name: w.name,
         cycleTime: parseFloat(w.cycleTime.toString()),
         manpower: parseFloat(w.manpower.toString()),
         sequenceOrder: w.sequenceOrder,
-      })),
+        actionSteps: wsActionSteps.map((a: any) => ({
+          stepName: a.stepName,
+          duration: parseFloat(a.duration.toString()),
+          actionType: a.actionType,
+          description: a.description,
+        })),
+        actionStatistics: {
+          totalSteps: wsActionSteps.length,
+          totalDuration: totalActionDuration,
+          valueAddedCount,
+          nonValueAddedCount,
+          necessaryWasteCount,
+          valueAddedRate: wsActionSteps.length > 0 ? ((valueAddedCount / wsActionSteps.length) * 100).toFixed(1) : '0',
+        },
+      };
+    });
+    
+    aiMutation.mutate({
+      productionLineId: lineId,
+      productionLineName: line?.name ?? "未命名產線",
+      targetCycleTime: line?.targetCycleTime ? parseFloat(line.targetCycleTime.toString()) : undefined,
+      workstations: workstationsWithActions,
     });
   };
 
