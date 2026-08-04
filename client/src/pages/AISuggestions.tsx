@@ -10,6 +10,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Streamdown } from "streamdown";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 
 export default function AISuggestions() {
   const params = useParams<{ id: string }>();
@@ -291,9 +295,22 @@ export default function AISuggestions() {
           ) : suggestion ? (
             <div className="prose prose-invert max-w-none">
               <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-5">
-                <Streamdown className="text-sm leading-relaxed [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-amber-400 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground [&_strong]:text-foreground [&_ul]:text-muted-foreground [&_li]:mb-1 [&_p]:text-muted-foreground [&_p]:leading-relaxed">
-                  {suggestion}
-                </Streamdown>
+                <div className="text-sm leading-relaxed">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                    components={{
+                      h2: ({ children }) => <h2 className="text-base font-semibold text-amber-400 mt-4 mb-2">{children}</h2>,
+                      h3: ({ children }) => <h3 className="text-sm font-medium text-foreground mt-3 mb-1">{children}</h3>,
+                      p: ({ children }) => <p className="text-muted-foreground leading-relaxed mb-2">{children}</p>,
+                      ul: ({ children }) => <ul className="list-disc list-inside text-muted-foreground mb-2">{children}</ul>,
+                      li: ({ children }) => <li className="mb-1 ml-2">{children}</li>,
+                      strong: ({ children }) => <strong className="text-foreground font-semibold">{children}</strong>,
+                    }}
+                  >
+                    {suggestion}
+                  </ReactMarkdown>
+                </div>
               </div>
             </div>
           ) : (
