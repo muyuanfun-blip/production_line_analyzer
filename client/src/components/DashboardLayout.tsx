@@ -51,31 +51,18 @@ const navGroups = [
     items: [
       { icon: Home,             label: "首頁總覽",   path: "/" },
       { icon: Factory,          label: "生產線管理", path: "/lines" },
-      { icon: GanttChartSquare, label: "甘特比較",   path: "/gantt" },
     ],
   },
   {
     label: "資料管理",
     items: [
-      { icon: PencilLine,  label: "數據修整", path: "/data-refinement" },
-      { icon: FlaskConical, label: "配置模擬", path: "/simulator" },
-      { icon: Package,     label: "產品型號", path: "/product-models" },
-      { icon: ScanBarcode, label: "產品追蹤", path: "/product-tracking" },
       { icon: GitBranch,   label: "VSM 設計", path: "/lines/1/vsm" },
       { icon: BarChart3,   label: "戰情監控", path: "/lines/1/monitoring" },
     ],
   },
-  {
-    label: "系統",
-    items: [
-      { icon: BookOpen, label: "使用指南", path: "/guide" },
-    ],
-  },
 ];
 
-const adminNavItems = [
-  { icon: Users, label: "帳號管理", path: "/admin/users" },
-];
+const adminNavItems: typeof navGroups[0]["items"] = [];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 240;
