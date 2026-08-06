@@ -184,6 +184,10 @@ export default function MonitoringDashboard() {
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
+  // 計算更新時間字符串
+  const updateTimeStr = lastUpdateTime.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+  // 加載狀態
   if (statusLoading || trendLoading) {
     return (
       <div className="space-y-6 p-6">
@@ -193,11 +197,10 @@ export default function MonitoringDashboard() {
     );
   }
 
+  // 無數據狀態
   if (!realtimeStatus) {
     return <div className="p-6 text-center text-gray-500">無法載入監控資料</div>;
   }
-
-  const updateTimeStr = lastUpdateTime.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
   const trendData = historicalTrend?.map((item: HistoricalTrend) => ({
     time: new Date(item.timestamp).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }),
