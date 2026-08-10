@@ -553,6 +553,89 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         const content = ollamaData.message?.content ?? "無法生成建議，請稍後再試。";
         return { suggestion: content };
       }),
+
+    compareSnapshots: publicProcedure
+      .input(z.object({
+        productionLineId: z.number().int().positive(),
+        productionLineName: z.string(),
+        snapshot1Name: z.string(),
+        snapshot2Name: z.string(),
+        snapshot1Data: z.any(),
+        snapshot2Data: z.any(),
+      }))
+      .mutation(async ({ input }) => {
+        if (!ENV.ollamaApiKey) {
+          throw new Error("AI 分析功能需要設定 OLLAMA_API_KEY 環境變數。");
+        }
+
+        const snap1 = input.snapshot1Data;
+        const snap2 = input.snapshot2Data;
+
+        const balanceRateChange = (Number(snap2.balanceRate) - Number(snap1.balanceRate)).toFixed(1);
+        const upphChange = snap1.upph && snap2.upph 
+          ? (Number(snap2.upph) - Number(snap1.upph)).toFixed(2)
+          : "N/A";
+
+        const prompt = `你是一位精通精實生產的專家顧問。請根據以下兩個快照的產線數據，進行詳細的比較分析：
+
+**產線名稱：** ${input.productionLineName}
+
+### 快照 1：${input.snapshot1Name}
+- 平衡率：${snap1.balanceRate}%
+- UPPH：${snap1.upph || "N/A"}
+
+### 快照 2：${input.snapshot2Name}
+- 平衡率：${snap2.balanceRate}%
+- UPPH：${snap2.upph || "N/A"}
+
+### 關鍵指標變化
+- 平衡率變化：${balanceRateChange}%
+- UPPH 變化：${upphChange}
+
+請提供以下分析（使用繁體中文）：
+
+## 1. 快照對比總結
+簡要說明兩個快照之間的主要差異。
+
+## 2. 平衡率分析
+分析平衡率的變化原因。
+
+## 3. 改善效果評估
+綜合評估本次改善的成效。
+
+## 4. 建議下一步行動
+提出下一步的優化方向。`;
+
+        const ollamaRes = await fetch(`${ENV.ollamaBaseUrl}/api/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${ENV.ollamaApiKey}`,
+          },
+          body: JSON.stringify({
+            model: ENV.ollamaModel,
+            messages: [
+              { role: "system", content: "你是一位精通精實生產的專家顧問。請用繁體中文回答，格式清晰專業。" },
+              { role: "user", content: prompt },
+            ],
+            stream: false,
+          }),
+        });
+
+        if (!ollamaRes.ok) {
+          const errText = await ollamaRes.text();
+          throw new Error(`Ollama API 錯誤 (${ollamaRes.status}): ${errText}`);
+        }
+
+        const ollamaData = await ollamaRes.json() as {
+          message?: { content?: string };
+          error?: string;
+        };
+
+        const content = ollamaData.message?.content ?? "無法生成比較報告，請稍後再試。";
+        return { report: content };
+      }),
+
   }),
 
   // ─── Snapshot Router ──────────────────────────────────────────────────────
