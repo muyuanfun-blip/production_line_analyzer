@@ -576,35 +576,65 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
           ? (Number(snap2.upph) - Number(snap1.upph)).toFixed(2)
           : "N/A";
 
-        const prompt = `你是一位精通精實生產的專家顧問。請根據以下兩個快照的產線數據，進行詳細的比較分析：
+        // 只提取必要的 KPI 數值，避免傳送完整 workstationsData 導致 payload 過大
+        const s1 = {
+          balanceRate: Number(snap1.balanceRate ?? 0).toFixed(1),
+          upph: snap1.upph != null ? Number(snap1.upph).toFixed(2) : "N/A",
+          maxTime: Number(snap1.maxTime ?? 0).toFixed(1),
+          avgTime: Number(snap1.avgTime ?? 0).toFixed(1),
+          taktPassRate: snap1.taktPassRate != null ? Number(snap1.taktPassRate).toFixed(1) : "N/A",
+          bottleneck: snap1.bottleneckName ?? "未知",
+          workstationCount: snap1.workstationCount ?? 0,
+          totalManpower: snap1.totalManpower ?? 0,
+        };
+        const s2 = {
+          balanceRate: Number(snap2.balanceRate ?? 0).toFixed(1),
+          upph: snap2.upph != null ? Number(snap2.upph).toFixed(2) : "N/A",
+          maxTime: Number(snap2.maxTime ?? 0).toFixed(1),
+          avgTime: Number(snap2.avgTime ?? 0).toFixed(1),
+          taktPassRate: snap2.taktPassRate != null ? Number(snap2.taktPassRate).toFixed(1) : "N/A",
+          bottleneck: snap2.bottleneckName ?? "未知",
+          workstationCount: snap2.workstationCount ?? 0,
+          totalManpower: snap2.totalManpower ?? 0,
+        };
 
-**產線名稱：** ${input.productionLineName}
+        // 計算各指標變化
+        const maxTimeChange = (Number(snap2.maxTime ?? 0) - Number(snap1.maxTime ?? 0)).toFixed(1);
+        const taktPassChange = snap1.taktPassRate != null && snap2.taktPassRate != null
+          ? (Number(snap2.taktPassRate) - Number(snap1.taktPassRate)).toFixed(1)
+          : "N/A";
 
-### 快照 1：${input.snapshot1Name}
-- 平衡率：${snap1.balanceRate}%
-- UPPH：${snap1.upph || "N/A"}
-
-### 快照 2：${input.snapshot2Name}
-- 平衡率：${snap2.balanceRate}%
-- UPPH：${snap2.upph || "N/A"}
-
-### 關鍵指標變化
-- 平衡率變化：${balanceRateChange}%
-- UPPH 變化：${upphChange}
-
-請提供以下分析（使用繁體中文）：
-
-## 1. 快照對比總結
-簡要說明兩個快照之間的主要差異。
-
-## 2. 平衡率分析
-分析平衡率的變化原因。
-
-## 3. 改善效果評估
-綜合評估本次改善的成效。
-
-## 4. 建議下一步行動
-提出下一步的優化方向。`;
+        const promptLines = [
+          "你是一位精通精實生產（Lean Manufacturing）的專家顧問。請根據以下產線快照比較數據，提供專業的改善分析報告。",
+          "",
+          "**產線：** " + input.productionLineName,
+          "",
+          "| 指標 | " + input.snapshot1Name + " | " + input.snapshot2Name + " | 變化 |",
+          "|------|------|------|------|",
+          "| 平衡率 | " + s1.balanceRate + "% | " + s2.balanceRate + "% | " + (Number(balanceRateChange) >= 0 ? "+" : "") + balanceRateChange + "% |",
+          "| UPPH | " + s1.upph + " | " + s2.upph + " | " + (upphChange !== "N/A" ? (Number(upphChange) >= 0 ? "+" : "") + upphChange : "N/A") + " |",
+          "| 瓶頸工站時間 | " + s1.maxTime + "s | " + s2.maxTime + "s | " + (Number(maxTimeChange) >= 0 ? "+" : "") + maxTimeChange + "s |",
+          "| 平均工序時間 | " + s1.avgTime + "s | " + s2.avgTime + "s | - |",
+          "| Takt 達標率 | " + s1.taktPassRate + "% | " + s2.taktPassRate + "% | " + (taktPassChange !== "N/A" ? (Number(taktPassChange) >= 0 ? "+" : "") + taktPassChange + "%" : "N/A") + " |",
+          "| 瓶頸工站 | " + s1.bottleneck + " | " + s2.bottleneck + " | - |",
+          "| 工站數 | " + s1.workstationCount + " | " + s2.workstationCount + " | - |",
+          "| 總人力 | " + s1.totalManpower + " | " + s2.totalManpower + " | - |",
+          "",
+          "請用繁體中文提供以下分析（格式清晰，使用 Markdown）：",
+          "",
+          "## 1. 快照對比總結",
+          "說明兩個快照之間的主要差異和整體改善情況。",
+          "",
+          "## 2. 平衡率與效率分析",
+          "分析平衡率和 UPPH 的變化原因，評估改善效果。",
+          "",
+          "## 3. 瓶頸工站改善評估",
+          "評估瓶頸工站的變化情況和改善成效。",
+          "",
+          "## 4. 建議下一步行動",
+          "提出 3-5 個具體可行的後續優化方向，按優先級排列。",
+        ];
+        const prompt = promptLines.join("\n");
 
         const ollamaRes = await fetch(`${ENV.ollamaBaseUrl}/api/chat`, {
           method: "POST",
