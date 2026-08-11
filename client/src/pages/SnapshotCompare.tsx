@@ -9,10 +9,17 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   LineChart, Line, ResponsiveContainer, ReferenceLine, Cell, LabelList
 } from "recharts";
+import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import {
   ArrowLeft, TrendingUp, TrendingDown, Minus,
   BarChart3, Camera, AlertTriangle, CheckCircle2, Zap
 } from "lucide-react";
+import { Brain, FileText, Loader2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
+import { useState } from "react";
 
 type WorkstationData = {
   id: number;
@@ -220,6 +227,14 @@ export default function SnapshotCompare() {
     { productionLineId: lineId }, { enabled: lineId > 0 }
   );
 
+  // AI 比較分析狀態
+  const [aiReport, setAiReport] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const compareSnapshotsMutation = trpc.analysis.compareSnapshots.useMutation({
+    onSuccess: (data) => { setAiReport(data.report); setAiError(null); },
+    onError: (err) => { setAiError(err.message); },
+  });
+
   const wsA = useMemo(() => {
     if (!snapA) return [] as WorkstationData[];
     return (snapA.workstationsData as WorkstationData[]).sort((a, b) => a.sequenceOrder - b.sequenceOrder);
@@ -307,14 +322,15 @@ export default function SnapshotCompare() {
   const B = snapB as Snapshot;
 
   const kpis = [
-    { label: "產線平衡率", a: A.balanceRate, b: B.balanceRate, unit: "%", higherIsBetter: true },
-    { label: "瓶頸工站時間", a: A.maxTime, b: B.maxTime, unit: "s", higherIsBetter: false },
-    { label: "平均工序時間", a: A.avgTime, b: B.avgTime, unit: "s", higherIsBetter: false },
+    { label: "產線平衡率", a: A.balanceRate, b: B.balanceRate, unit: "%", higherIsBetter: true, color: "#22d3ee" },
+    { label: "瓶頸工站時間", a: A.maxTime, b: B.maxTime, unit: "s", higherIsBetter: false, color: "#f87171" },
+    { label: "平均工序時間", a: A.avgTime, b: B.avgTime, unit: "s", higherIsBetter: false, color: "#fbbf24" },
     {
       label: "Takt Time 達標率",
       a: A.taktPassRate ?? 0, b: B.taktPassRate ?? 0,
       unit: "%", higherIsBetter: true,
       noData: !A.taktPassRate && !B.taktPassRate,
+      color: "#a78bfa",
     },
   ];
   const hasUpphData = A.upph != null || B.upph != null;
@@ -323,6 +339,54 @@ export default function SnapshotCompare() {
   const worsenedCount = stationDiff.filter(r => r.worsened).length;
   const neutralCount = stationDiff.filter(r => !r.improved && !r.worsened && !r.onlyA && !r.onlyB).length;
   const hasVAData = vaChartData.length > 0;
+
+  // 雷達圖數據（標準化到 0-100）
+  const radarData = [
+    {
+      metric: "平衡率",
+      A: A.balanceRate,
+      B: B.balanceRate,
+      fullMark: 100,
+    },
+    {
+      metric: "Takt 達標率",
+      A: A.taktPassRate ?? 0,
+      B: B.taktPassRate ?? 0,
+      fullMark: 100,
+    },
+    {
+      metric: "UPPH 效率",
+      A: A.upph != null ? Math.min((A.upph / 20) * 100, 100) : 0,
+      B: B.upph != null ? Math.min((B.upph / 20) * 100, 100) : 0,
+      fullMark: 100,
+    },
+    {
+      metric: "增值率",
+      A: overallVA.a ?? 0,
+      B: overallVA.b ?? 0,
+      fullMark: 100,
+    },
+    {
+      metric: "工站改善率",
+      A: stationDiff.length > 0 ? Math.round((improvedCount / stationDiff.length) * 100) : 0,
+      B: stationDiff.length > 0 ? Math.round((improvedCount / stationDiff.length) * 100) : 0,
+      fullMark: 100,
+    },
+  ];
+
+  // AI 比較分析
+  const handleAIAnalyze = () => {
+    setAiReport(null);
+    setAiError(null);
+    compareSnapshotsMutation.mutate({
+      productionLineId: lineId,
+      productionLineName: A.name.split(" ")[0] ?? "產線",
+      snapshot1Name: A.name,
+      snapshot2Name: B.name,
+      snapshot1Data: A,
+      snapshot2Data: B,
+    });
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -358,70 +422,123 @@ export default function SnapshotCompare() {
       </div>
 
       {/* KPI 比較（含整體增值率）*/}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        {kpis.map(({ label, a, b, unit, higherIsBetter, noData }) => (
-          <Card key={label} className="bg-card border-border">
-            <CardContent className="p-4">
-              <div className="text-sm text-muted-foreground mb-3">{label}</div>
-              {noData ? (
-                <div className="text-muted-foreground text-sm">未設定</div>
-              ) : (
-                <>
-                  <div className="flex items-end gap-3 mb-2">
-                    <div>
-                      <FormulaTooltip formulaKey={label === "產線平衡率" ? "balanceRate" : label === "瓶頸工站時間" ? "bottleneckTime" : label.includes("Takt") ? "taktPassRate" : "avgCycleTime"} liveValues={{ "快照": "A" }}>
-                        <div className="text-lg font-bold text-cyan-400">{a.toFixed(1)}{unit}</div>
-                      </FormulaTooltip>
-                      <div className="text-xs text-muted-foreground">快照 A</div>
-                    </div>
-                    <div className="text-muted-foreground mb-1 text-sm">→</div>
-                    <div>
-                      <FormulaTooltip formulaKey={label === "產線平衡率" ? "balanceRate" : label === "瓶頸工站時間" ? "bottleneckTime" : label.includes("Takt") ? "taktPassRate" : "avgCycleTime"} liveValues={{ "快照": "B" }}>
-                        <div className="text-lg font-bold text-violet-400">{b.toFixed(1)}{unit}</div>
-                      </FormulaTooltip>
-                      <div className="text-xs text-muted-foreground">快照 B</div>
-                    </div>
+      {/* KPI 比較（視覺化版本）*/}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* 左側：KPI 指標卡片 */}
+        <div className="space-y-3">
+          {kpis.map(({ label, a, b, unit, higherIsBetter, noData, color }) => {
+            const delta = b - a;
+            const improved = higherIsBetter ? delta > 0 : delta < 0;
+            const neutral = Math.abs(delta) < 0.05;
+            const maxVal = unit === "%" ? 100 : Math.max(a, b) * 1.2;
+            return (
+              <Card key={label} className="bg-card border-border overflow-hidden">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-foreground">{label}</span>
+                    {!noData && (
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                        neutral ? "bg-gray-500/20 text-gray-400" :
+                        improved ? "bg-emerald-500/20 text-emerald-400" :
+                        "bg-red-500/20 text-red-400"
+                      }`}>
+                        {neutral ? "持平" : improved ? `▲ +${Math.abs(delta).toFixed(1)}${unit}` : `▼ -${Math.abs(delta).toFixed(1)}${unit}`}
+                      </span>
+                    )}
                   </div>
-                  <DeltaBadge a={a} b={b} unit={unit} higherIsBetter={higherIsBetter} />
-                </>
+                  {noData ? (
+                    <div className="text-muted-foreground text-sm">未設定</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {/* 快照 A 進度條 */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-cyan-400 w-12 shrink-0">快照 A</span>
+                        <div className="flex-1 bg-gray-800 rounded-full h-2.5 overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${Math.min((a / maxVal) * 100, 100)}%`, backgroundColor: C.a }} />
+                        </div>
+                        <span className="text-xs font-mono text-cyan-400 w-14 text-right shrink-0">{a.toFixed(1)}{unit}</span>
+                      </div>
+                      {/* 快照 B 進度條 */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-violet-400 w-12 shrink-0">快照 B</span>
+                        <div className="flex-1 bg-gray-800 rounded-full h-2.5 overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${Math.min((b / maxVal) * 100, 100)}%`, backgroundColor: C.b }} />
+                        </div>
+                        <span className="text-xs font-mono text-violet-400 w-14 text-right shrink-0">{b.toFixed(1)}{unit}</span>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+          {/* UPPH 卡片 */}
+          <Card className="bg-card border-amber-500/25 overflow-hidden">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-amber-400 flex items-center gap-1">★ UPPH（件/人/時）</span>
+                {A.upph != null && B.upph != null && (() => {
+                  const delta = Number(B.upph) - Number(A.upph);
+                  const improved = delta > 0;
+                  const neutral = Math.abs(delta) < 0.01;
+                  return (
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                      neutral ? "bg-gray-500/20 text-gray-400" :
+                      improved ? "bg-emerald-500/20 text-emerald-400" :
+                      "bg-red-500/20 text-red-400"
+                    }`}>
+                      {neutral ? "持平" : improved ? `▲ +${Math.abs(delta).toFixed(2)}` : `▼ -${Math.abs(delta).toFixed(2)}`}
+                    </span>
+                  );
+                })()}
+              </div>
+              {!hasUpphData ? (
+                <div className="text-muted-foreground text-sm">快照尚無 UPPH</div>
+              ) : (
+                <div className="space-y-2">
+                  {[{ label: "快照 A", val: A.upph, color: C.a }, { label: "快照 B", val: B.upph, color: C.b }].map(({ label, val, color }) => {
+                    const maxUpph = Math.max(Number(A.upph ?? 0), Number(B.upph ?? 0)) * 1.2;
+                    return (
+                      <div key={label} className="flex items-center gap-2">
+                        <span className="text-xs w-12 shrink-0" style={{ color }}>{label}</span>
+                        <div className="flex-1 bg-gray-800 rounded-full h-2.5 overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: val != null ? `${Math.min((Number(val) / maxUpph) * 100, 100)}%` : "0%", backgroundColor: color }} />
+                        </div>
+                        <span className="text-xs font-mono w-16 text-right shrink-0" style={{ color }}>
+                          {val != null ? Number(val).toFixed(2) : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </CardContent>
           </Card>
-        ))}
-        {/* UPPH 對比 KPI */}
-        <Card className="bg-card border-amber-500/25">
-          <CardContent className="p-4">
-            <div className="text-sm text-amber-400 mb-3 flex items-center gap-1 font-medium">
-              ★ UPPH
-            </div>
-            {!hasUpphData ? (
-              <div className="text-muted-foreground text-sm">快照尚無 UPPH</div>
-            ) : (
-              <>
-                <div className="flex items-end gap-3 mb-2">
-                  <div>
-                    <FormulaTooltip formulaKey="upph" liveValues={{ "快照": "A" }}>
-                      <div className="text-lg font-bold text-cyan-400">
-                        {A.upph != null ? Number(A.upph).toFixed(2) : "—"}
-                      </div>
-                    </FormulaTooltip>
-                    <div className="text-xs text-muted-foreground">快照 A</div>
-                  </div>
-                  <div className="text-muted-foreground mb-1 text-sm">→</div>
-                  <div>
-                    <FormulaTooltip formulaKey="upph" liveValues={{ "快照": "B" }}>
-                      <div className="text-lg font-bold text-violet-400">
-                        {B.upph != null ? Number(B.upph).toFixed(2) : "—"}
-                      </div>
-                    </FormulaTooltip>
-                    <div className="text-xs text-muted-foreground">快照 B</div>
-                  </div>
-                </div>
-                {A.upph != null && B.upph != null && (
-                  <DeltaBadge a={Number(A.upph)} b={Number(B.upph)} unit=" 件/人/時" higherIsBetter={true} />
-                )}
-              </>
-            )}
+        </div>
+        {/* 右側：雷達圖 */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-violet-400" />
+              多維指標雷達圖
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={320}>
+              <RadarChart data={radarData} margin={{ top: 10, right: 30, left: 30, bottom: 10 }}>
+                <PolarGrid stroke="rgba(255,255,255,0.1)" />
+                <PolarAngleAxis dataKey="metric" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: "#64748b", fontSize: 9 }} />
+                <Radar name="快照 A" dataKey="A" stroke={C.a} fill={C.a} fillOpacity={0.2} strokeWidth={2} />
+                <Radar name="快照 B" dataKey="B" stroke={C.b} fill={C.b} fillOpacity={0.2} strokeWidth={2} />
+                <Legend wrapperStyle={{ fontSize: "12px" }} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px" }}
+                  formatter={(v: number, name: string) => [`${v.toFixed(1)}`, name]}
+                />
+              </RadarChart>
+            </ResponsiveContainer>
+            <p className="text-xs text-muted-foreground text-center mt-1">UPPH 效率以 20 件/人/時為滿分基準</p>
           </CardContent>
         </Card>
         {/* 整體平均增値率 KPI */}
@@ -734,6 +851,73 @@ export default function SnapshotCompare() {
               </div>
             );
           })()}
+        </CardContent>
+      </Card>
+
+      {/* AI 比較分析報告 */}
+      <Card className="bg-card border-violet-500/30">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Brain className="w-4 h-4 text-violet-400" />
+              AI 比較分析報告
+              <Badge className="bg-violet-500/15 text-violet-400 border-violet-500/30 text-xs ml-1">Ollama</Badge>
+            </CardTitle>
+            <Button
+              onClick={handleAIAnalyze}
+              disabled={compareSnapshotsMutation.isPending}
+              className="bg-violet-600 hover:bg-violet-700 text-white text-sm px-4 py-2 h-8"
+            >
+              {compareSnapshotsMutation.isPending ? (
+                <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />分析中...</>
+              ) : (
+                <><FileText className="w-3.5 h-3.5 mr-1.5" />生成比較報告</>
+              )}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!aiReport && !aiError && !compareSnapshotsMutation.isPending && (
+            <div className="text-center py-10 text-muted-foreground">
+              <Brain className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm">點擊「生成比較報告」，AI 將分析兩個快照的差異並提供改善建議</p>
+              <p className="text-xs mt-1 opacity-60">分析內容包含：平衡率變化、工站改善評估、下一步行動建議</p>
+            </div>
+          )}
+          {compareSnapshotsMutation.isPending && (
+            <div className="text-center py-10 text-muted-foreground">
+              <Loader2 className="w-10 h-10 mx-auto mb-3 animate-spin text-violet-400" />
+              <p className="text-sm">AI 正在分析快照差異，請稍候...</p>
+            </div>
+          )}
+          {aiError && (
+            <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30">
+              <div className="flex items-center gap-2 text-red-400 text-sm">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{aiError}</span>
+              </div>
+            </div>
+          )}
+          {aiReport && (
+            <div className="prose prose-invert prose-sm max-w-none">
+              <ReactMarkdown
+                remarkPlugins={[remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+                components={{
+                  h2: ({ children }) => <h2 className="text-base font-bold text-violet-300 mt-5 mb-2 border-b border-violet-500/20 pb-1">{children}</h2>,
+                  h3: ({ children }) => <h3 className="text-sm font-semibold text-cyan-300 mt-3 mb-1">{children}</h3>,
+                  p: ({ children }) => <p className="text-sm text-foreground/90 mb-2 leading-relaxed">{children}</p>,
+                  ul: ({ children }) => <ul className="list-disc list-inside space-y-1 mb-2 text-sm text-foreground/85">{children}</ul>,
+                  ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 mb-2 text-sm text-foreground/85">{children}</ol>,
+                  li: ({ children }) => <li className="text-sm text-foreground/85">{children}</li>,
+                  strong: ({ children }) => <strong className="text-emerald-400 font-semibold">{children}</strong>,
+                  code: ({ children }) => <code className="bg-gray-800 text-amber-300 px-1 py-0.5 rounded text-xs font-mono">{children}</code>,
+                }}
+              >
+                {aiReport}
+              </ReactMarkdown>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
