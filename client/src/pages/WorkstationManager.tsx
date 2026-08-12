@@ -40,6 +40,7 @@ export default function WorkstationManager() {
 
   const { data: line } = trpc.productionLine.getById.useQuery({ id: lineId });
   const { data: workstations, isLoading } = trpc.workstation.listByLine.useQuery({ productionLineId: lineId });
+  const { data: manpowerQuality } = trpc.workstation.manpowerQuality.useQuery({ productionLineId: lineId });
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -51,8 +52,9 @@ export default function WorkstationManager() {
   const [inlineEdits, setInlineEdits] = useState<Record<number, { cycleTime: string; manpower: string; morningManpower: string; eveningManpower: string }>>({});
   const [savingInline, setSavingInline] = useState<Record<number, boolean>>({});
   const [form, setForm] = useState<WsFormData>({
-    name: "", sequenceOrder: "", cycleTime: "", manpower: "1", morningManpower: "0", eveningManpower: "0", description: "", notes: ""
+    name: "", sequenceOrder: "", cycleTime: "", manpower: "1", morningManpower: "1", eveningManpower: "0", description: "", notes: ""
   });
+  const formTotalManpower = (parseFloat(form.morningManpower) || 0) + (parseFloat(form.eveningManpower) || 0);
 
   const createMutation = trpc.workstation.create.useMutation({
     onSuccess: () => {
@@ -97,7 +99,7 @@ export default function WorkstationManager() {
     onError: () => toast.error("匯入失敗"),
   });
 
-  const resetForm = () => setForm({ name: "", sequenceOrder: "", cycleTime: "", manpower: "1", morningManpower: "0", eveningManpower: "0", description: "", notes: "" });
+  const resetForm = () => setForm({ name: "", sequenceOrder: "", cycleTime: "", manpower: "1", morningManpower: "1", eveningManpower: "0", description: "", notes: "" });
 
   const openCreate = () => {
     resetForm();
@@ -129,7 +131,7 @@ export default function WorkstationManager() {
       name: form.name.trim(),
       sequenceOrder: parseInt(form.sequenceOrder) || 0,
       cycleTime: parseFloat(form.cycleTime),
-      manpower: parseFloat(form.manpower) || 1,
+      manpower: (parseFloat(form.morningManpower) || 0) + (parseFloat(form.eveningManpower) || 0),
       morningManpower: parseFloat(form.morningManpower) || 0,
       eveningManpower: parseFloat(form.eveningManpower) || 0,
       description: form.description || undefined,
@@ -147,14 +149,17 @@ export default function WorkstationManager() {
     const lines = text.trim().split("\n").filter(l => l.trim());
     const result: any[] = [];
     lines.forEach((line, idx) => {
-      // Support: name,cycleTime,manpower or name\tcycleTime\tmanpower
+      // 新格式：名稱,CT,早班人力,晚班人力,描述；仍相容舊格式：名稱,CT,人力
       const parts = line.includes("\t") ? line.split("\t") : line.split(",");
       if (parts.length >= 2) {
         const name = parts[0]?.trim();
         const cycleTime = parseFloat(parts[1]?.trim() ?? "0");
-        const manpower = parseFloat(parts[2]?.trim() ?? "1") || 1;
+        const hasShiftColumns = parts.length >= 4;
+        const morningManpower = parseFloat(parts[2]?.trim() ?? "1") || 0;
+        const eveningManpower = hasShiftColumns ? (parseFloat(parts[3]?.trim() ?? "0") || 0) : 0;
+        const manpower = morningManpower + eveningManpower;
         if (name && cycleTime > 0) {
-          result.push({ name, cycleTime, manpower, sequenceOrder: idx + 1 });
+          result.push({ name, cycleTime, manpower, morningManpower, eveningManpower, description: hasShiftColumns ? parts[4]?.trim() : undefined, sequenceOrder: idx + 1 });
         }
       }
     });
@@ -223,9 +228,9 @@ export default function WorkstationManager() {
 
   const handleExport = () => {
     if (!workstations?.length) { toast.error("沒有工站資料可導出"); return; }
-    const header = "工站名稱,工序時間(s),人員配置,順序,描述\n";
+    const header = "工站名稱,工序時間(s),早班人力,晚班人力,合計人力,順序,描述\n";
     const rows = workstations.map(w =>
-      `${w.name},${w.cycleTime},${w.manpower},${w.sequenceOrder},${w.description ?? ""}`
+      `${w.name},${w.cycleTime},${w.morningManpower ?? w.manpower},${w.eveningManpower ?? 0},${w.manpower},${w.sequenceOrder},${w.description ?? ""}`
     ).join("\n");
     const blob = new Blob(["\uFEFF" + header + rows], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -267,6 +272,18 @@ export default function WorkstationManager() {
           </Button>
         </div>
       </div>
+
+      {manpowerQuality && manpowerQuality.inconsistentCount > 0 && (
+        <Card className="border-amber-500/35 bg-amber-500/5">
+          <CardContent className="flex items-start gap-3 p-4">
+            <Activity className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+            <div>
+              <p className="font-medium text-amber-200">發現 {manpowerQuality.inconsistentCount} 個工站的人力資料需要修復</p>
+              <p className="mt-1 text-sm text-muted-foreground">合計人力現以早班加晚班為準。請開啟工站編輯，確認班別人力後重新儲存。</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary Bar */}
       {workstations && workstations.length > 0 && (
@@ -628,17 +645,13 @@ export default function WorkstationManager() {
               </div>
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <Label>人員配置（人）</Label>
-                  <span className="text-xs text-muted-foreground">(預設值，当早晩班人力为 0 時使用)</span>
+                  <Label>合計人力（自動計算）</Label>
+                  <span className="text-xs text-muted-foreground">早班 + 晚班</span>
                 </div>
                 <Input
-                  type="number"
-                  placeholder="1"
-                  value={form.manpower}
-                  onChange={e => setForm(f => ({ ...f, manpower: e.target.value }))}
-                  className="bg-input border-border"
-                  min="0.25"
-                  step="0.25"
+                  value={formTotalManpower.toFixed(2)}
+                  className="bg-muted/40 border-border font-medium text-cyan-300"
+                  disabled
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -673,6 +686,7 @@ export default function WorkstationManager() {
                   />
                 </div>
               </div>
+              {formTotalManpower <= 0 && <p className="col-span-2 text-xs text-destructive">早晚班合計人力必須大於 0。</p>}
             </div>
             <div className="space-y-2">
               <Label>描述說明</Label>

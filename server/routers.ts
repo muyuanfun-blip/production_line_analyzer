@@ -1,7 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import {
   getAllProductionLines, getProductionLineById, createProductionLine,
@@ -42,6 +42,7 @@ import { buildSimulationRunPlan, normalizeSimulationWorkstations } from "../shar
 import { buildEfficiencyHeatmap } from "../shared/efficiencyHeatmap";
 import { buildMonitoringSnapshotPayload } from "../shared/monitoringSnapshot";
 import { evaluateMonitoringAlertRules } from "../shared/monitoringAlertRules";
+import { getManpowerQuality, normalizeManpower } from "../shared/workstationManpower";
 import {
   generateRealtimeLineStatus,
   generateHistoricalTrend,
@@ -194,7 +195,7 @@ export const appRouter = router({
         return getProductionLineById(input.id);
       }),
 
-    create: publicProcedure
+    create: adminProcedure
       .input(productionLineInput)
       .mutation(async ({ input }) => {
         const result = await createProductionLine({
@@ -206,7 +207,7 @@ export const appRouter = router({
         return { success: true, insertId: (result as any).insertId };
       }),
 
-    update: publicProcedure
+    update: adminProcedure
       .input(z.object({ id: z.number().int().positive() }).merge(productionLineInput.partial()))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -219,7 +220,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    delete: publicProcedure
+    delete: adminProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input }) => {
         await deleteProductionLine(input.id);
@@ -241,22 +242,26 @@ export const appRouter = router({
         return getWorkstationById(input.id);
       }),
 
-    create: publicProcedure
+    create: adminProcedure
       .input(workstationInput)
       .mutation(async ({ input }) => {
+        const normalized = normalizeManpower({ ...input, manpower: input.manpower ?? 1 });
+        if (normalized.totalManpower <= 0) throw new Error("早晚班合計人力必須大於 0");
         const result = await createWorkstation({
           productionLineId: input.productionLineId,
           name: input.name,
           sequenceOrder: input.sequenceOrder ?? 0,
           cycleTime: input.cycleTime.toString(),
-          manpower: String(input.manpower ?? 1),
+          manpower: String(normalized.totalManpower),
+          morningManpower: String(normalized.morningManpower),
+          eveningManpower: String(normalized.eveningManpower),
           description: input.description ?? null,
           notes: input.notes ?? null,
         });
         return { success: true, insertId: (result as any).insertId };
       }),
 
-    update: publicProcedure
+    update: adminProcedure
       .input(z.object({ id: z.number().int().positive() }).merge(workstationInput.omit({ productionLineId: true }).partial()))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -264,23 +269,30 @@ export const appRouter = router({
         if (data.name !== undefined) updateData.name = data.name;
         if (data.sequenceOrder !== undefined) updateData.sequenceOrder = data.sequenceOrder;
         if (data.cycleTime !== undefined) updateData.cycleTime = data.cycleTime.toString();
-        if (data.manpower !== undefined) updateData.manpower = data.manpower;
-        if (data.morningManpower !== undefined) updateData.morningManpower = data.morningManpower;
-        if (data.eveningManpower !== undefined) updateData.eveningManpower = data.eveningManpower;
+        const changesManpower = data.manpower !== undefined || data.morningManpower !== undefined || data.eveningManpower !== undefined;
+        if (changesManpower) {
+          const existing = await getWorkstationById(id);
+          if (!existing) throw new Error("找不到工站");
+          const normalized = normalizeManpower(data, existing);
+          if (normalized.totalManpower <= 0) throw new Error("早晚班合計人力必須大於 0");
+          updateData.manpower = String(normalized.totalManpower);
+          updateData.morningManpower = String(normalized.morningManpower);
+          updateData.eveningManpower = String(normalized.eveningManpower);
+        }
         if (data.description !== undefined) updateData.description = data.description;
         if (data.notes !== undefined) updateData.notes = data.notes;
         await updateWorkstation(id, updateData as any);
         return { success: true };
       }),
 
-    delete: publicProcedure
+    delete: adminProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input }) => {
         await deleteWorkstation(input.id);
         return { success: true };
       }),
 
-    bulkImport: publicProcedure
+    bulkImport: adminProcedure
       .input(z.object({
         productionLineId: z.number().int().positive(),
         workstations: z.array(z.object({
@@ -288,21 +300,44 @@ export const appRouter = router({
           sequenceOrder: z.number().int().min(0),
           cycleTime: z.number().positive(),
           manpower: z.number().min(0.25).optional(),
+          morningManpower: z.number().min(0).optional(),
+          eveningManpower: z.number().min(0).optional(),
           description: z.string().optional(),
         })),
       }))
       .mutation(async ({ input }) => {
-        const data = input.workstations.map(w => ({
-          productionLineId: input.productionLineId,
-          name: w.name,
-          sequenceOrder: w.sequenceOrder,
-          cycleTime: w.cycleTime.toString(),
-          manpower: String(w.manpower ?? 1),
-          description: w.description ?? null,
-          notes: null,
-        }));
+        const data = input.workstations.map(w => {
+          const normalized = normalizeManpower({ ...w, manpower: w.manpower ?? 1 });
+          if (normalized.totalManpower <= 0) throw new Error(`工站「${w.name}」的早晚班合計人力必須大於 0`);
+          return {
+            productionLineId: input.productionLineId,
+            name: w.name,
+            sequenceOrder: w.sequenceOrder,
+            cycleTime: w.cycleTime.toString(),
+            manpower: String(normalized.totalManpower),
+            morningManpower: String(normalized.morningManpower),
+            eveningManpower: String(normalized.eveningManpower),
+            description: w.description ?? null,
+            notes: null,
+          };
+        });
         await bulkCreateWorkstations(data);
         return { success: true, count: data.length };
+      }),
+
+    manpowerQuality: protectedProcedure
+      .input(z.object({ productionLineId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const workstations = await getWorkstationsByLine(input.productionLineId);
+        const rows = workstations.map(workstation => ({
+          workstationId: workstation.id,
+          workstationName: workstation.name,
+          ...getManpowerQuality(workstation),
+        }));
+        return {
+          rows,
+          inconsistentCount: rows.filter(row => !row.isValid).length,
+        };
       }),
   }),
 
