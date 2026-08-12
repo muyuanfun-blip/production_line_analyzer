@@ -73,6 +73,15 @@ export const actionSteps = mysqlTable("action_steps", {
     "non_value_added", // 非增值動作
     "necessary_waste", // 必要浪費
   ]).default("value_added").notNull(),
+  reviewStatus: mysqlEnum("reviewStatus", ["unreviewed", "pending", "approved", "rejected"]).default("unreviewed").notNull(),
+  suggestedActionType: mysqlEnum("suggestedActionType", [
+    "value_added",
+    "non_value_added",
+    "necessary_waste",
+  ]),
+  reviewNote: text("reviewNote"),
+  reviewedBy: int("reviewedBy"),
+  reviewedAt: timestamp("reviewedAt"),
   description: text("description"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

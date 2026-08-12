@@ -9,7 +9,8 @@ import {
   getWorkstationsByLine, getWorkstationById, createWorkstation,
   updateWorkstation, deleteWorkstation, bulkCreateWorkstations,
   getActionStepsByWorkstation, getActionStepsByWorkstationIds, createActionStep, updateActionStep,
-  deleteActionStep, bulkCreateActionSteps,
+  deleteActionStep, bulkCreateActionSteps, getActionReviewQueue, queueActionStepsForReview,
+  resolveActionStepReviews,
   getSnapshotsByLine, getSnapshotById, createSnapshot, deleteSnapshot, updateSnapshotData,
   getAllLinesLatestSnapshot,
   getAllLinesLatestSnapshotByDate,
@@ -345,6 +346,42 @@ export const appRouter = router({
       .query(async ({ input }) => {
         if (input.workstationIds.length === 0) return [];
         return getActionStepsByWorkstationIds(input.workstationIds);
+      }),
+
+    listReviewQueue: adminProcedure
+      .input(z.object({
+        productionLineId: z.number().int().positive(),
+        statuses: z.array(z.enum(["unreviewed", "pending", "approved", "rejected"])).min(1).optional(),
+      }))
+      .query(async ({ input }) => {
+        return getActionReviewQueue(input.productionLineId, input.statuses);
+      }),
+
+    queueReview: adminProcedure
+      .input(z.object({
+        ids: z.array(z.number().int().positive()).min(1),
+        suggestedActionType: z.enum(["value_added", "non_value_added", "necessary_waste"]),
+        reviewNote: z.string().max(1000).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await queueActionStepsForReview(input.ids, input.suggestedActionType, input.reviewNote ?? null);
+        return { success: true, count: input.ids.length };
+      }),
+
+    resolveReviews: adminProcedure
+      .input(z.object({
+        ids: z.array(z.number().int().positive()).min(1),
+        decision: z.enum(["approved", "rejected"]),
+        reviewNote: z.string().max(1000).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await resolveActionStepReviews(
+          input.ids,
+          input.decision,
+          ctx.user.id,
+          input.reviewNote ?? null,
+        );
+        return { success: true, count: input.ids.length };
       }),
 
     create: publicProcedure

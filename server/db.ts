@@ -17,6 +17,7 @@ import {
   vsmVersions, InsertVSMVersion, VSMVersion,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { resolveActionTypeForReview } from "../shared/actionReview";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -261,6 +262,89 @@ export async function getActionStepsByWorkstationIds(workstationIds: number[]) {
   return db.select().from(actionSteps)
     .where(inArray(actionSteps.workstationId, workstationIds))
     .orderBy(asc(actionSteps.workstationId), asc(actionSteps.stepOrder));
+}
+
+type ActionReviewStatus = "unreviewed" | "pending" | "approved" | "rejected";
+type ReviewableActionType = "value_added" | "non_value_added" | "necessary_waste";
+
+export async function getActionReviewQueue(
+  productionLineId: number,
+  statuses: ActionReviewStatus[] = ["unreviewed", "pending"],
+) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: actionSteps.id,
+    workstationId: actionSteps.workstationId,
+    workstationName: workstations.name,
+    sequenceOrder: workstations.sequenceOrder,
+    stepName: actionSteps.stepName,
+    stepOrder: actionSteps.stepOrder,
+    duration: actionSteps.duration,
+    actionType: actionSteps.actionType,
+    suggestedActionType: actionSteps.suggestedActionType,
+    reviewStatus: actionSteps.reviewStatus,
+    reviewNote: actionSteps.reviewNote,
+    reviewedBy: actionSteps.reviewedBy,
+    reviewedAt: actionSteps.reviewedAt,
+    description: actionSteps.description,
+  }).from(actionSteps)
+    .innerJoin(workstations, eq(actionSteps.workstationId, workstations.id))
+    .where(and(
+      eq(workstations.productionLineId, productionLineId),
+      inArray(actionSteps.reviewStatus, statuses),
+    ))
+    .orderBy(asc(workstations.sequenceOrder), asc(actionSteps.stepOrder));
+}
+
+export async function queueActionStepsForReview(
+  ids: number[],
+  suggestedActionType: ReviewableActionType,
+  reviewNote: string | null,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (ids.length === 0) return;
+  return db.update(actionSteps).set({
+    reviewStatus: "pending",
+    suggestedActionType,
+    reviewNote,
+    reviewedBy: null,
+    reviewedAt: null,
+  }).where(inArray(actionSteps.id, ids));
+}
+
+export async function resolveActionStepReviews(
+  ids: number[],
+  decision: "approved" | "rejected",
+  reviewerId: number,
+  reviewNote: string | null,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (ids.length === 0) return;
+
+  const candidates = await db.select({
+    id: actionSteps.id,
+    actionType: actionSteps.actionType,
+    suggestedActionType: actionSteps.suggestedActionType,
+  }).from(actionSteps).where(inArray(actionSteps.id, ids));
+
+  for (const candidate of candidates) {
+    const resolvedActionType = resolveActionTypeForReview({
+      currentActionType: candidate.actionType as ReviewableActionType,
+      suggestedActionType: candidate.suggestedActionType as ReviewableActionType | null,
+      decision,
+    });
+    const updateData: Partial<InsertActionStep> = {
+      reviewStatus: decision,
+      reviewedBy: reviewerId,
+      reviewedAt: new Date(),
+      reviewNote,
+      actionType: resolvedActionType,
+    };
+    await db.update(actionSteps).set(updateData).where(eq(actionSteps.id, candidate.id));
+  }
 }
 
 // ─── Hand Actions ──────────────────────────────────────────────────────────────────────────────────────

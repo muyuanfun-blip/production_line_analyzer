@@ -19,14 +19,16 @@ import {
 } from "recharts";
 import { HandGanttChart, type GanttStep } from "@/components/HandGanttChart";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useAuth } from "@/_core/hooks/useAuth";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { FileJson, FileSpreadsheet, Package } from "lucide-react";
+import { FileJson, FileSpreadsheet, Package, ClipboardCheck, XCircle } from "lucide-react";
 
 // ─── 型別定義 ─────────────────────────────────────────────────────────────────
 
 type ActionType = "value_added" | "non_value_added" | "necessary_waste";
+type ReviewStatus = "unreviewed" | "pending" | "approved" | "rejected";
 type HandActionType = "value_added" | "non_value_added" | "necessary_waste" | "idle";
 type Hand = "left" | "right";
 
@@ -395,6 +397,7 @@ export default function ActionAnalysis() {
   const { id: lineId } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const search = useSearch();
+  const { user } = useAuth();
   const lineIdNum = parseInt(lineId ?? "0");
 
   const initialWsId = useMemo(() => {
@@ -409,6 +412,12 @@ export default function ActionAnalysis() {
   const [syncCycleTime, setSyncCycleTime] = useState(false);
   const [wsStepCounts, setWsStepCounts] = useState<Record<number, number>>({});
   const [ganttOpen, setGanttOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("unreviewed");
+  const [selectedReviewIds, setSelectedReviewIds] = useState<number[]>([]);
+  const [reviewSuggestedAction, setReviewSuggestedAction] = useState<ActionType>("non_value_added");
+  const [reviewNote, setReviewNote] = useState("");
+  const isAdmin = user?.role === "admin";
 
   // ── 查詢 ──────────────────────────────────────────────────────────────────
   const { data: line } = trpc.productionLine.getById.useQuery(
@@ -487,6 +496,11 @@ export default function ActionAnalysis() {
     { productionLineId: lineIdNum },
     { enabled: lineIdNum > 0 }
   );
+  const reviewStatuses = useMemo(() => [reviewStatus], [reviewStatus]);
+  const { data: reviewQueue = [], refetch: refetchReviewQueue, isLoading: isReviewLoading } = trpc.actionStep.listReviewQueue.useQuery(
+    { productionLineId: lineIdNum, statuses: reviewStatuses },
+    { enabled: isAdmin && lineIdNum > 0 && reviewOpen }
+  );
 
   // ── Mutations ──────────────────────────────────────────────────────────────────────────────────────
   const createStep = trpc.actionStep.create.useMutation();
@@ -497,6 +511,26 @@ export default function ActionAnalysis() {
   const deleteHandAction = trpc.handAction.delete.useMutation();
   const deleteHandActionsByStep = trpc.handAction.deleteByStep.useMutation();
   const utils = trpc.useUtils();
+  const queueReview = trpc.actionStep.queueReview.useMutation({
+    onSuccess: async ({ count }) => {
+      toast.success(`已將 ${count} 筆動作送入待確認佇列`);
+      setSelectedReviewIds([]);
+      await refetchReviewQueue();
+    },
+    onError: (error) => toast.error(`送審失敗：${error.message}`),
+  });
+  const resolveReviews = trpc.actionStep.resolveReviews.useMutation({
+    onSuccess: async ({ count }, variables) => {
+      toast.success(variables.decision === "approved" ? `已接受 ${count} 筆建議分類` : `已駁回 ${count} 筆建議`);
+      setSelectedReviewIds([]);
+      await Promise.all([
+        refetchReviewQueue(),
+        refetchSteps(),
+        utils.actionStep.listByLine.invalidate({ productionLineId: lineIdNum }),
+      ]);
+    },
+    onError: (error) => toast.error(`覆核更新失敗：${error.message}`),
+  });
 
   // ── 雙手統計 ──────────────────────────────────────────────────────────────
   const handStats = useMemo(() => {
@@ -570,6 +604,34 @@ export default function ActionAnalysis() {
     setSelectedWsId(id);
     setSteps([]);
     prevDbStepsKeyRef.current = "";
+  }
+
+  function toggleReviewSelection(id: number) {
+    setSelectedReviewIds(prev => prev.includes(id) ? prev.filter(itemId => itemId !== id) : [...prev, id]);
+  }
+
+  function handleReviewStatusChange(value: ReviewStatus) {
+    setReviewStatus(value);
+    setSelectedReviewIds([]);
+    setReviewNote("");
+  }
+
+  function handleQueueReview() {
+    if (selectedReviewIds.length === 0) return;
+    queueReview.mutate({
+      ids: selectedReviewIds,
+      suggestedActionType: reviewSuggestedAction,
+      reviewNote: reviewNote.trim() || undefined,
+    });
+  }
+
+  function handleResolveReviews(decision: "approved" | "rejected") {
+    if (selectedReviewIds.length === 0) return;
+    resolveReviews.mutate({
+      ids: selectedReviewIds,
+      decision,
+      reviewNote: reviewNote.trim() || undefined,
+    });
   }
 
   function handleAddStep() {
@@ -817,6 +879,11 @@ export default function ActionAnalysis() {
             <Badge variant="outline" className="text-purple-400 border-purple-500/40 bg-purple-500/10 text-xs animate-pulse">
               有未儲存的變更
             </Badge>
+          )}
+          {isAdmin && (
+            <Button variant="outline" size="sm" onClick={() => setReviewOpen(true)} className="text-xs h-8 gap-1.5 border-cyan-500/35 text-cyan-300 hover:bg-cyan-500/10">
+              <ClipboardCheck className="w-3.5 h-3.5" />覆核管理
+            </Button>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -1339,6 +1406,113 @@ export default function ActionAnalysis() {
               workstationName={selectedWs?.name}
               taktTime={stats.taktTime > 0 ? stats.taktTime : undefined}
             />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
+        <DialogContent className="max-w-5xl max-h-[88vh] flex flex-col bg-background border-white/10">
+          <DialogHeader className="shrink-0">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <ClipboardCheck className="w-4 h-4 text-cyan-400" />動作分類覆核管理
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground leading-5">
+              先從「待送審」批次設定建議分類；管理者再於「待確認」批次接受或駁回。接受後會同步套用至動作分類。
+            </p>
+          </DialogHeader>
+
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-end shrink-0 border-y border-white/8 py-3">
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">覆核狀態</label>
+              <Select value={reviewStatus} onValueChange={(value) => handleReviewStatusChange(value as ReviewStatus)}>
+                <SelectTrigger className="w-[150px] h-9 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unreviewed">待送審</SelectItem>
+                  <SelectItem value="pending">待確認</SelectItem>
+                  <SelectItem value="approved">已接受紀錄</SelectItem>
+                  <SelectItem value="rejected">已駁回紀錄</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {(reviewStatus === "unreviewed" || reviewStatus === "pending") && (
+              <>
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">建議分類</label>
+                  <Select value={reviewSuggestedAction} onValueChange={(value) => setReviewSuggestedAction(value as ActionType)}>
+                    <SelectTrigger className="w-[150px] h-9 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {(Object.entries(ACTION_TYPE_CONFIG) as [ActionType, typeof ACTION_TYPE_CONFIG[ActionType]][]).map(([type, config]) => (
+                        <SelectItem key={type} value={type}>{config.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1 space-y-1.5">
+                  <label className="text-xs text-muted-foreground">覆核註記（選填）</label>
+                  <Input value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} maxLength={1000} className="h-9 text-xs" placeholder="例如：依精實定義，該動作未改變產品型態" />
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-white/8">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-card z-10 border-b border-white/8 text-muted-foreground">
+                <tr>
+                  <th className="w-10 p-3 text-center">
+                    <input
+                      type="checkbox"
+                      aria-label="全選目前覆核清單"
+                      checked={(reviewQueue as any[]).length > 0 && selectedReviewIds.length === (reviewQueue as any[]).length}
+                      onChange={(event) => setSelectedReviewIds(event.target.checked ? (reviewQueue as any[]).map(item => item.id) : [])}
+                    />
+                  </th>
+                  <th className="p-3 text-left font-medium">工站／動作</th>
+                  <th className="p-3 text-left font-medium">目前分類</th>
+                  <th className="p-3 text-left font-medium">建議分類</th>
+                  <th className="p-3 text-left font-medium">覆核紀錄</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isReviewLoading ? (
+                  <tr><td colSpan={5} className="p-10 text-center text-muted-foreground">載入覆核資料中…</td></tr>
+                ) : (reviewQueue as any[]).length === 0 ? (
+                  <tr><td colSpan={5} className="p-10 text-center text-muted-foreground">此狀態目前沒有動作資料</td></tr>
+                ) : (reviewQueue as any[]).map((item) => {
+                  const current = ACTION_TYPE_CONFIG[item.actionType as ActionType];
+                  const suggested = item.suggestedActionType ? ACTION_TYPE_CONFIG[item.suggestedActionType as ActionType] : null;
+                  return (
+                    <tr key={item.id} className="border-b border-white/5 hover:bg-white/[0.025]">
+                      <td className="p-3 text-center"><input type="checkbox" checked={selectedReviewIds.includes(item.id)} onChange={() => toggleReviewSelection(item.id)} aria-label={`選取 ${item.stepName}`} /></td>
+                      <td className="p-3 align-top">
+                        <p className="font-medium text-foreground">{item.stepName}</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">{item.sequenceOrder + 1}. {item.workstationName} · {Number(item.duration).toFixed(2)} 秒</p>
+                      </td>
+                      <td className="p-3 align-top"><Badge className={`${current.bg} ${current.border} border text-[10px] font-normal`} style={{ color: current.color }}>{current.label}</Badge></td>
+                      <td className="p-3 align-top">
+                        {suggested ? <Badge className={`${suggested.bg} ${suggested.border} border text-[10px] font-normal`} style={{ color: suggested.color }}>{suggested.label}</Badge> : <span className="text-muted-foreground">尚未設定</span>}
+                      </td>
+                      <td className="p-3 align-top text-muted-foreground leading-5">
+                        <p>{item.reviewStatus === "approved" ? "已接受" : item.reviewStatus === "rejected" ? "已駁回" : item.reviewStatus === "pending" ? "待管理者確認" : "尚未送審"}</p>
+                        {item.reviewNote && <p className="text-[11px] text-muted-foreground/75">{item.reviewNote}</p>}
+                        {item.reviewedAt && <p className="text-[11px] text-muted-foreground/60">覆核於 {new Date(item.reviewedAt).toLocaleString()}</p>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 shrink-0">
+            <p className="text-xs text-muted-foreground">已選取 <span className="font-medium text-foreground">{selectedReviewIds.length}</span> 筆</p>
+            <div className="flex items-center gap-2">
+              {reviewStatus === "unreviewed" && <Button size="sm" disabled={selectedReviewIds.length === 0 || queueReview.isPending} onClick={handleQueueReview} className="h-8 text-xs bg-cyan-600 hover:bg-cyan-500">批次送審</Button>}
+              {reviewStatus === "pending" && <>
+                <Button size="sm" disabled={selectedReviewIds.length === 0 || resolveReviews.isPending} onClick={() => handleResolveReviews("rejected")} variant="outline" className="h-8 text-xs border-red-500/40 text-red-300 hover:bg-red-500/10"><XCircle className="w-3.5 h-3.5 mr-1" />批次駁回</Button>
+                <Button size="sm" disabled={selectedReviewIds.length === 0 || resolveReviews.isPending} onClick={() => handleResolveReviews("approved")} className="h-8 text-xs bg-emerald-600 hover:bg-emerald-500"><CheckCircle2 className="w-3.5 h-3.5 mr-1" />批次接受</Button>
+              </>}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
