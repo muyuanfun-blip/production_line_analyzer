@@ -666,7 +666,10 @@
 
 - [x] 在 App.tsx 新增 /lines/:lineId/vsm 路由
 - [x] 在 DashboardLayout.tsx 侧邊欄新增「VSM 設計」導覽入口
-- [ ] 更新 UserGuide.tsx 新增 VSM 使用指南章節—選擇性実現
+- [x] 更新 UserGuide.tsx 新增 VSM 使用指南章節—選擇性實現
+  - [x] 說明建立工序、流線與 KPI 覆蓋層
+  - [x] 說明版本時間軸、比較與 PDF 匯出
+  - [x] 說明與戰情監控、配置模擬及產品追蹤的聯動
 - [x] 與配置模擬器整合（從配置模擬匯出至 VSM）—選擇性実現
   - [x] 定義模擬情境的產線、名稱與 KPI 導覽資料
   - [x] 從配置模擬器提供帶入 VSM 流程的入口
