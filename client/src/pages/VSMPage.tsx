@@ -4,6 +4,7 @@ import { trpc } from '@/lib/trpc';
 import { VSMCanvas } from '@/components/VSMCanvas';
 import { VSMAnalysis } from '@/components/VSMAnalysis';
 import { VSMVersionCompare } from '@/components/VSMVersionCompare';
+import { VSMVersionTimeline } from '@/components/VSMVersionTimeline';
 import { VSMSkeleton } from '@/components/VSMSkeleton';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -16,6 +17,7 @@ import { Plus, Save, Download, RotateCcw, Clock, FileJson, FileSpreadsheet, Acti
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { exportVSMAsJSON, exportVSMProcessesAsCSV, exportVSMFlowsAsCSV, exportVSMAsPNG } from '@/lib/vsmExport';
 import { parseMonitoringVsmContext } from '../../../shared/monitoringVsmContext';
+import { buildVsmComparisonPair } from '../../../shared/vsmVersionTimeline';
 
 interface VSMProcessDisplay {
   id: number;
@@ -70,6 +72,8 @@ export const VSMPage: React.FC = () => {
   const [showAnalysis, setShowAnalysis] = useState(true);
   const [compareVersions, setCompareVersions] = useState<[number, number] | null>(null);
   const [showCompareDialog, setShowCompareDialog] = useState(false);
+  const [timelineFocusedVersionId, setTimelineFocusedVersionId] = useState<number | null>(null);
+  const [timelineCompareAnchorId, setTimelineCompareAnchorId] = useState<number | null>(null);
 
   const lineIdNum = lineId ? parseInt(lineId) : 0;
   const monitoringContext = parseMonitoringVsmContext(window.location.search, lineIdNum);
@@ -485,6 +489,25 @@ export const VSMPage: React.FC = () => {
                 版本
               </Button>
             </div>
+
+            <VSMVersionTimeline
+              versions={versions as any}
+              focusedVersionId={timelineFocusedVersionId}
+              compareAnchorId={timelineCompareAnchorId}
+              onFocus={(id) => setTimelineFocusedVersionId(id)}
+              onCompare={(id) => {
+                if (!timelineCompareAnchorId) {
+                  setTimelineCompareAnchorId(id);
+                  setTimelineFocusedVersionId(id);
+                  return;
+                }
+                const pair = buildVsmComparisonPair(versions as any, timelineCompareAnchorId, id);
+                if (!pair) return;
+                setCompareVersions(pair);
+                setTimelineCompareAnchorId(null);
+                setShowCompareDialog(true);
+              }}
+            />
 
             {/* VSM 畫布 */}
             <div className="flex-1 overflow-hidden">

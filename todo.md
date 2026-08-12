@@ -621,6 +621,11 @@
   - [x] 在 App.tsx 新增 /lines/:lineId/vsm 路由
 - [x] 在 DashboardLayout.tsx 側邊欄新增「VSM 設計」導覽入口（GitBranch icon）
 - [x] 快捷鍵支援（Ctrl+S 儲存等）
+- [x] VSM 版本時間軸檢視
+  - [x] 整理版本時間、名稱與版本號的時間軸資料
+  - [x] 顯示版本時間軸並支援選取歷史版本
+  - [x] 從時間軸直接啟動兩版本比較
+  - [x] 補強版本時間軸排序與選取的單元測試
 
 ## VSM 模組 - 第三階段（KPI 覆蓋與分析）
 
