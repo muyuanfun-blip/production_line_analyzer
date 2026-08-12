@@ -38,8 +38,31 @@ const escapeHtml = (value: unknown) => String(value ?? "")
   .replace(/"/g, "&quot;")
   .replace(/'/g, "&#039;");
 
+/**
+ * 將 AI 回覆常見的行內 LaTeX 改為報告可讀文字；未支援的內容仍會在後續安全轉義後顯示。
+ */
+export function normalizeReportMath(markdown: string): string {
+  return markdown
+    .replace(/\\(?:d?frac)\{([^{}]+)\}\{([^{}]+)\}/g, "($1 / $2)")
+    .replace(/\\(?:text|mathrm|operatorname)\{([^{}]*)\}/g, "$1")
+    .replace(/\\(?:longrightarrow|rightarrow|to)\b/g, "→")
+    .replace(/\\(?:longleftarrow|leftarrow|gets)\b/g, "←")
+    .replace(/\\(?:leftrightarrow|iff)\b/g, "↔")
+    .replace(/\\(?:times|cdot)\b/g, "×")
+    .replace(/\\div\b/g, "÷")
+    .replace(/\\pm\b/g, "±")
+    .replace(/\\(?:geq|ge)\b/g, "≥")
+    .replace(/\\(?:leq|le)\b/g, "≤")
+    .replace(/\\neq\b/g, "≠")
+    .replace(/\\approx\b/g, "≈")
+    .replace(/\\%/g, "%")
+    .replace(/\\(?:left|right)\b/g, "")
+    .replace(/\\[,;!]/g, " ")
+    .replace(/\$\$?/g, "");
+}
+
 export function markdownToSafeReportHtml(markdown: string): string {
-  const lines = markdown.replace(/\r/g, "").split("\n");
+  const lines = normalizeReportMath(markdown).replace(/\r/g, "").split("\n");
   const result: string[] = [];
   let listOpen = false;
   const closeList = () => { if (listOpen) { result.push("</ul>"); listOpen = false; } };

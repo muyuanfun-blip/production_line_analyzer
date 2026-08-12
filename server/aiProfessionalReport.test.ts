@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAIProfessionalReport, buildAIProfessionalReportHtml, markdownToSafeReportHtml } from "../shared/aiProfessionalReport";
+import { buildAIProfessionalReport, buildAIProfessionalReportHtml, markdownToSafeReportHtml, normalizeReportMath } from "../shared/aiProfessionalReport";
 
 describe("AI 專業圖文報告", () => {
   const report = buildAIProfessionalReport({
@@ -30,5 +30,11 @@ describe("AI 專業圖文報告", () => {
     expect(html).toContain("示範產線");
     expect(html).toContain("&lt;script&gt;");
     expect(html).not.toContain("<script>alert");
+  });
+
+  it("將常見 LaTeX 箭頭、文字命令與運算式轉為報告可讀文字", () => {
+    const normalized = normalizeReportMath(String.raw`$\text{P1 (Immediate)}$ $\rightarrow$ \frac{UPPH}{人力} \geq 90\%`);
+    expect(normalized).toBe("P1 (Immediate) → (UPPH / 人力) ≥ 90%");
+    expect(markdownToSafeReportHtml(String.raw`改善路徑：$\rightarrow$ 測試站`)).toContain("改善路徑：→ 測試站");
   });
 });
