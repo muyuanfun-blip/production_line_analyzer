@@ -307,3 +307,23 @@ export const vsmVersions = mysqlTable("vsm_versions", {
 
 export type VSMVersion = typeof vsmVersions.$inferSelect;
 export type InsertVSMVersion = typeof vsmVersions.$inferInsert;
+
+// VSM 改善行動閉環表：由瓶頸或其他工序建立、指派、追蹤並量化改善進度
+export const vsmImprovementActions = mysqlTable("vsm_improvement_actions", {
+  id: int("id").autoincrement().primaryKey(),
+  vsmDiagramId: int("vsmDiagramId").notNull(),
+  vsmProcessId: int("vsmProcessId").notNull(),
+  sourceSnapshotId: int("sourceSnapshotId"),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  ownerName: varchar("ownerName", { length: 128 }).notNull(),
+  dueDate: timestamp("dueDate"),
+  status: mysqlEnum("status", ["open", "in_progress", "completed", "cancelled"]).default("open").notNull(),
+  createdBy: int("createdBy"),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type VSMImprovementAction = typeof vsmImprovementActions.$inferSelect;
+export type InsertVSMImprovementAction = typeof vsmImprovementActions.$inferInsert;

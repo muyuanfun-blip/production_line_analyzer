@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, TrendingUp, Users, Zap, Plus, Inbox } from 'lucide-react';
+import { AlertCircle, TrendingUp, Users, Zap, Plus, Inbox, ClipboardCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { calculateTrustedVsmKpis, inspectVsmModel } from '../../../shared/vsmTrustedMetrics';
+import { summarizeVsmImprovementActions, type VsmImprovementActionStatus } from '../../../shared/vsmImprovementActions';
 
 interface VSMProcess {
   id: number;
@@ -31,9 +32,45 @@ interface VSMAnalysisProps {
   flows: VSMFlow[];
   onAddProcess?: () => void;
   taktTime?: number | null;
+  improvementActions?: VSMImprovementAction[];
+  onCreateImprovementAction?: (process: Pick<VSMProcess, 'id' | 'name'>) => void;
+  onUpdateImprovementStatus?: (id: number, status: ImprovementActionStatus) => void;
 }
 
-export const VSMAnalysis: React.FC<VSMAnalysisProps> = ({ processes, flows, onAddProcess, taktTime }) => {
+type ImprovementActionStatus = VsmImprovementActionStatus;
+
+interface VSMImprovementAction {
+  id: number;
+  processName: string;
+  title: string;
+  ownerName: string;
+  dueDate?: Date | null;
+  status: ImprovementActionStatus;
+}
+
+const improvementStatusLabel: Record<ImprovementActionStatus, string> = {
+  open: '待開始',
+  in_progress: '進行中',
+  completed: '已完成',
+  cancelled: '已取消',
+};
+
+const improvementStatusStyle: Record<ImprovementActionStatus, string> = {
+  open: 'bg-slate-500/15 text-slate-300 border-slate-500/30',
+  in_progress: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+  completed: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+  cancelled: 'bg-slate-600/20 text-slate-400 border-slate-600/30',
+};
+
+export const VSMAnalysis: React.FC<VSMAnalysisProps> = ({
+  processes,
+  flows,
+  onAddProcess,
+  taktTime,
+  improvementActions = [],
+  onCreateImprovementAction,
+  onUpdateImprovementStatus,
+}) => {
   const qualityIssues = useMemo(() => inspectVsmModel(processes, flows, taktTime), [processes, flows, taktTime]);
   const trustedKpis = useMemo(() => calculateTrustedVsmKpis(processes, flows, taktTime), [processes, flows, taktTime]);
   const analysis = useMemo(() => {
@@ -89,6 +126,8 @@ export const VSMAnalysis: React.FC<VSMAnalysisProps> = ({ processes, flows, onAd
       flowCount: flows.length,
     };
   }, [processes, flows]);
+
+  const actionSummary = useMemo(() => summarizeVsmImprovementActions(improvementActions), [improvementActions]);
 
   // 空狀態檢查
   if (processes.length === 0) {
@@ -179,9 +218,45 @@ export const VSMAnalysis: React.FC<VSMAnalysisProps> = ({ processes, flows, onAd
             <div className="text-xs text-slate-400 pt-2 border-t border-slate-700">
               ⚠️ 此工序是產線的主要瓶頸，優化此工序可顯著提升整體產能
             </div>
+            {onCreateImprovementAction && (
+              <Button size="sm" className="w-full bg-red-600 hover:bg-red-500 text-white" onClick={() => onCreateImprovementAction({ id: analysis.bottleneckProcess!.id, name: analysis.bottleneckProcess!.name })}>
+                <Plus className="w-3.5 h-3.5 mr-1.5" />為瓶頸建立改善行動
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
+
+      {/* 改善閉環 */}
+      <Card className="bg-slate-800 border-slate-700 border-cyan-900">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2 text-cyan-300">
+            <ClipboardCheck className="w-4 h-4" />改善閉環
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+            <div className="rounded bg-slate-700/60 p-2"><p className="text-slate-400">進行中</p><p className="mt-1 text-base font-bold text-amber-300">{actionSummary.activeCount}</p></div>
+            <div className="rounded bg-slate-700/60 p-2"><p className="text-slate-400">已完成</p><p className="mt-1 text-base font-bold text-emerald-300">{actionSummary.completedCount}</p></div>
+            <div className="rounded bg-slate-700/60 p-2"><p className="text-slate-400">逾期</p><p className="mt-1 text-base font-bold text-red-300">{actionSummary.overdueCount}</p></div>
+          </div>
+          <div className="flex justify-between text-[11px] text-slate-400"><span>閉環完成率</span><span className="font-semibold text-cyan-300">{actionSummary.closureRate.toFixed(0)}%</span></div>
+          <div className="h-1.5 rounded bg-slate-700 overflow-hidden"><div className="h-full rounded bg-cyan-500" style={{ width: `${actionSummary.closureRate}%` }} /></div>
+          {improvementActions.length === 0 ? (
+            <p className="py-2 text-center text-xs text-slate-400">尚無改善行動；可從瓶頸工序或工序屬性建立。</p>
+          ) : (
+            <div className="space-y-2 border-t border-slate-700 pt-3">
+              {improvementActions.slice(0, 4).map((action) => (
+                <div key={action.id} className="rounded border border-slate-700 bg-slate-900/70 p-2">
+                  <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-xs font-medium text-slate-100">{action.title}</p><p className="mt-0.5 text-[10px] text-slate-400">{action.processName} · 責任人：{action.ownerName}</p></div><span className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] ${improvementStatusStyle[action.status]}`}>{improvementStatusLabel[action.status]}</span></div>
+                  <div className="mt-2 flex items-center justify-between gap-2"><span className={`text-[10px] ${action.dueDate && action.status !== 'completed' && new Date(action.dueDate).getTime() < Date.now() ? 'text-red-300' : 'text-slate-500'}`}>{action.dueDate ? `期限：${new Date(action.dueDate).toLocaleDateString()}` : '未設定期限'}</span>{onUpdateImprovementStatus && action.status !== 'cancelled' && <select value={action.status} aria-label={`更新 ${action.title} 狀態`} onChange={(event) => onUpdateImprovementStatus(action.id, event.target.value as ImprovementActionStatus)} className="h-6 max-w-[90px] rounded border border-slate-600 bg-slate-800 px-1 text-[10px] text-slate-200"><option value="open">待開始</option><option value="in_progress">進行中</option><option value="completed">已完成</option></select>}</div>
+                </div>
+              ))}
+              {improvementActions.length > 4 && <p className="text-center text-[10px] text-slate-500">另有 {improvementActions.length - 4} 項改善行動</p>}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* 人力配置均衡度 */}
       <Card className="bg-slate-800 border-slate-700">

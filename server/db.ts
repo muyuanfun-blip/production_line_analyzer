@@ -15,6 +15,7 @@ import {
   vsmProcesses, InsertVSMProcess, VSMProcess,
   vsmFlows, InsertVSMFlow, VSMFlow,
   vsmVersions, InsertVSMVersion, VSMVersion,
+  vsmImprovementActions, InsertVSMImprovementAction,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { resolveActionTypeForReview } from "../shared/actionReview";
@@ -976,6 +977,71 @@ export async function deleteVSMVersionsByDiagram(vsmDiagramId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.delete(vsmVersions).where(eq(vsmVersions.vsmDiagramId, vsmDiagramId));
+}
+
+// VSM 改善行動 - 列表（附帶工序名稱，供閉環摘要與追蹤面板使用）
+export async function listVSMImprovementActions(vsmDiagramId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select({
+    id: vsmImprovementActions.id,
+    vsmDiagramId: vsmImprovementActions.vsmDiagramId,
+    vsmProcessId: vsmImprovementActions.vsmProcessId,
+    processName: vsmProcesses.name,
+    sourceSnapshotId: vsmImprovementActions.sourceSnapshotId,
+    title: vsmImprovementActions.title,
+    description: vsmImprovementActions.description,
+    ownerName: vsmImprovementActions.ownerName,
+    dueDate: vsmImprovementActions.dueDate,
+    status: vsmImprovementActions.status,
+    createdBy: vsmImprovementActions.createdBy,
+    completedAt: vsmImprovementActions.completedAt,
+    createdAt: vsmImprovementActions.createdAt,
+    updatedAt: vsmImprovementActions.updatedAt,
+  }).from(vsmImprovementActions)
+    .innerJoin(vsmProcesses, eq(vsmImprovementActions.vsmProcessId, vsmProcesses.id))
+    .where(eq(vsmImprovementActions.vsmDiagramId, vsmDiagramId))
+    .orderBy(asc(vsmImprovementActions.status), asc(vsmImprovementActions.dueDate), desc(vsmImprovementActions.createdAt));
+}
+
+export async function getVSMImprovementActionById(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(vsmImprovementActions).where(eq(vsmImprovementActions.id, id));
+  return rows[0] ?? null;
+}
+
+export async function createVSMImprovementAction(data: InsertVSMImprovementAction) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(vsmImprovementActions).values(data);
+  const id = (result as any)[0]?.insertId as number;
+  return getVSMImprovementActionById(id);
+}
+
+export async function updateVSMImprovementAction(id: number, data: Partial<InsertVSMImprovementAction>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(vsmImprovementActions).set(data as any).where(eq(vsmImprovementActions.id, id));
+  return getVSMImprovementActionById(id);
+}
+
+export async function deleteVSMImprovementAction(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(vsmImprovementActions).where(eq(vsmImprovementActions.id, id));
+}
+
+export async function deleteVSMImprovementActionsByDiagram(vsmDiagramId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(vsmImprovementActions).where(eq(vsmImprovementActions.vsmDiagramId, vsmDiagramId));
+}
+
+export async function deleteVSMImprovementActionsByProcess(vsmProcessId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(vsmImprovementActions).where(eq(vsmImprovementActions.vsmProcessId, vsmProcessId));
 }
 
 // VSM 版本 - 恢復到特定版本

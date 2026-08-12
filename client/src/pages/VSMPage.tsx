@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Save, Download, RotateCcw, Clock, FileJson, FileSpreadsheet, Activity, Trash2 } from 'lucide-react';
+import { Plus, Save, Download, RotateCcw, Clock, FileJson, FileSpreadsheet, Activity, Trash2, ClipboardCheck } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { exportVSMAsJSON, exportVSMProcessesAsCSV, exportVSMFlowsAsCSV, exportVSMAsPNG, exportVSMAsPDF } from '@/lib/vsmExport';
 import { buildVsmComparisonPair } from '../../../shared/vsmVersionTimeline';
@@ -80,6 +80,8 @@ export const VSMPage: React.FC = () => {
   const [isImportingWorkstations, setIsImportingWorkstations] = useState(false);
   const [timelineFocusedVersionId, setTimelineFocusedVersionId] = useState<number | null>(null);
   const [timelineCompareAnchorId, setTimelineCompareAnchorId] = useState<number | null>(null);
+  const [showImprovementDialog, setShowImprovementDialog] = useState(false);
+  const [improvementActionProcess, setImprovementActionProcess] = useState<Pick<VSMProcessDisplay, 'id' | 'name'> | null>(null);
 
   const lineIdNum = lineId ? parseInt(lineId) : 0;
   const simulationContext = parseSimulationVsmContext(window.location.search, lineIdNum);
@@ -139,6 +141,11 @@ export const VSMPage: React.FC = () => {
     { enabled: !!selectedDiagramId }
   );
   const versions = versionsQuery.data || [];
+  const improvementActionsQuery = trpc.vsm.listImprovementActions.useQuery(
+    { vsmDiagramId: selectedDiagramId || 0 },
+    { enabled: !!selectedDiagramId }
+  );
+  const improvementActions = improvementActionsQuery.data || [];
   const selectedProcessWorkstationId = selectedProcess
     ? processes?.find((process) => process.id === selectedProcess.id)?.workstationId
     : null;
@@ -176,6 +183,19 @@ export const VSMPage: React.FC = () => {
     onSuccess: () => {
       setShowVersionDialog(false);
       versionsQuery.refetch();
+    },
+  });
+
+  const createImprovementActionMutation = trpc.vsm.createImprovementAction.useMutation({
+    onSuccess: async () => {
+      setShowImprovementDialog(false);
+      setImprovementActionProcess(null);
+      await utils.vsm.listImprovementActions.invalidate({ vsmDiagramId: selectedDiagramId || 0 });
+    },
+  });
+  const updateImprovementActionMutation = trpc.vsm.updateImprovementAction.useMutation({
+    onSuccess: async () => {
+      await utils.vsm.listImprovementActions.invalidate({ vsmDiagramId: selectedDiagramId || 0 });
     },
   });
 
@@ -346,6 +366,28 @@ export const VSMPage: React.FC = () => {
       processesSnapshot: processes,
       flowsSnapshot: flows,
       improvementNotes: notes.trim() || undefined,
+    });
+  };
+
+  const openImprovementActionDialog = (process: Pick<VSMProcessDisplay, 'id' | 'name'>) => {
+    setImprovementActionProcess(process);
+    setShowImprovementDialog(true);
+  };
+
+  const handleCreateImprovementAction = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedDiagramId || !improvementActionProcess) return;
+    const formData = new FormData(e.currentTarget);
+    const dueDateValue = String(formData.get('dueDate') || '').trim();
+    const snapshotValue = String(formData.get('sourceSnapshotId') || '').trim();
+    createImprovementActionMutation.mutate({
+      vsmDiagramId: selectedDiagramId,
+      vsmProcessId: improvementActionProcess.id,
+      title: String(formData.get('title') || '').trim(),
+      description: String(formData.get('description') || '').trim() || undefined,
+      ownerName: String(formData.get('ownerName') || '').trim(),
+      dueDate: dueDateValue ? new Date(`${dueDateValue}T00:00:00`) : null,
+      sourceSnapshotId: snapshotValue ? parseInt(snapshotValue) : null,
     });
   };
 
@@ -741,6 +783,9 @@ export const VSMPage: React.FC = () => {
                 onAddProcess={() => {
                   setShowNewProcessDialog(true);
                 }}
+                improvementActions={improvementActions as any}
+                onCreateImprovementAction={openImprovementActionDialog}
+                onUpdateImprovementStatus={(id, status) => updateImprovementActionMutation.mutate({ id, status })}
               />
             )}
           </div>
@@ -775,6 +820,9 @@ export const VSMPage: React.FC = () => {
                     <p className="text-white font-medium">{selectedProcess.valueAddedRate}%</p>
                   </div>
                 )}
+                <Button size="sm" className="w-full bg-cyan-600 hover:bg-cyan-500 text-white" onClick={() => openImprovementActionDialog({ id: selectedProcess.id, name: selectedProcess.name })}>
+                  <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" />建立改善行動
+                </Button>
                 {selectedProcessWorkstationId && (
                   <Button size="sm" variant="outline" className="w-full border-cyan-400/35 text-cyan-200 hover:bg-cyan-400/10" onClick={() => setLocation(buildVsmTrackingUrl({ lineId: lineIdNum, workstationId: selectedProcessWorkstationId, processName: selectedProcess.name }))}>
                     檢視此工站產品追蹤
@@ -813,6 +861,33 @@ export const VSMPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      <Dialog open={showImprovementDialog} onOpenChange={(open) => {
+        setShowImprovementDialog(open);
+        if (!open) setImprovementActionProcess(null);
+      }}>
+        <DialogContent className="max-w-lg bg-slate-900 border-slate-700">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><ClipboardCheck className="h-4 w-4 text-cyan-300" />建立改善行動</DialogTitle>
+          </DialogHeader>
+          {improvementActionProcess && (
+            <form onSubmit={handleCreateImprovementAction} className="space-y-4">
+              <div className="rounded border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-100">
+                目標工序：<span className="font-semibold">{improvementActionProcess.name}</span>
+              </div>
+              <div><Label htmlFor="improvementTitle">行動標題</Label><Input id="improvementTitle" name="title" required maxLength={255} placeholder={`例如：縮短 ${improvementActionProcess.name} 的換線時間`} /></div>
+              <div><Label htmlFor="improvementDescription">改善說明／驗收條件</Label><Textarea id="improvementDescription" name="description" maxLength={4000} placeholder="說明根因、預計措施與可量化的完成條件…" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label htmlFor="improvementOwner">責任人</Label><Input id="improvementOwner" name="ownerName" required maxLength={128} placeholder="例如：IE 工程師" /></div>
+                <div><Label htmlFor="improvementDueDate">完成期限</Label><Input id="improvementDueDate" name="dueDate" type="date" /></div>
+              </div>
+              <div><Label htmlFor="sourceSnapshotId">關聯快照 ID（選填）</Label><Input id="sourceSnapshotId" name="sourceSnapshotId" type="number" min="1" step="1" placeholder="改善前基準快照" /></div>
+              <p className="text-xs text-slate-400">建立後可在分析面板更新為「進行中」或「已完成」，系統會彙整閉環完成率與逾期數。</p>
+              <Button type="submit" className="w-full bg-cyan-600 hover:bg-cyan-500" disabled={createImprovementActionMutation.isPending}>{createImprovementActionMutation.isPending ? '建立中…' : '建立並納入閉環追蹤'}</Button>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* 版本比較對話框 */}
       <Dialog open={showCompareDialog} onOpenChange={setShowCompareDialog}>

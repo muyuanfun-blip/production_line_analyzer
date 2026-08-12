@@ -33,6 +33,8 @@ import {
   listVSMFlows, getVSMFlowById, createVSMFlow, updateVSMFlow, deleteVSMFlow,
   deleteVSMFlowsByDiagram,
   listVSMVersions, getVSMVersionById, createVSMVersion, restoreVSMVersion, deleteVSMVersionsByDiagram,
+  listVSMImprovementActions, createVSMImprovementAction, updateVSMImprovementAction,
+  deleteVSMImprovementAction, deleteVSMImprovementActionsByDiagram, deleteVSMImprovementActionsByProcess,
 } from "./db";
 import bcrypt from "bcryptjs";
 import { sdk } from "./_core/sdk";
@@ -1599,6 +1601,7 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteVSMVersionsByDiagram(input.id);
+        await deleteVSMImprovementActionsByDiagram(input.id);
         await deleteVSMProcessesByDiagram(input.id);
         await deleteVSMFlowsByDiagram(input.id);
         await deleteVSMDiagram(input.id);
@@ -1693,7 +1696,75 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
     deleteProcess: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
+        await deleteVSMImprovementActionsByProcess(input.id);
         await deleteVSMProcess(input.id);
+        return { success: true };
+      }),
+
+    // VSM 改善行動閉環
+    listImprovementActions: protectedProcedure
+      .input(z.object({ vsmDiagramId: z.number().int().positive() }))
+      .query(async ({ input }) => listVSMImprovementActions(input.vsmDiagramId)),
+
+    createImprovementAction: protectedProcedure
+      .input(z.object({
+        vsmDiagramId: z.number().int().positive(),
+        vsmProcessId: z.number().int().positive(),
+        sourceSnapshotId: z.number().int().positive().optional().nullable(),
+        title: z.string().min(1).max(255),
+        description: z.string().max(4000).optional(),
+        ownerName: z.string().min(1).max(128),
+        dueDate: z.date().optional().nullable(),
+        status: z.enum(["open", "in_progress", "completed", "cancelled"]).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const status = input.status ?? "open";
+        const action = await createVSMImprovementAction({
+          vsmDiagramId: input.vsmDiagramId,
+          vsmProcessId: input.vsmProcessId,
+          sourceSnapshotId: input.sourceSnapshotId ?? null,
+          title: input.title,
+          description: input.description ?? null,
+          ownerName: input.ownerName,
+          dueDate: input.dueDate ?? null,
+          status,
+          createdBy: ctx.user.id,
+          completedAt: status === "completed" ? new Date() : null,
+        });
+        return { success: true, action };
+      }),
+
+    updateImprovementAction: protectedProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        title: z.string().min(1).max(255).optional(),
+        description: z.string().max(4000).optional().nullable(),
+        ownerName: z.string().min(1).max(128).optional(),
+        dueDate: z.date().optional().nullable(),
+        sourceSnapshotId: z.number().int().positive().optional().nullable(),
+        status: z.enum(["open", "in_progress", "completed", "cancelled"]).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        const updateData: Record<string, unknown> = {};
+        if (data.title !== undefined) updateData.title = data.title;
+        if (data.description !== undefined) updateData.description = data.description;
+        if (data.ownerName !== undefined) updateData.ownerName = data.ownerName;
+        if (data.dueDate !== undefined) updateData.dueDate = data.dueDate;
+        if (data.sourceSnapshotId !== undefined) updateData.sourceSnapshotId = data.sourceSnapshotId;
+        if (data.status !== undefined) {
+          updateData.status = data.status;
+          if (data.status === "completed") updateData.completedAt = new Date();
+          if (data.status === "open" || data.status === "in_progress") updateData.completedAt = null;
+        }
+        const action = await updateVSMImprovementAction(id, updateData as any);
+        return { success: true, action };
+      }),
+
+    deleteImprovementAction: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteVSMImprovementAction(input.id);
         return { success: true };
       }),
 

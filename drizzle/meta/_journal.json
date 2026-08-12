@@ -134,6 +134,13 @@
       "when": 1786520396949,
       "tag": "0018_volatile_malice",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1786521137506,
+      "tag": "0019_careless_jack_power",
+      "breakpoints": true
     }
   ]
 }
