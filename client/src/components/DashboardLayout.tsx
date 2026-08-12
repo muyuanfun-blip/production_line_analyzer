@@ -38,7 +38,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   GitBranch,
-  BarChart3,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -57,7 +56,6 @@ const navGroups = [
     label: "資料管理",
     items: [
       { icon: GitBranch,   label: "VSM 設計", path: "/lines/1/vsm" },
-      { icon: BarChart3,   label: "戰情監控", path: "/lines/1/monitoring" },
     ],
   },
 ];

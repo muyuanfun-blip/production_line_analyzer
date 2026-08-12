@@ -7,8 +7,6 @@ import {
   actionSteps, InsertActionStep,
   handActions, InsertHandAction,
   analysisSnapshots, InsertAnalysisSnapshot,
-  monitoringSnapshots, InsertMonitoringSnapshot,
-  monitoringAlertRules, InsertMonitoringAlertRule,
   simulationScenarios, InsertSimulationScenario,
   productModels, InsertProductModel,
   productInstances, InsertProductInstance,
@@ -335,71 +333,6 @@ export async function deleteSnapshot(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.delete(analysisSnapshots).where(eq(analysisSnapshots.id, id));
-}
-
-// ─── Monitoring Snapshot Queries ─────────────────────────────────────────────
-
-export async function createMonitoringSnapshot(data: InsertMonitoringSnapshot) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const result = await db.insert(monitoringSnapshots).values(data);
-  const id = Number((result as any)[0]?.insertId);
-  if (!id) throw new Error("Failed to create monitoring snapshot");
-  const rows = await db.select().from(monitoringSnapshots).where(eq(monitoringSnapshots.id, id)).limit(1);
-  return rows[0] ?? null;
-}
-
-export async function listMonitoringSnapshots(
-  productionLineId: number,
-  from?: Date,
-  to?: Date,
-  limit = 200,
-) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const conditions = [eq(monitoringSnapshots.productionLineId, productionLineId)];
-  if (from) conditions.push(gte(monitoringSnapshots.capturedAt, from));
-  if (to) conditions.push(lte(monitoringSnapshots.capturedAt, to));
-  return db.select()
-    .from(monitoringSnapshots)
-    .where(and(...conditions))
-    .orderBy(desc(monitoringSnapshots.capturedAt))
-    .limit(limit);
-}
-
-// ─── Monitoring Alert Rule Queries ───────────────────────────────────────────
-
-export async function listMonitoringAlertRules(productionLineId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.select()
-    .from(monitoringAlertRules)
-    .where(eq(monitoringAlertRules.productionLineId, productionLineId))
-    .orderBy(desc(monitoringAlertRules.isActive), asc(monitoringAlertRules.id));
-}
-
-export async function createMonitoringAlertRule(data: InsertMonitoringAlertRule) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const result = await db.insert(monitoringAlertRules).values(data);
-  const id = Number((result as any)[0]?.insertId);
-  if (!id) throw new Error("Failed to create monitoring alert rule");
-  const rows = await db.select().from(monitoringAlertRules).where(eq(monitoringAlertRules.id, id)).limit(1);
-  return rows[0] ?? null;
-}
-
-export async function updateMonitoringAlertRule(id: number, data: Partial<InsertMonitoringAlertRule>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await db.update(monitoringAlertRules).set(data as any).where(eq(monitoringAlertRules.id, id));
-  const rows = await db.select().from(monitoringAlertRules).where(eq(monitoringAlertRules.id, id)).limit(1);
-  return rows[0] ?? null;
-}
-
-export async function deleteMonitoringAlertRule(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  return db.delete(monitoringAlertRules).where(eq(monitoringAlertRules.id, id));
 }
 
 /**

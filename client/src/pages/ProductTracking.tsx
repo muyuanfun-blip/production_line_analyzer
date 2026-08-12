@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { parseMonitoringTrackingContext } from "../../../shared/monitoringTrackingContext";
 import { parseVsmTrackingContext } from "../../../shared/vsmTrackingContext";
 import {
   Plus, Trash2, ChevronRight, ArrowLeft, Edit2, Save, Clock, CheckCircle2,
@@ -48,9 +47,8 @@ const FLOW_STATUS_META: Record<FlowStatus, { label: string; color: string }> = {
 // ─── 主元件 ───────────────────────────────────────────────────────────────────
 export default function ProductTracking() {
   const [, setLocation] = useLocation();
-  const monitoringContext = useMemo(() => parseMonitoringTrackingContext(window.location.search), []);
   const vsmContext = useMemo(() => parseVsmTrackingContext(window.location.search), []);
-  const inboundLineId = monitoringContext?.lineId ?? vsmContext?.lineId ?? null;
+  const inboundLineId = vsmContext?.lineId ?? null;
   const [selectedLineId, setSelectedLineId] = useState<number | null>(null);
   const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(null);
   const [showNewInstanceDialog, setShowNewInstanceDialog] = useState(false);
@@ -307,18 +305,7 @@ export default function ProductTracking() {
 
         {/* 右欄：流程記錄 / 時間軸 */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {monitoringContext && (
-            <div className="shrink-0 border-b border-violet-500/25 bg-violet-500/[0.06] px-6 py-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-violet-300">監控流程情境</p>
-                  <p className="mt-1 text-xs text-violet-200/65">由戰情監控帶入：加工中 {monitoringContext.activeCount} 項、卡料／等待 {monitoringContext.waitingCount} 項{monitoringContext.productIds.length ? `；關注產品 ${monitoringContext.productIds.join("、")}` : ""}。</p>
-                </div>
-                <Button size="sm" variant="outline" className="h-7 shrink-0 border-violet-400/35 text-xs text-violet-300 hover:bg-violet-400/10" onClick={() => setLocation(`/lines/${monitoringContext.lineId}/monitoring`)}>返回戰情監控</Button>
-              </div>
-            </div>
-          )}
-          {vsmContext && !monitoringContext && (
+          {vsmContext && (
             <div className="shrink-0 border-b border-cyan-500/25 bg-cyan-500/[0.06] px-6 py-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>

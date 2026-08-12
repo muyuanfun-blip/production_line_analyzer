@@ -24,7 +24,6 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { parseMonitoringSimulationContext } from "../../../shared/monitoringSimulationContext";
 import { buildSimulationVsmUrl } from "../../../shared/simulationVsmContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -392,9 +391,8 @@ function BalanceMiniChart({ workstations, taktTime, avgTime, chartRef }: {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function SimulationPage() {
   const [, setLocation] = useLocation();
-  const monitoringContext = parseMonitoringSimulationContext(window.location.search);
 
-  const [selectedLineId, setSelectedLineId] = useState<number | null>(() => monitoringContext?.lineId ?? null);
+  const [selectedLineId, setSelectedLineId] = useState<number | null>(null);
   const { data: lines } = trpc.productionLine.list.useQuery();
   const { data: lineDetail } = trpc.productionLine.getById.useQuery({ id: selectedLineId! }, { enabled: !!selectedLineId });
   const { data: lineWorkstations } = trpc.workstation.listByLine.useQuery({ productionLineId: selectedLineId! }, { enabled: !!selectedLineId });
@@ -675,18 +673,6 @@ export default function SimulationPage() {
           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => setRightCollapsed(v => !v)}><PanelRight className="w-4 h-4" /></Button>
         </div>
       </div>
-
-      {monitoringContext && (
-        <div className="shrink-0 border-b border-cyan-500/25 bg-cyan-500/[0.06] px-4 py-2.5">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-cyan-300"><Activity className="h-3.5 w-3.5" />監控 KPI 情境</p>
-              <p className="mt-1 text-[11px] text-cyan-100/65">即時平衡率 {monitoringContext.balanceRate.toFixed(1)}%；UPPH {monitoringContext.upph.toFixed(2)}；瓶頸工站 #{monitoringContext.bottleneckWsId || '—'}；緊急警示 {monitoringContext.criticalCount}。可從此產線建立情境並調整瓶頸工站配置。</p>
-            </div>
-            <Button size="sm" variant="outline" onClick={() => setLocation(`/lines/${monitoringContext.lineId}/monitoring`)} className="h-7 shrink-0 border-cyan-400/35 text-xs text-cyan-200 hover:bg-cyan-400/10">返回戰情監控</Button>
-          </div>
-        </div>
-      )}
 
       {/* 三欄主體 */}
       <div className="flex flex-1 overflow-hidden">

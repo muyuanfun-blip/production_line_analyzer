@@ -23,7 +23,6 @@ import ProductModels from "./pages/ProductModels";
 import ProductTracking from "./pages/ProductTracking";
 import GanttPage from "./pages/GanttPage";
 import { VSMPage } from "./pages/VSMPage";
-import MonitoringDashboard from "./pages/MonitoringDashboard";
 import { trpc } from "@/lib/trpc";
 import { useEffect } from "react";
 
@@ -82,7 +81,6 @@ function Router() {
               <Route path={"/product-tracking"} component={ProductTracking} />
               <Route path={"/gantt"} component={GanttPage} />
               <Route path={"/lines/:lineId/vsm"} component={VSMPage} />
-              <Route path={"/lines/:lineId/monitoring"} component={MonitoringDashboard} />
               <Route path={"/404"} component={NotFound} />
               <Route component={NotFound} />
             </Switch>
