@@ -33,7 +33,7 @@ import {
   deleteVSMProcessesByDiagram,
   listVSMFlows, getVSMFlowById, createVSMFlow, updateVSMFlow, deleteVSMFlow,
   deleteVSMFlowsByDiagram,
-  listVSMVersions, getVSMVersionById, createVSMVersion, restoreVSMVersion,
+  listVSMVersions, getVSMVersionById, createVSMVersion, restoreVSMVersion, deleteVSMVersionsByDiagram,
 } from "./db";
 import bcrypt from "bcryptjs";
 import { sdk } from "./_core/sdk";
@@ -1535,6 +1535,7 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
     deleteDiagram: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
+        await deleteVSMVersionsByDiagram(input.id);
         await deleteVSMProcessesByDiagram(input.id);
         await deleteVSMFlowsByDiagram(input.id);
         await deleteVSMDiagram(input.id);

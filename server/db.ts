@@ -954,6 +954,13 @@ export async function createVSMVersion(data: InsertVSMVersion) {
   return getVSMVersionById(id);
 }
 
+// VSM 版本 - 依圖表批量刪除（用於刪除圖表時）
+export async function deleteVSMVersionsByDiagram(vsmDiagramId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(vsmVersions).where(eq(vsmVersions.vsmDiagramId, vsmDiagramId));
+}
+
 // VSM 版本 - 恢復到特定版本
 export async function restoreVSMVersion(versionId: number) {
   const db = await getDb();

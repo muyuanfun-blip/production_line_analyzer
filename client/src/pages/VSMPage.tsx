@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Save, Download, RotateCcw, Clock, FileJson, FileSpreadsheet, Activity } from 'lucide-react';
+import { Plus, Save, Download, RotateCcw, Clock, FileJson, FileSpreadsheet, Activity, Trash2 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { exportVSMAsJSON, exportVSMProcessesAsCSV, exportVSMFlowsAsCSV, exportVSMAsPNG, exportVSMAsPDF } from '@/lib/vsmExport';
 import { parseMonitoringVsmContext } from '../../../shared/monitoringVsmContext';
@@ -67,6 +67,7 @@ interface VSMDiagram {
 export const VSMPage: React.FC = () => {
   const { lineId } = useParams<{ lineId: string }>();
   const [, setLocation] = useLocation();
+  const utils = trpc.useUtils();
   const [selectedDiagramId, setSelectedDiagramId] = useState<number | null>(null);
   const [selectedProcess, setSelectedProcess] = useState<VSMProcessDisplay | null>(null);
   const [selectedFlow, setSelectedFlow] = useState<VSMFlowDisplay | null>(null);
@@ -176,6 +177,13 @@ export const VSMPage: React.FC = () => {
   const createFlowMutation = trpc.vsm.createFlow.useMutation({
     onSuccess: () => {
       setShowNewFlowDialog(false);
+    },
+  });
+
+  const deleteDiagramMutation = trpc.vsm.deleteDiagram.useMutation({
+    onSuccess: async () => {
+      setSelectedDiagramId(null);
+      await utils.vsm.listDiagrams.invalidate({ productionLineId: lineIdNum });
     },
   });
 
@@ -356,6 +364,11 @@ export const VSMPage: React.FC = () => {
     });
   };
 
+  const handleDeleteDiagram = (diagram: VSMDiagram) => {
+    const confirmed = window.confirm(`確定刪除「${diagram.name}」嗎？此操作會一併移除工序、流線與所有版本快照，且無法復原。`);
+    if (confirmed) deleteDiagramMutation.mutate({ id: diagram.id });
+  };
+
   if (diagramsLoading) {
     return <div className="p-6 text-slate-400">載入中...</div>;
   }
@@ -400,6 +413,11 @@ export const VSMPage: React.FC = () => {
               </form>
             </DialogContent>
           </Dialog>
+          {lineIdNum !== 99001 && (
+            <Button size="sm" variant="outline" className="mt-2 w-full border-cyan-400/35 text-cyan-200 hover:bg-cyan-400/10" onClick={() => setLocation('/lines/99001/vsm')}>
+              <Activity className="mr-2 h-4 w-4" />開啟 iPhone 示範流程
+            </Button>
+          )}
         </div>
 
         {/* 圖表列表 */}
@@ -414,7 +432,17 @@ export const VSMPage: React.FC = () => {
                   : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
               }`}
             >
-              <p className="font-medium text-sm">{diagram.name}</p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-medium text-sm">{diagram.name}</p>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 shrink-0 text-slate-400 hover:bg-red-500/15 hover:text-red-300"
+                  onClick={(event) => { event.stopPropagation(); handleDeleteDiagram(diagram); }}
+                  disabled={deleteDiagramMutation.isPending}
+                  title="刪除圖表與關聯資料"
+                ><Trash2 className="h-3.5 w-3.5" /></Button>
+              </div>
               <p className="text-xs text-slate-400 mt-1">v{diagram.versionNumber}</p>
             </div>
           ))}
