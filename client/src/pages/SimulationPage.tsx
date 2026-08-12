@@ -46,6 +46,16 @@ type Scenario = {
   createdAt: Date;
   updatedAt: Date;
 };
+type SimulationRunResult = {
+  scenarioId: number;
+  scenarioName: string;
+  productModel: { id: number; modelCode: string; modelName: string } | null;
+  batchNumber: string;
+  instanceCount: number;
+  flowRecordCount: number;
+  totalLeadTime: number;
+  instanceIds: number[];
+};
 
 // ─── Color Tokens ─────────────────────────────────────────────────────────────
 const COLORS = {
@@ -386,6 +396,10 @@ export default function SimulationPage() {
   const { data: lineDetail } = trpc.productionLine.getById.useQuery({ id: selectedLineId! }, { enabled: !!selectedLineId });
   const { data: lineWorkstations } = trpc.workstation.listByLine.useQuery({ productionLineId: selectedLineId! }, { enabled: !!selectedLineId });
   const { data: lineSnapshots } = trpc.snapshot.listByLine.useQuery({ productionLineId: selectedLineId! }, { enabled: !!selectedLineId });
+  const { data: productModels = [] } = trpc.productModel.listByLine.useQuery(
+    { productionLineId: selectedLineId! },
+    { enabled: !!selectedLineId },
+  );
   const taktTime = lineDetail?.targetCycleTime ? parseFloat(lineDetail.targetCycleTime.toString()) : undefined;
 
   const { data: scenarios, refetch: refetchScenarios } = trpc.simulation.list.useQuery({ productionLineId: selectedLineId! }, { enabled: !!selectedLineId });
@@ -409,6 +423,8 @@ export default function SimulationPage() {
   const [showSplitDialog, setShowSplitDialog] = useState(false);
   const [showApplyDialog, setShowApplyDialog] = useState(false);
   const [showCompareDialog, setShowCompareDialog] = useState(false);
+  const [showRunDialog, setShowRunDialog] = useState(false);
+  const [showRunResultDialog, setShowRunResultDialog] = useState(false);
   const [splitTargetIndex, setSplitTargetIndex] = useState<number | null>(null);
 
   const [newScenarioName, setNewScenarioName] = useState("");
@@ -422,6 +438,10 @@ export default function SimulationPage() {
   const [splitName1, setSplitName1] = useState("");
   const [splitName2, setSplitName2] = useState("");
   const [isDownloading, setIsDownloading] = useState(false);
+  const [runProductModelId, setRunProductModelId] = useState("none");
+  const [runQuantity, setRunQuantity] = useState("1");
+  const [runBatchNumber, setRunBatchNumber] = useState("");
+  const [runResult, setRunResult] = useState<SimulationRunResult | null>(null);
   const chartRef = useRef<HTMLDivElement | null>(null);
   const utils = trpc.useUtils();
 
@@ -451,6 +471,16 @@ export default function SimulationPage() {
       utils.workstation.listByLine.invalidate({ productionLineId: selectedLineId! });
     },
     onError: (e) => toast.error(`套用失敗：${e.message}`),
+  });
+  const runSimulationMutation = trpc.simulation.executeProductRun.useMutation({
+    onSuccess: (data) => {
+      setRunResult(data);
+      setShowRunDialog(false);
+      setShowRunResultDialog(true);
+      utils.productTracking.listInstances.invalidate({ productionLineId: selectedLineId! });
+      toast.success(`已建立 ${data.instanceCount} 件模擬產品與 ${data.flowRecordCount} 筆流程記錄`);
+    },
+    onError: (e) => toast.error(`模擬執行失敗：${e.message}`),
   });
 
   const handleSelectScenario = (scenario: Scenario) => {
@@ -527,6 +557,20 @@ export default function SimulationPage() {
   const handleSaveScenario = () => {
     if (!selectedScenarioId) return;
     updateMutation.mutate({ id: selectedScenarioId, workstationsData: localWorkstations });
+  };
+  const handleRunSimulation = () => {
+    if (!selectedScenarioId) return;
+    const quantity = Number.parseInt(runQuantity, 10);
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 50) {
+      toast.error("模擬數量須為 1 至 50 件。");
+      return;
+    }
+    runSimulationMutation.mutate({
+      scenarioId: selectedScenarioId,
+      productModelId: runProductModelId === "none" ? undefined : Number.parseInt(runProductModelId, 10),
+      quantity,
+      batchNumber: runBatchNumber.trim() || undefined,
+    });
   };
 
   const handleDragStart = (e: React.DragEvent, index: number) => { setDragIndex(index); e.dataTransfer.effectAllowed = "move"; };
@@ -770,6 +814,15 @@ export default function SimulationPage() {
                 )}
                 <Button size="sm" className="h-7 gap-1.5 text-xs" onClick={handleSaveScenario} disabled={!isDirty || updateMutation.isPending}>
                   {updateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}儲存
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 text-xs text-cyan-300 border-cyan-400/50 hover:bg-cyan-400/10"
+                  onClick={() => setShowRunDialog(true)}
+                  disabled={!localWorkstations.length}
+                >
+                  <Play className="w-3.5 h-3.5" />模擬執行
                 </Button>
                 <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs text-emerald-400 border-emerald-400/50 hover:bg-emerald-400/10" onClick={() => setShowApplyDialog(true)} disabled={!localWorkstations.length}>
                   <Play className="w-3.5 h-3.5" />套用至產線
@@ -1217,6 +1270,87 @@ export default function SimulationPage() {
               disabled={!applyChanges.length || applyMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700">
               {applyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Play className="w-4 h-4 mr-2" />}確認套用
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: 模擬執行設定 */}
+      <Dialog open={showRunDialog} onOpenChange={setShowRunDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>執行情境模擬</DialogTitle>
+            <DialogDescription>
+              系統會依目前情境的工站順序與週期時間，自動建立已完成的產品實例及流程紀錄；不會改動實際產線工站資料。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/[0.04] p-3 text-xs">
+              <div className="font-medium text-cyan-300">{selectedScenario?.name ?? "未選擇情境"}</div>
+              <div className="mt-1 text-muted-foreground">
+                {sortedWs.length} 個工站 · 預估單件 Lead Time {kpi ? `${kpi.totalTime.toFixed(1)}s` : "—"}
+              </div>
+            </div>
+            <div>
+              <Label>產品型號（選填）</Label>
+              <Select value={runProductModelId} onValueChange={setRunProductModelId}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">不指定型號</SelectItem>
+                  {productModels.map((model) => (
+                    <SelectItem key={model.id} value={String(model.id)}>
+                      {model.modelCode} · {model.modelName}{model.batchSize ? `（標準批量 ${model.batchSize}）` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {productModels.length === 0 && <p className="mt-1 text-xs text-muted-foreground">尚未建立產品型號；仍可不指定型號執行模擬。</p>}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>模擬件數</Label>
+                <Input className="mt-1" type="number" min="1" max="50" step="1" value={runQuantity} onChange={(event) => setRunQuantity(event.target.value)} />
+                <p className="mt-1 text-[11px] text-muted-foreground">每次最多建立 50 件</p>
+              </div>
+              <div>
+                <Label>批次號（選填）</Label>
+                <Input className="mt-1" placeholder="例：SIM-20260812-A" value={runBatchNumber} onChange={(event) => setRunBatchNumber(event.target.value)} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRunDialog(false)}>取消</Button>
+            <Button onClick={handleRunSimulation} disabled={runSimulationMutation.isPending || !sortedWs.length} className="bg-cyan-600 hover:bg-cyan-700">
+              {runSimulationMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+              建立模擬記錄
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: 模擬執行結果 */}
+      <Dialog open={showRunResultDialog} onOpenChange={setShowRunResultDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><CheckCircle className="h-5 w-5 text-emerald-400" />模擬記錄已建立</DialogTitle>
+            <DialogDescription>以下資料已寫入產品追蹤，方便後續使用時間軸與甘特圖檢視。</DialogDescription>
+          </DialogHeader>
+          {runResult && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] p-3">
+                <div className="text-sm font-medium text-foreground">{runResult.scenarioName}</div>
+                <div className="mt-1 text-xs text-muted-foreground">批次：{runResult.batchNumber}</div>
+                {runResult.productModel && <div className="mt-1 text-xs text-cyan-300">型號：{runResult.productModel.modelCode} · {runResult.productModel.modelName}</div>}
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="rounded-lg bg-muted/40 p-3"><div className="text-lg font-bold text-cyan-300">{runResult.instanceCount}</div><div className="text-[11px] text-muted-foreground">產品實例</div></div>
+                <div className="rounded-lg bg-muted/40 p-3"><div className="text-lg font-bold text-violet-300">{runResult.flowRecordCount}</div><div className="text-[11px] text-muted-foreground">流程紀錄</div></div>
+                <div className="rounded-lg bg-muted/40 p-3"><div className="text-lg font-bold text-amber-300">{runResult.totalLeadTime.toFixed(1)}s</div><div className="text-[11px] text-muted-foreground">單件 Lead Time</div></div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRunResultDialog(false)}>留在模擬頁</Button>
+            <Button onClick={() => setLocation("/product-tracking")} className="bg-emerald-600 hover:bg-emerald-700"><ArrowRight className="mr-2 h-4 w-4" />前往產品追蹤</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -36,6 +36,7 @@ import {
 import bcrypt from "bcryptjs";
 import { sdk } from "./_core/sdk";
 import { ENV } from "./_core/env";
+import { buildSimulationRunPlan, normalizeSimulationWorkstations } from "../shared/simulationRun";
 import {
   generateRealtimeLineStatus,
   generateHistoricalTrend,
@@ -1034,6 +1035,95 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
           createdBy: original.createdBy ?? null,
         });
         return { success: true, scenario };
+      }),
+
+    // 以情境工站資料執行一批模擬，建立可於產品追蹤檢視的產品實例與流程紀錄。
+    executeProductRun: protectedProcedure
+      .input(z.object({
+        scenarioId: z.number().int().positive(),
+        productModelId: z.number().int().positive().optional(),
+        quantity: z.number().int().min(1).max(50),
+        batchNumber: z.string().trim().max(64).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const scenario = await getSimulationById(input.scenarioId);
+        if (!scenario) throw new Error("Simulation not found");
+
+        const productModel = input.productModelId
+          ? await getProductModelById(input.productModelId)
+          : undefined;
+        if (input.productModelId && !productModel) {
+          throw new Error("找不到指定的產品型號。");
+        }
+        if (productModel && productModel.productionLineId !== scenario.productionLineId) {
+          throw new Error("產品型號與模擬情境必須屬於同一條產線。");
+        }
+
+        const workstations = normalizeSimulationWorkstations(scenario.workstationsData);
+        if (workstations.length === 0) {
+          throw new Error("此情境沒有有效的工站資料，無法執行模擬。");
+        }
+
+        const startedAt = new Date();
+        const batchNumber = input.batchNumber || `SIM-${scenario.id}-${startedAt.toISOString().slice(0, 10).replace(/-/g, "")}`;
+        const plans = buildSimulationRunPlan({
+          scenarioId: scenario.id,
+          scenarioName: scenario.name,
+          workstations,
+          quantity: input.quantity,
+          startedAt,
+        });
+        const createdInstanceIds: number[] = [];
+
+        try {
+          for (const plan of plans) {
+            const instance = await createProductInstance({
+              productionLineId: scenario.productionLineId,
+              productModelId: productModel?.id ?? null,
+              serialNumber: plan.serialNumber,
+              batchNumber,
+              status: "completed",
+              startTime: plan.startTime,
+              endTime: plan.endTime,
+              totalLeadTime: plan.totalLeadTime.toFixed(2),
+              notes: `由配置模擬情境「${scenario.name}」自動建立`,
+            });
+            if (!instance) throw new Error("無法建立模擬產品實例。");
+            createdInstanceIds.push(instance.id);
+
+            for (const flow of plan.flowRecords) {
+              await createFlowRecord({
+                productInstanceId: instance.id,
+                workstationId: flow.workstationId,
+                workstationName: flow.workstationName,
+                sequenceOrder: flow.sequenceOrder,
+                entryTime: flow.entryTime,
+                exitTime: flow.exitTime,
+                actualCycleTime: flow.actualCycleTime.toFixed(2),
+                waitTime: flow.waitTime.toFixed(2),
+                status: "normal",
+                notes: flow.notes,
+              });
+            }
+          }
+        } catch (error) {
+          // 發生寫入失敗時盡可能清除同一批已建立實例與其流程資料，避免半成品模擬結果。
+          await Promise.all(createdInstanceIds.map((id) => deleteProductInstance(id)));
+          throw error;
+        }
+
+        const totalLeadTime = plans[0]?.totalLeadTime ?? 0;
+        return {
+          success: true,
+          scenarioId: scenario.id,
+          scenarioName: scenario.name,
+          productModel: productModel ? { id: productModel.id, modelCode: productModel.modelCode, modelName: productModel.modelName } : null,
+          batchNumber,
+          instanceCount: createdInstanceIds.length,
+          flowRecordCount: createdInstanceIds.length * workstations.length,
+          totalLeadTime,
+          instanceIds: createdInstanceIds,
+        };
       }),
 
     // 將情境工站數據寫回實際 workstations 表
