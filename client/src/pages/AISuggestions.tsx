@@ -13,6 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { buildAIProfessionalReport, buildAIProfessionalReportHtml } from "../../../shared/aiProfessionalReport";
 import type { ConsensusResult, RoleReview } from "../../../shared/aiConsensus";
 import { INTERACTIVE_QUICK_QUESTIONS } from "../../../shared/interactiveAnalysis";
+import { assessAnalysisDataReadiness, getReadinessLevel } from "../../../shared/analysisDataReadiness";
+import { deriveInteractiveActionDraft, type InteractiveActionDraft } from "../../../shared/interactiveActionPlan";
 import { Streamdown } from "streamdown";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -34,6 +36,7 @@ export default function AISuggestions() {
     { workstationIds },
     { enabled: workstationIds.length > 0 }
   );
+  const { data: vsmDiagrams } = trpc.vsm.listDiagrams.useQuery({ productionLineId: lineId }, { enabled: lineId > 0 });
 
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
@@ -42,6 +45,12 @@ export default function AISuggestions() {
   const [consensus, setConsensus] = useState<ConsensusResult | null>(null);
   const [interactiveQuestion, setInteractiveQuestion] = useState("");
   const [interactiveMessages, setInteractiveMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [actionPlanOpen, setActionPlanOpen] = useState(false);
+  const [actionDraft, setActionDraft] = useState<InteractiveActionDraft | null>(null);
+  const [selectedDiagramId, setSelectedDiagramId] = useState<number | null>(null);
+  const [selectedProcessId, setSelectedProcessId] = useState<number | null>(null);
+  const [actionDueDate, setActionDueDate] = useState("");
+  const { data: vsmProcesses } = trpc.vsm.listProcesses.useQuery({ vsmDiagramId: selectedDiagramId ?? 0 }, { enabled: selectedDiagramId !== null });
 
   const aiMutation = trpc.analysis.aiSuggest.useMutation({
     onSuccess: (data) => {
@@ -63,6 +72,15 @@ export default function AISuggestions() {
     },
   });
 
+  const createImprovementAction = trpc.vsm.createImprovementAction.useMutation({
+    onSuccess: () => {
+      toast.success("已建立 VSM 改善行動計畫");
+      setActionPlanOpen(false);
+      setActionDraft(null);
+    },
+    onError: (error) => toast.error(error.message || "建立改善行動失敗"),
+  });
+
   const analysis = useMemo(() => {
     if (!workstations || workstations.length === 0) return null;
     const times = workstations.map(w => parseFloat(w.cycleTime.toString()));
@@ -81,6 +99,22 @@ export default function AISuggestions() {
     const upph = maxTime > 0 && totalManpower > 0 ? 3600 / maxTime / totalManpower : null;
     return { totalTime, maxTime, avgTime, balanceRate, bottleneck, totalManpower, upph };
   }, [workstations]);
+
+  const readinessPreview = useMemo(() => {
+    const gaps = assessAnalysisDataReadiness({
+      targetCycleTime: line?.targetCycleTime ? Number(line.targetCycleTime) : null,
+      workstations: (workstations ?? []).map((station) => {
+        const stationActions = (allActionSteps ?? []).filter((step: any) => step.workstationId === station.id);
+        return {
+          name: station.name,
+          cycleTime: Number(station.cycleTime),
+          manpower: Number(station.manpower),
+          actionStatistics: stationActions.length > 0 ? { totalSteps: stationActions.length, totalDuration: stationActions.reduce((sum: number, step: any) => sum + Number(step.duration || 0), 0) } : undefined,
+        };
+      }),
+    });
+    return { gaps, level: getReadinessLevel(gaps) };
+  }, [line?.targetCycleTime, workstations, allActionSteps]);
 
   const professionalReport = useMemo(() => {
     if (!suggestion || !workstations?.length) return null;
@@ -207,6 +241,41 @@ export default function AISuggestions() {
     });
   };
 
+  const handleConvertInteractiveAnswer = (answerIndex: number) => {
+    const answer = interactiveMessages[answerIndex];
+    const question = interactiveMessages.slice(0, answerIndex).reverse().find((message) => message.role === "user");
+    if (!answer || answer.role !== "assistant" || !question || !consensus) return;
+    if (!vsmDiagrams?.length) {
+      toast.error("請先建立 VSM 圖表與工序，才能將建議納入改善閉環");
+      return;
+    }
+    setActionDraft(deriveInteractiveActionDraft(question.content, answer.content, consensus));
+    setSelectedDiagramId(vsmDiagrams[0]?.id ?? null);
+    setSelectedProcessId(null);
+    setActionDueDate("");
+    setActionPlanOpen(true);
+  };
+
+  const handleCreateImprovementAction = () => {
+    if (!actionDraft || !selectedDiagramId || !selectedProcessId) {
+      toast.error("請選擇承載此行動的 VSM 圖表與工序");
+      return;
+    }
+    if (!actionDraft.title.trim() || !actionDraft.ownerName.trim()) {
+      toast.error("請填寫行動標題與責任角色");
+      return;
+    }
+    createImprovementAction.mutate({
+      vsmDiagramId: selectedDiagramId,
+      vsmProcessId: selectedProcessId,
+      title: actionDraft.title.trim(),
+      description: `${actionDraft.description}\n\n【驗證指標】${actionDraft.validationMetric}\n【目標時程】${actionDraft.targetHorizon}`,
+      ownerName: actionDraft.ownerName.trim(),
+      dueDate: actionDueDate ? new Date(`${actionDueDate}T00:00:00`) : null,
+      status: "open",
+    });
+  };
+
   const handleExportJSON = () => {
     if (!workstations?.length) { toast.error("沒有工站資料可導出"); return; }
     const data = {
@@ -321,6 +390,15 @@ export default function AISuggestions() {
         </div>
       )}
 
+      {workstations && workstations.length > 0 && readinessPreview.gaps.length > 0 && (
+        <Card className={readinessPreview.level === "blocked" ? "border-orange-400/40 bg-orange-400/5" : "border-amber-400/35 bg-amber-400/5"}>
+          <CardContent className="p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="flex items-center gap-2 font-medium text-foreground"><AlertTriangle className={readinessPreview.level === "blocked" ? "h-4 w-4 text-orange-400" : "h-4 w-4 text-amber-400"} />AI 分析前的資料缺口</p><p className="mt-1 text-xs text-muted-foreground">目前資料就緒度為「{readinessPreview.level === "blocked" ? "不足" : "受限"}」。補充下列資料後，可提高五角色結論與改善方案的準確度。</p></div><span className="rounded-full border border-current/20 px-2 py-1 text-xs text-muted-foreground">{readinessPreview.gaps.length} 項待補充</span></div>
+            <div className="mt-3 grid gap-2 lg:grid-cols-2">{readinessPreview.gaps.map((gap) => <div key={gap.key} className="rounded-lg border border-border/70 bg-background/30 p-3"><div className="flex items-start justify-between gap-3"><p className="text-sm font-medium text-foreground">{gap.title}</p><span className={gap.severity === "critical" ? "text-[10px] text-orange-300" : "text-[10px] text-amber-300"}>{gap.severity === "critical" ? "影響較高" : "建議補充"}</span></div><p className="mt-1 text-xs text-muted-foreground">影響：{gap.impact}</p><p className="mt-1 text-xs text-muted-foreground">請提供：{gap.requestedData}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-[11px] text-muted-foreground">建議提供者：{gap.recommendedProvider}</span><Button variant="outline" size="sm" onClick={() => setLocation(gap.collectionLocation === "production_line" ? "/lines" : gap.collectionLocation === "workstation" ? `/lines/${lineId}/workstations` : `/lines/${lineId}/actions`)}>前往補充</Button></div></div>)}</div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* AI Analysis Panel */}
       <Card className="border-border bg-card overflow-hidden">
         <CardHeader className="pb-4 border-b border-border">
@@ -402,7 +480,7 @@ export default function AISuggestions() {
                     <div><p className="flex items-center gap-2 font-medium text-violet-200"><MessageSquare className="h-4 w-4" />互動分析</p><p className="mt-1 text-xs text-muted-foreground">針對目前五角色共識、工站資料、優先行動與風險提出追問；回答不會修改已核准的正式報告。</p></div>
                     <div className="flex items-center gap-1 text-[11px] text-emerald-300"><ShieldCheck className="h-3.5 w-3.5" />受共識脈絡約束</div>
                   </div>
-                  {interactiveMessages.length > 0 && <div className="mt-4 max-h-80 space-y-3 overflow-y-auto pr-1">{interactiveMessages.map((message, index) => <div key={`${message.role}-${index}`} className={message.role === "user" ? "ml-6 rounded-lg bg-violet-400/10 p-3" : "mr-6 rounded-lg border border-border bg-background/50 p-3"}><p className="mb-1 text-[10px] font-medium text-muted-foreground">{message.role === "user" ? "你的問題" : "AI 互動分析"}</p><div className="prose prose-invert max-w-none text-xs"><ReactMarkdown>{message.content}</ReactMarkdown></div></div>)}{interactiveMutation.isPending && <div className="mr-6 rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground"><RefreshCw className="mr-2 inline h-3.5 w-3.5 animate-spin" />正在依五角色共識分析…</div>}</div>}
+                  {interactiveMessages.length > 0 && <div className="mt-4 max-h-80 space-y-3 overflow-y-auto pr-1">{interactiveMessages.map((message, index) => <div key={`${message.role}-${index}`} className={message.role === "user" ? "ml-6 rounded-lg bg-violet-400/10 p-3" : "mr-6 rounded-lg border border-border bg-background/50 p-3"}><p className="mb-1 text-[10px] font-medium text-muted-foreground">{message.role === "user" ? "你的問題" : "AI 互動分析"}</p><div className="prose prose-invert max-w-none text-xs"><ReactMarkdown>{message.content}</ReactMarkdown></div>{message.role === "assistant" && <Button variant="outline" size="sm" className="mt-3" onClick={() => handleConvertInteractiveAnswer(index)}><FileText className="mr-2 h-3.5 w-3.5" />轉為改善行動</Button>}</div>)}{interactiveMutation.isPending && <div className="mr-6 rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground"><RefreshCw className="mr-2 inline h-3.5 w-3.5 animate-spin" />正在依五角色共識分析…</div>}</div>}
                   <div className="mt-4 flex flex-wrap gap-2">{INTERACTIVE_QUICK_QUESTIONS.map((question) => <Button key={question} variant="outline" size="sm" className="h-auto whitespace-normal py-1.5 text-left text-xs" disabled={interactiveMutation.isPending} onClick={() => handleInteractiveAnalyze(question)}>{question}</Button>)}</div>
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row"><Textarea value={interactiveQuestion} onChange={(event) => setInteractiveQuestion(event.target.value)} placeholder="例如：若瓶頸工站增加 0.5 人，先要驗證哪些條件？" className="min-h-20 text-sm" maxLength={800} disabled={interactiveMutation.isPending} /><Button className="self-end sm:self-stretch" disabled={interactiveMutation.isPending || !interactiveQuestion.trim()} onClick={() => handleInteractiveAnalyze()}><Send className="mr-2 h-4 w-4" />追問</Button></div>
                 </div>
@@ -452,6 +530,21 @@ export default function AISuggestions() {
             </div>
           </DialogHeader>
           {professionalReportHtml && <iframe title="AI 專業圖文分析報告預覽" srcDoc={professionalReportHtml} className="h-[72vh] w-full bg-white" />}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={actionPlanOpen} onOpenChange={setActionPlanOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>確認改善行動計畫</DialogTitle><p className="text-xs text-muted-foreground">此草稿由互動分析回覆與五角色共識生成；請確認責任角色、承載工序與時程後再建立。</p></DialogHeader>
+          {actionDraft && <div className="space-y-4">
+            <label className="block space-y-1"><span className="text-sm font-medium">行動標題</span><input className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={actionDraft.title} onChange={(event) => setActionDraft({ ...actionDraft, title: event.target.value })} /></label>
+            <label className="block space-y-1"><span className="text-sm font-medium">責任角色／人員</span><input className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={actionDraft.ownerName} onChange={(event) => setActionDraft({ ...actionDraft, ownerName: event.target.value })} /></label>
+            <div className="grid gap-4 sm:grid-cols-2"><label className="block space-y-1"><span className="text-sm font-medium">VSM 圖表</span><select className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={selectedDiagramId ?? ""} onChange={(event) => { setSelectedDiagramId(Number(event.target.value)); setSelectedProcessId(null); }}><option value="" disabled>選擇 VSM 圖表</option>{vsmDiagrams?.map((diagram) => <option key={diagram.id} value={diagram.id}>{diagram.name}</option>)}</select></label><label className="block space-y-1"><span className="text-sm font-medium">承載工序</span><select className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={selectedProcessId ?? ""} disabled={!selectedDiagramId} onChange={(event) => setSelectedProcessId(Number(event.target.value))}><option value="" disabled>選擇 VSM 工序</option>{vsmProcesses?.filter((process) => process.type === "process").map((process) => <option key={process.id} value={process.id}>{process.name}</option>)}</select></label></div>
+            <div className="grid gap-4 sm:grid-cols-2"><label className="block space-y-1"><span className="text-sm font-medium">驗證指標</span><input className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={actionDraft.validationMetric} onChange={(event) => setActionDraft({ ...actionDraft, validationMetric: event.target.value })} /></label><label className="block space-y-1"><span className="text-sm font-medium">完成期限</span><input type="date" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={actionDueDate} onChange={(event) => setActionDueDate(event.target.value)} /></label></div>
+            <p className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">建議目標時程：{actionDraft.targetHorizon}</p>
+            <label className="block space-y-1"><span className="text-sm font-medium">行動內容</span><Textarea value={actionDraft.description} onChange={(event) => setActionDraft({ ...actionDraft, description: event.target.value })} className="min-h-48" /></label>
+            <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setActionPlanOpen(false)}>取消</Button><Button disabled={createImprovementAction.isPending} onClick={handleCreateImprovementAction}>{createImprovementAction.isPending ? "建立中…" : "確認建立改善行動"}</Button></div>
+          </div>}
         </DialogContent>
       </Dialog>
     </div>

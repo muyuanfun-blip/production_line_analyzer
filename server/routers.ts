@@ -44,6 +44,7 @@ import { buildEfficiencyHeatmap } from "../shared/efficiencyHeatmap";
 import { getManpowerQuality, normalizeManpower } from "../shared/workstationManpower";
 import { AI_REVIEW_ROLES, buildStructuredConsensusReport, evaluateConsensus, type ConsensusResult, type RoleReview } from "../shared/aiConsensus";
 import { buildInteractiveAnalysisContext, validateInteractiveQuestion } from "../shared/interactiveAnalysis";
+import { assessAnalysisDataReadiness, getReadinessLevel } from "../shared/analysisDataReadiness";
 
 // ─── Zod Schemas ─────────────────────────────────────────────────────────────
 
@@ -733,14 +734,26 @@ export const appRouter = router({
           ? `\n**Takt Time 達標率：** ${taktPassRate}% (${passStations.length}/${input.workstations.length} 工站達標)\n**超出 Takt Time 工站：** ${exceedStations.length > 0 ? exceedStations.map(w => `${w.name}(${w.cycleTime}s)`).join('、') : '無'}`
           : "";
 
+        const dataGaps = assessAnalysisDataReadiness({
+          targetCycleTime: input.targetCycleTime,
+          workstations: input.workstations.map((station) => ({
+            name: station.name,
+            cycleTime: station.cycleTime,
+            manpower: station.manpower,
+            actionStatistics: station.actionStatistics ? { totalSteps: station.actionStatistics.totalSteps, totalDuration: station.actionStatistics.totalDuration } : undefined,
+          })),
+        });
+        const readinessLevel = getReadinessLevel(dataGaps);
         const dataScope = [
           `工站數量：${input.workstations.length} 個`,
           `平衡率：${balanceRate}%`,
           `瓶頸工站：${bottleneck?.name ?? "無"}（${bottleneck?.cycleTime ?? 0} 秒）`,
           `平均工序時間：${avgTime.toFixed(1)} 秒`,
           input.targetCycleTime ? `目標節拍：${input.targetCycleTime} 秒；達標率：${taktPassRate ?? "未計算"}%` : "目標節拍：未設定",
+          `資料就緒度：${readinessLevel === "ready" ? "可用" : readinessLevel === "limited" ? "受限" : "不足，僅可產出低信心方向"}`,
           "資料限制：建議僅依本次匯入的工站與動作拆解資料形成；未提供的品質、設備或成本資料不可假設。",
         ];
+        if (dataGaps.length > 0) dataScope.push(`已識別資料缺口：${dataGaps.map((gap) => gap.title).join("；")}`);
         const dataContext = `產線名稱：${input.productionLineName}\n${dataScope.join("\n")}${taktSummary}\n\n各工站資料：\n${workstationList}`;
         const reviewSystem = "你是製造現場審查團隊的一員。請以繁體中文、僅依提供資料判斷，禁止捏造數字、設備能力、成本、品質缺陷或已完成結果。你必須只輸出有效 JSON。";
         const reviews: RoleReview[] = [];
@@ -760,7 +773,7 @@ export const appRouter = router({
         const decision = evaluateConsensus(consensus, reviews.length);
         if (!decision.approved) throw new Error(`五角色審查未形成可核准共識：${decision.reason ?? "請補充資料後重新分析"}`);
         const suggestion = buildStructuredConsensusReport({ productionLineName: input.productionLineName, dataScope, reviews, consensus });
-        return { suggestion, reviews, consensus };
+        return { suggestion, reviews, consensus, dataGaps, readinessLevel };
       }),
 
     interactiveAnalyze: protectedProcedure
