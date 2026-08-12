@@ -15,6 +15,7 @@ import {
   getAllLinesLatestSnapshotByDate,
   getAllLinesSnapshotHistory,
   createMonitoringSnapshot, listMonitoringSnapshots,
+  listMonitoringAlertRules, createMonitoringAlertRule, updateMonitoringAlertRule, deleteMonitoringAlertRule,
   getHandActionsByStep, getHandActionsByStepIds,
   upsertHandAction, deleteHandAction, deleteHandActionsByStep,
   getUserByUsername, getAllUsers, createLocalUser,
@@ -40,6 +41,7 @@ import { ENV } from "./_core/env";
 import { buildSimulationRunPlan, normalizeSimulationWorkstations } from "../shared/simulationRun";
 import { buildEfficiencyHeatmap } from "../shared/efficiencyHeatmap";
 import { buildMonitoringSnapshotPayload } from "../shared/monitoringSnapshot";
+import { evaluateMonitoringAlertRules } from "../shared/monitoringAlertRules";
 import {
   generateRealtimeLineStatus,
   generateHistoricalTrend,
@@ -1831,7 +1833,24 @@ ${processList}
           targetCycleTime,
           input.productionTarget
         );
-        
+        const rules = await listMonitoringAlertRules(input.productionLineId);
+        const customAlerts = evaluateMonitoringAlertRules(
+          rules.map((rule) => ({
+            id: rule.id,
+            name: rule.name,
+            metric: rule.metric,
+            threshold: rule.threshold,
+            statusValue: rule.statusValue,
+            severity: rule.severity,
+            isActive: rule.isActive,
+            workstationId: rule.workstationId,
+          })),
+          status.workstations,
+        );
+        status.anomalies = [
+          ...status.anomalies,
+          ...customAlerts.map((alert) => ({ ...alert, timestamp: new Date() })),
+        ];
         return status;
       }),
 
@@ -1901,6 +1920,66 @@ ${processList}
           upph: Number(row.upph),
           taktAchievement: Number(row.taktAchievement),
         }));
+      }),
+
+    listAlertRules: protectedProcedure
+      .input(z.object({ productionLineId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const rules = await listMonitoringAlertRules(input.productionLineId);
+        return rules.map((rule) => ({ ...rule, threshold: rule.threshold == null ? null : Number(rule.threshold) }));
+      }),
+
+    createAlertRule: protectedProcedure
+      .input(z.object({
+        productionLineId: z.number().int().positive(),
+        workstationId: z.number().int().positive().nullable().optional(),
+        name: z.string().trim().min(1).max(255),
+        metric: z.enum(["efficiency_below", "waiting_products_at_least", "status_equals"]),
+        threshold: z.number().min(0).max(10000).nullable().optional(),
+        statusValue: z.enum(["normal", "warning", "critical", "offline", "idle"]).nullable().optional(),
+        severity: z.enum(["info", "warning", "critical"]).default("warning"),
+      }))
+      .mutation(async ({ input }) => {
+        if (input.metric === "status_equals" && !input.statusValue) throw new Error("狀態型規則必須設定目標狀態。");
+        if (input.metric !== "status_equals" && input.threshold == null) throw new Error("數值型規則必須設定門檻值。");
+        const rule = await createMonitoringAlertRule({
+          productionLineId: input.productionLineId,
+          workstationId: input.workstationId ?? null,
+          name: input.name,
+          metric: input.metric,
+          threshold: input.metric === "status_equals" ? null : input.threshold!.toFixed(2),
+          statusValue: input.metric === "status_equals" ? input.statusValue! : null,
+          severity: input.severity,
+          isActive: 1,
+        });
+        return { success: true, rule };
+      }),
+
+    updateAlertRule: protectedProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        name: z.string().trim().min(1).max(255).optional(),
+        threshold: z.number().min(0).max(10000).nullable().optional(),
+        statusValue: z.enum(["normal", "warning", "critical", "offline", "idle"]).nullable().optional(),
+        severity: z.enum(["info", "warning", "critical"]).optional(),
+        isActive: z.number().int().min(0).max(1).optional(),
+        workstationId: z.number().int().positive().nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, threshold, ...updates } = input;
+        const rule = await updateMonitoringAlertRule(id, {
+          ...updates,
+          ...(threshold !== undefined ? { threshold: threshold == null ? null : threshold.toFixed(2) } : {}),
+        });
+        if (!rule) throw new Error("找不到警示規則。");
+        return { success: true, rule };
+      }),
+
+    deleteAlertRule: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteMonitoringAlertRule(input.id);
+        return { success: true };
       }),
 
     getProductFlowRecords: protectedProcedure

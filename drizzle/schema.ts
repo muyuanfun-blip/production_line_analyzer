@@ -152,6 +152,24 @@ export const monitoringSnapshots = mysqlTable("monitoring_snapshots", {
 export type MonitoringSnapshot = typeof monitoringSnapshots.$inferSelect;
 export type InsertMonitoringSnapshot = typeof monitoringSnapshots.$inferInsert;
 
+// 戰情監控自訂警示規則：可套用於全產線或特定工站。
+export const monitoringAlertRules = mysqlTable("monitoring_alert_rules", {
+  id: int("id").autoincrement().primaryKey(),
+  productionLineId: int("productionLineId").notNull(),
+  workstationId: int("workstationId"),
+  name: varchar("name", { length: 255 }).notNull(),
+  metric: mysqlEnum("metric", ["efficiency_below", "waiting_products_at_least", "status_equals"]).notNull(),
+  threshold: decimal("threshold", { precision: 10, scale: 2 }),
+  statusValue: mysqlEnum("statusValue", ["normal", "warning", "critical", "offline", "idle"]),
+  severity: mysqlEnum("severity", ["info", "warning", "critical"]).default("warning").notNull(),
+  isActive: tinyint("isActive").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type MonitoringAlertRule = typeof monitoringAlertRules.$inferSelect;
+export type InsertMonitoringAlertRule = typeof monitoringAlertRules.$inferInsert;
+
 // 配置模擬情境資料表
 export const simulationScenarios = mysqlTable("simulation_scenarios", {
   id: int("id").autoincrement().primaryKey(),

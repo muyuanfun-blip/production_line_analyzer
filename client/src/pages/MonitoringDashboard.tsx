@@ -3,7 +3,7 @@
 import { useParams } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, TrendingUp, ChevronDown, ChevronUp, Zap, Activity, Clock, Maximize2, Minimize2, RotateCw, ArrowUp, ArrowDown } from "lucide-react";
+import { AlertCircle, TrendingUp, ChevronDown, ChevronUp, Zap, Activity, Clock, Maximize2, Minimize2, RotateCw, ArrowUp, ArrowDown, SlidersHorizontal, Plus, Trash2 } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
@@ -61,6 +61,15 @@ interface MonitoringProductFlowRecord {
   cycleTime: number;
   status: "in_progress" | "completed" | "waiting";
 }
+
+type AlertRuleDraft = {
+  name: string;
+  metric: "efficiency_below" | "waiting_products_at_least" | "status_equals";
+  threshold: string;
+  statusValue: "normal" | "warning" | "critical" | "offline" | "idle";
+  severity: "info" | "warning" | "critical";
+  workstationId: string;
+};
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -199,6 +208,15 @@ export default function MonitoringDashboard() {
   const [loadingAI, setLoadingAI] = useState<Record<number, boolean>>({});
   const [changedWsIds, setChangedWsIds] = useState<Set<number>>(new Set());
   const [snapshotNote, setSnapshotNote] = useState("");
+  const [showAlertRules, setShowAlertRules] = useState(false);
+  const [alertRuleDraft, setAlertRuleDraft] = useState<AlertRuleDraft>({
+    name: "",
+    metric: "efficiency_below",
+    threshold: "80",
+    statusValue: "warning",
+    severity: "warning",
+    workstationId: "",
+  });
   const latestStatusRef = useRef<RealtimeLineStatus | null>(null);
   const statusMapRef = useRef<Map<number, RealtimeWorkstation["status"]>>(new Map());
   const refreshInFlightRef = useRef(false);
@@ -227,10 +245,30 @@ export default function MonitoringDashboard() {
     { productionLineId: monitoringLineId, ...historyRange, limit: 100 },
     { enabled: !!lineId },
   );
+  const { data: alertRules = [], refetch: refetchAlertRules } = trpc.monitoring.listAlertRules.useQuery(
+    { productionLineId: monitoringLineId },
+    { enabled: !!lineId },
+  );
   const captureSnapshotMutation = trpc.monitoring.captureSnapshot.useMutation({
     onSuccess: () => {
       setSnapshotNote("");
       void refetchPersistedSnapshots();
+    },
+  });
+  const createAlertRuleMutation = trpc.monitoring.createAlertRule.useMutation({
+    onSuccess: () => {
+      setAlertRuleDraft({ name: "", metric: "efficiency_below", threshold: "80", statusValue: "warning", severity: "warning", workstationId: "" });
+      void Promise.all([refetchAlertRules(), refetchStatus()]);
+    },
+  });
+  const updateAlertRuleMutation = trpc.monitoring.updateAlertRule.useMutation({
+    onSuccess: () => {
+      void Promise.all([refetchAlertRules(), refetchStatus()]);
+    },
+  });
+  const deleteAlertRuleMutation = trpc.monitoring.deleteAlertRule.useMutation({
+    onSuccess: () => {
+      void Promise.all([refetchAlertRules(), refetchStatus()]);
     },
   });
   const persistedTrendData = useMemo(() => [...persistedSnapshots].reverse().map((snapshot) => ({
@@ -652,8 +690,117 @@ export default function MonitoringDashboard() {
                 </span>
               )}
             </div>
-            {expandedAlerts ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={(event) => { event.stopPropagation(); setShowAlertRules((open) => !open); }}
+                className={`rounded px-2 py-1 text-[11px] font-semibold transition ${showAlertRules ? "bg-violet-500/20 text-violet-200" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}
+                title="管理警示規則"
+              >
+                <span className="flex items-center gap-1"><SlidersHorizontal size={13} /> 規則</span>
+              </button>
+              {expandedAlerts ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </div>
           </div>
+          {showAlertRules && (
+            <div className="border-b border-violet-500/20 bg-violet-500/[0.035] p-3 sm:p-4">
+              <div className="mb-3 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                <div>
+                  <h3 className="text-xs font-bold text-violet-200">自訂警示規則</h3>
+                  <p className="mt-1 text-[11px] text-violet-200/60">規則會於下一次監控更新時併入即時警示；可套用全線或指定工站。</p>
+                </div>
+                <span className="rounded border border-violet-500/25 bg-violet-500/10 px-2 py-1 text-[11px] text-violet-200">啟用 {alertRules.filter((rule) => Boolean(rule.isActive)).length} / {alertRules.length}</span>
+              </div>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-5">
+                <input
+                  value={alertRuleDraft.name}
+                  onChange={(event) => setAlertRuleDraft((draft) => ({ ...draft, name: event.target.value }))}
+                  placeholder="規則名稱，例如：測試站效率下限"
+                  className="h-9 rounded border border-violet-500/25 bg-slate-950/70 px-2 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-violet-400 xl:col-span-2"
+                />
+                <select
+                  value={alertRuleDraft.metric}
+                  onChange={(event) => setAlertRuleDraft((draft) => ({ ...draft, metric: event.target.value as AlertRuleDraft["metric"] }))}
+                  className="h-9 rounded border border-violet-500/25 bg-slate-950/70 px-2 text-xs text-slate-100 outline-none focus:border-violet-400"
+                >
+                  <option value="efficiency_below">效率低於門檻</option>
+                  <option value="waiting_products_at_least">等待量達門檻</option>
+                  <option value="status_equals">工站狀態符合</option>
+                </select>
+                <select
+                  value={alertRuleDraft.workstationId}
+                  onChange={(event) => setAlertRuleDraft((draft) => ({ ...draft, workstationId: event.target.value }))}
+                  className="h-9 rounded border border-violet-500/25 bg-slate-950/70 px-2 text-xs text-slate-100 outline-none focus:border-violet-400"
+                >
+                  <option value="">全產線</option>
+                  {realtimeStatus.workstations.map((workstation) => <option key={workstation.id} value={workstation.id}>{workstation.name}</option>)}
+                </select>
+                <select
+                  value={alertRuleDraft.severity}
+                  onChange={(event) => setAlertRuleDraft((draft) => ({ ...draft, severity: event.target.value as AlertRuleDraft["severity"] }))}
+                  className="h-9 rounded border border-violet-500/25 bg-slate-950/70 px-2 text-xs text-slate-100 outline-none focus:border-violet-400"
+                >
+                  <option value="info">提示</option>
+                  <option value="warning">預警</option>
+                  <option value="critical">緊急</option>
+                </select>
+                {alertRuleDraft.metric === "status_equals" ? (
+                  <select
+                    value={alertRuleDraft.statusValue}
+                    onChange={(event) => setAlertRuleDraft((draft) => ({ ...draft, statusValue: event.target.value as AlertRuleDraft["statusValue"] }))}
+                    className="h-9 rounded border border-violet-500/25 bg-slate-950/70 px-2 text-xs text-slate-100 outline-none focus:border-violet-400"
+                  >
+                    <option value="normal">正常</option><option value="warning">預警</option><option value="critical">異常</option><option value="offline">停機</option><option value="idle">離線</option>
+                  </select>
+                ) : (
+                  <input
+                    type="number"
+                    min="0"
+                    step={alertRuleDraft.metric === "efficiency_below" ? "0.1" : "1"}
+                    value={alertRuleDraft.threshold}
+                    onChange={(event) => setAlertRuleDraft((draft) => ({ ...draft, threshold: event.target.value }))}
+                    placeholder={alertRuleDraft.metric === "efficiency_below" ? "效率門檻 (%)" : "等待件數門檻"}
+                    className="h-9 rounded border border-violet-500/25 bg-slate-950/70 px-2 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-violet-400"
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const threshold = Number(alertRuleDraft.threshold);
+                    if (!alertRuleDraft.name.trim() || (alertRuleDraft.metric !== "status_equals" && !Number.isFinite(threshold))) return;
+                    createAlertRuleMutation.mutate({
+                      productionLineId: monitoringLineId,
+                      workstationId: alertRuleDraft.workstationId ? Number(alertRuleDraft.workstationId) : null,
+                      name: alertRuleDraft.name.trim(),
+                      metric: alertRuleDraft.metric,
+                      threshold: alertRuleDraft.metric === "status_equals" ? null : threshold,
+                      statusValue: alertRuleDraft.metric === "status_equals" ? alertRuleDraft.statusValue : null,
+                      severity: alertRuleDraft.severity,
+                    });
+                  }}
+                  disabled={createAlertRuleMutation.isPending || !alertRuleDraft.name.trim() || (alertRuleDraft.metric !== "status_equals" && !Number.isFinite(Number(alertRuleDraft.threshold)))}
+                  className="flex h-9 items-center justify-center gap-1 rounded bg-violet-500/20 px-3 text-xs font-semibold text-violet-100 transition hover:bg-violet-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+                ><Plus size={14} />新增規則</button>
+              </div>
+              {createAlertRuleMutation.error && <p className="mt-2 text-xs text-red-300">新增失敗：{createAlertRuleMutation.error.message}</p>}
+              <div className="mt-3 space-y-1.5">
+                {alertRules.length === 0 ? <p className="rounded border border-dashed border-violet-500/20 px-3 py-2 text-xs text-slate-400">尚無自訂規則；系統仍會保留內建的異常判斷。</p> : alertRules.map((rule) => {
+                  const metricText = rule.metric === "efficiency_below" ? `效率 < ${rule.threshold}%` : rule.metric === "waiting_products_at_least" ? `等待量 ≥ ${rule.threshold}` : `狀態 = ${getStatusLabel(rule.statusValue || "")}`;
+                  const scopeText = rule.workstationId ? realtimeStatus.workstations.find((workstation) => workstation.id === rule.workstationId)?.name || `工站 #${rule.workstationId}` : "全產線";
+                  const severityText = rule.severity === "critical" ? "緊急" : rule.severity === "warning" ? "預警" : "提示";
+                  const severityColor = rule.severity === "critical" ? "text-red-300 border-red-500/30 bg-red-500/10" : rule.severity === "warning" ? "text-yellow-300 border-yellow-500/30 bg-yellow-500/10" : "text-cyan-300 border-cyan-500/30 bg-cyan-500/10";
+                  return <div key={rule.id} className={`flex flex-wrap items-center gap-x-2 gap-y-1 rounded border px-2.5 py-2 text-xs ${rule.isActive ? "border-slate-700 bg-slate-950/40" : "border-slate-800 bg-slate-950/20 opacity-60"}`}>
+                    <span className="font-semibold text-slate-100">{rule.name}</span><span className="text-slate-500">{scopeText}</span><span className="text-slate-400">{metricText}</span><span className={`rounded border px-1.5 py-0.5 ${severityColor}`}>{severityText}</span>
+                    <div className="ml-auto flex items-center gap-1">
+                      <button type="button" onClick={() => updateAlertRuleMutation.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })} disabled={updateAlertRuleMutation.isPending} className="rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-700 disabled:opacity-50">{rule.isActive ? "停用" : "啟用"}</button>
+                      <button type="button" onClick={() => deleteAlertRuleMutation.mutate({ id: rule.id })} disabled={deleteAlertRuleMutation.isPending} className="rounded p-1 text-slate-400 hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50" title="刪除規則"><Trash2 size={13} /></button>
+                    </div>
+                  </div>;
+                })}
+              </div>
+              {(updateAlertRuleMutation.error || deleteAlertRuleMutation.error) && <p className="mt-2 text-xs text-red-300">規則更新失敗：{updateAlertRuleMutation.error?.message || deleteAlertRuleMutation.error?.message}</p>}
+            </div>
+          )}
           {expandedAlerts && (
             <div className="space-y-2 sm:space-y-3 p-3 sm:p-4 max-h-64 sm:max-h-80 overflow-y-auto">
               {criticalAnomalies.length === 0 && warningAnomalies.length === 0 ? (
