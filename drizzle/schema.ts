@@ -266,6 +266,10 @@ export const vsmDiagrams = mysqlTable("vsm_diagrams", {
   productionLineId: int("productionLineId").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
+  productFamily: varchar("productFamily", { length: 255 }),
+  taktTime: decimal("taktTime", { precision: 10, scale: 2 }),
+  demandPerShift: int("demandPerShift"),
+  availableTimeSec: int("availableTimeSec"),
   status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
   versionNumber: int("versionNumber").default(1).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -285,6 +289,9 @@ export const vsmProcesses = mysqlTable("vsm_processes", {
   cycleTime: decimal("cycleTime", { precision: 10, scale: 2 }), // 週期時間（秒）
   manpower: int("manpower"), // 人力數
   valueAddedRate: decimal("valueAddedRate", { precision: 5, scale: 2 }), // 增值率（%）
+  wipQuantity: int("wipQuantity"),
+  batchSize: int("batchSize"),
+  availabilityRate: decimal("availabilityRate", { precision: 5, scale: 2 }),
   positionX: int("positionX").default(0).notNull(), // 畫布座標 X
   positionY: int("positionY").default(0).notNull(), // 畫布座標 Y
   width: int("width").default(120).notNull(), // 寬度
@@ -306,6 +313,7 @@ export const vsmFlows = mysqlTable("vsm_flows", {
   flowType: mysqlEnum("flowType", ["material", "information", "kanban"]).notNull(), // 流類型
   cycleTime: decimal("cycleTime", { precision: 10, scale: 2 }), // 流週期時間（秒）
   quantity: int("quantity"), // 流量（件/時）
+  transportDistanceM: decimal("transportDistanceM", { precision: 10, scale: 2 }),
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

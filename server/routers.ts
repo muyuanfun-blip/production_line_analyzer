@@ -1485,6 +1485,10 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         productionLineId: z.number(),
         name: z.string().min(1),
         description: z.string().optional(),
+        productFamily: z.string().max(255).optional().nullable(),
+        taktTime: z.number().positive().optional().nullable(),
+        demandPerShift: z.number().int().positive().optional().nullable(),
+        availableTimeSec: z.number().int().positive().optional().nullable(),
         status: z.enum(['draft', 'published', 'archived']).optional(),
       }))
       .mutation(async ({ input }) => {
@@ -1492,6 +1496,10 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
           productionLineId: input.productionLineId,
           name: input.name,
           description: input.description ?? null,
+          productFamily: input.productFamily ?? null,
+          taktTime: input.taktTime?.toString() ?? null,
+          demandPerShift: input.demandPerShift ?? null,
+          availableTimeSec: input.availableTimeSec ?? null,
           status: (input.status ?? 'draft') as any,
         });
         return { success: true, diagram };
@@ -1502,6 +1510,10 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         id: z.number(),
         name: z.string().min(1).optional(),
         description: z.string().optional(),
+        productFamily: z.string().max(255).optional().nullable(),
+        taktTime: z.number().positive().optional().nullable(),
+        demandPerShift: z.number().int().positive().optional().nullable(),
+        availableTimeSec: z.number().int().positive().optional().nullable(),
         status: z.enum(['draft', 'published', 'archived']).optional(),
         versionNumber: z.number().optional(),
       }))
@@ -1510,6 +1522,10 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         const updateData: Record<string, unknown> = {};
         if (data.name !== undefined) updateData.name = data.name;
         if (data.description !== undefined) updateData.description = data.description;
+        if (data.productFamily !== undefined) updateData.productFamily = data.productFamily;
+        if (data.taktTime !== undefined) updateData.taktTime = data.taktTime?.toString() ?? null;
+        if (data.demandPerShift !== undefined) updateData.demandPerShift = data.demandPerShift;
+        if (data.availableTimeSec !== undefined) updateData.availableTimeSec = data.availableTimeSec;
         if (data.status !== undefined) updateData.status = data.status;
         if (data.versionNumber !== undefined) updateData.versionNumber = data.versionNumber;
         const diagram = await updateVSMDiagram(id, updateData as any);
@@ -1543,6 +1559,9 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         cycleTime: z.number().optional().nullable(),
         manpower: z.number().optional().nullable(),
         valueAddedRate: z.number().optional().nullable(),
+        wipQuantity: z.number().int().nonnegative().optional().nullable(),
+        batchSize: z.number().int().positive().optional().nullable(),
+        availabilityRate: z.number().min(0).max(100).optional().nullable(),
         positionX: z.number().default(0),
         positionY: z.number().default(0),
         width: z.number().default(120),
@@ -1558,6 +1577,9 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
           cycleTime: input.cycleTime ? input.cycleTime.toString() : null,
           manpower: input.manpower,
           valueAddedRate: input.valueAddedRate ? input.valueAddedRate.toString() : null,
+          wipQuantity: input.wipQuantity ?? null,
+          batchSize: input.batchSize ?? null,
+          availabilityRate: input.availabilityRate?.toString() ?? null,
           positionX: input.positionX,
           positionY: input.positionY,
           width: input.width,
@@ -1575,6 +1597,9 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         cycleTime: z.number().optional().nullable(),
         manpower: z.number().optional().nullable(),
         valueAddedRate: z.number().optional().nullable(),
+        wipQuantity: z.number().int().nonnegative().optional().nullable(),
+        batchSize: z.number().int().positive().optional().nullable(),
+        availabilityRate: z.number().min(0).max(100).optional().nullable(),
         positionX: z.number().optional(),
         positionY: z.number().optional(),
         width: z.number().optional(),
@@ -1589,6 +1614,9 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         if (data.cycleTime !== undefined) updateData.cycleTime = data.cycleTime ? data.cycleTime.toString() : null;
         if (data.manpower !== undefined) updateData.manpower = data.manpower;
         if (data.valueAddedRate !== undefined) updateData.valueAddedRate = data.valueAddedRate ? data.valueAddedRate.toString() : null;
+        if (data.wipQuantity !== undefined) updateData.wipQuantity = data.wipQuantity;
+        if (data.batchSize !== undefined) updateData.batchSize = data.batchSize;
+        if (data.availabilityRate !== undefined) updateData.availabilityRate = data.availabilityRate?.toString() ?? null;
         if (data.positionX !== undefined) updateData.positionX = data.positionX;
         if (data.positionY !== undefined) updateData.positionY = data.positionY;
         if (data.width !== undefined) updateData.width = data.width;
@@ -1622,6 +1650,7 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         flowType: z.enum(['material', 'information', 'kanban']),
         cycleTime: z.number().optional().nullable(),
         quantity: z.number().optional().nullable(),
+        transportDistanceM: z.number().nonnegative().optional().nullable(),
         notes: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
@@ -1632,6 +1661,7 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
           flowType: input.flowType as any,
           cycleTime: input.cycleTime ? input.cycleTime.toString() : null,
           quantity: input.quantity,
+          transportDistanceM: input.transportDistanceM?.toString() ?? null,
           notes: input.notes ?? null,
         });
         return { success: true, flow };
@@ -1643,6 +1673,7 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         flowType: z.enum(['material', 'information', 'kanban']).optional(),
         cycleTime: z.number().optional().nullable(),
         quantity: z.number().optional().nullable(),
+        transportDistanceM: z.number().nonnegative().optional().nullable(),
         notes: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
@@ -1651,6 +1682,7 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
         if (data.flowType !== undefined) updateData.flowType = data.flowType;
         if (data.cycleTime !== undefined) updateData.cycleTime = data.cycleTime ? data.cycleTime.toString() : null;
         if (data.quantity !== undefined) updateData.quantity = data.quantity;
+        if (data.transportDistanceM !== undefined) updateData.transportDistanceM = data.transportDistanceM?.toString() ?? null;
         if (data.notes !== undefined) updateData.notes = data.notes;
         const flow = await updateVSMFlow(id, updateData as any);
         return { success: true, flow };

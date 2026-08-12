@@ -74,6 +74,7 @@ export const VSMPage: React.FC = () => {
   const [showAnalysis, setShowAnalysis] = useState(true);
   const [compareVersions, setCompareVersions] = useState<[number, number] | null>(null);
   const [showCompareDialog, setShowCompareDialog] = useState(false);
+  const [showVersionDialog, setShowVersionDialog] = useState(false);
   const [timelineFocusedVersionId, setTimelineFocusedVersionId] = useState<number | null>(null);
   const [timelineCompareAnchorId, setTimelineCompareAnchorId] = useState<number | null>(null);
 
@@ -165,6 +166,13 @@ export const VSMPage: React.FC = () => {
     },
   });
 
+  const createVersionMutation = trpc.vsm.createVersion.useMutation({
+    onSuccess: () => {
+      setShowVersionDialog(false);
+      versionsQuery.refetch();
+    },
+  });
+
   // 更新工序位置
   const updateProcessMutation = trpc.vsm.updateProcess.useMutation();
   const svgRef = React.useRef<SVGSVGElement>(null);
@@ -228,8 +236,7 @@ export const VSMPage: React.FC = () => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         if (selectedDiagramId && diagram) {
-          // 建立新版本
-          console.log('儲存版本快捷鍵觸發');
+          setShowVersionDialog(true);
         }
       }
       // Delete：刪除選中的工序或流線
@@ -256,6 +263,10 @@ export const VSMPage: React.FC = () => {
       productionLineId: lineIdNum,
       name: formData.get('name') as string,
       description: formData.get('description') as string || undefined,
+      productFamily: formData.get('productFamily') as string || undefined,
+      taktTime: formData.get('taktTime') ? parseFloat(formData.get('taktTime') as string) : null,
+      demandPerShift: formData.get('demandPerShift') ? parseInt(formData.get('demandPerShift') as string) : null,
+      availableTimeSec: formData.get('availableTimeSec') ? parseInt(formData.get('availableTimeSec') as string) : null,
       status: 'draft',
     });
   };
@@ -289,6 +300,20 @@ export const VSMPage: React.FC = () => {
     });
   };
 
+  const handleCreateVersion = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedDiagramId || !processes || !flows) return;
+    const notes = new FormData(e.currentTarget).get('improvementNotes') as string;
+    const nextVersionNumber = Math.max(0, ...versions.map((version: any) => version.versionNumber || 0)) + 1;
+    createVersionMutation.mutate({
+      vsmDiagramId: selectedDiagramId,
+      versionNumber: nextVersionNumber,
+      processesSnapshot: processes,
+      flowsSnapshot: flows,
+      improvementNotes: notes.trim() || undefined,
+    });
+  };
+
   if (diagramsLoading) {
     return <div className="p-6 text-slate-400">載入中...</div>;
   }
@@ -319,6 +344,16 @@ export const VSMPage: React.FC = () => {
                   <Label htmlFor="description">描述</Label>
                   <Textarea id="description" name="description" />
                 </div>
+                <div>
+                  <Label htmlFor="productFamily">產品族</Label>
+                  <Input id="productFamily" name="productFamily" placeholder="例如：A 系列組裝件" />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div><Label htmlFor="taktTime">Takt（秒）</Label><Input id="taktTime" name="taktTime" type="number" min="0.01" step="0.01" placeholder="120" /></div>
+                  <div><Label htmlFor="demandPerShift">每班需求</Label><Input id="demandPerShift" name="demandPerShift" type="number" min="1" step="1" placeholder="150" /></div>
+                  <div><Label htmlFor="availableTimeSec">可用秒數</Label><Input id="availableTimeSec" name="availableTimeSec" type="number" min="1" step="1" placeholder="27000" /></div>
+                </div>
+                <p className="text-xs text-muted-foreground">上述欄位可讓系統判定節拍達標與資料品質；未填時，KPI 會標示為估算或資料不足。</p>
                 <Button type="submit" className="w-full">建立</Button>
               </form>
             </DialogContent>
@@ -473,10 +508,22 @@ export const VSMPage: React.FC = () => {
                 </DialogContent>
               </Dialog>
 
-              <Button size="sm" variant="outline">
-                <Save className="w-4 h-4 mr-2" />
-                儲存
-              </Button>
+              <Dialog open={showVersionDialog} onOpenChange={setShowVersionDialog}>
+                <DialogTrigger asChild>
+                  <Button size="sm" variant="outline" disabled={!selectedDiagramId}>
+                    <Save className="w-4 h-4 mr-2" />
+                    儲存版本
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader><DialogTitle>儲存 VSM 版本</DialogTitle></DialogHeader>
+                  <form onSubmit={handleCreateVersion} className="space-y-4">
+                    <p className="text-sm text-muted-foreground">系統會保存目前工序與流線快照，供後續比較與改善追溯。</p>
+                    <div><Label htmlFor="improvementNotes">本次改善記錄／版本批註</Label><Textarea id="improvementNotes" name="improvementNotes" placeholder="例如：調整測試工站人力，預期降低瓶頸 CT。" /></div>
+                    <Button type="submit" className="w-full" disabled={createVersionMutation.isPending}>{createVersionMutation.isPending ? '儲存中…' : '儲存版本快照'}</Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button size="sm" variant="outline">
@@ -619,6 +666,9 @@ export const VSMPage: React.FC = () => {
                   cycleTime: p.cycleTime ? parseFloat(p.cycleTime) : undefined,
                   manpower: p.manpower,
                   valueAddedRate: p.valueAddedRate ? parseFloat(p.valueAddedRate) : undefined,
+                  wipQuantity: p.wipQuantity,
+                  batchSize: p.batchSize,
+                  availabilityRate: p.availabilityRate ? parseFloat(p.availabilityRate) : undefined,
                 }))}
                 flows={(flows || []).map((f: any) => ({
                   id: f.id,
@@ -627,7 +677,9 @@ export const VSMPage: React.FC = () => {
                   flowType: f.flowType,
                   cycleTime: f.cycleTime ? parseFloat(f.cycleTime) : undefined,
                   quantity: f.quantity,
+                  transportDistanceM: f.transportDistanceM ? parseFloat(f.transportDistanceM) : undefined,
                 }))}
+                taktTime={diagram?.taktTime ? parseFloat(diagram.taktTime as string) : undefined}
                 onAddProcess={() => {
                   setShowNewProcessDialog(true);
                 }}

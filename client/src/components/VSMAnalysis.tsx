@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, TrendingUp, Users, Zap, Plus, Inbox } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { calculateTrustedVsmKpis, inspectVsmModel } from '../../../shared/vsmTrustedMetrics';
 
 interface VSMProcess {
   id: number;
@@ -10,6 +11,9 @@ interface VSMProcess {
   cycleTime?: number | null;
   manpower?: number | null;
   valueAddedRate?: number | null;
+  wipQuantity?: number | null;
+  batchSize?: number | null;
+  availabilityRate?: number | null;
 }
 
 interface VSMFlow {
@@ -19,15 +23,19 @@ interface VSMFlow {
   flowType: 'material' | 'information' | 'kanban';
   cycleTime?: number | null;
   quantity?: number | null;
+  transportDistanceM?: number | null;
 }
 
 interface VSMAnalysisProps {
   processes: VSMProcess[];
   flows: VSMFlow[];
   onAddProcess?: () => void;
+  taktTime?: number | null;
 }
 
-export const VSMAnalysis: React.FC<VSMAnalysisProps> = ({ processes, flows, onAddProcess }) => {
+export const VSMAnalysis: React.FC<VSMAnalysisProps> = ({ processes, flows, onAddProcess, taktTime }) => {
+  const qualityIssues = useMemo(() => inspectVsmModel(processes, flows, taktTime), [processes, flows, taktTime]);
+  const trustedKpis = useMemo(() => calculateTrustedVsmKpis(processes, flows, taktTime), [processes, flows, taktTime]);
   const analysis = useMemo(() => {
     // 計算總 CT
     const totalCT = processes.reduce((sum, p) => sum + (p.cycleTime || 0), 0);
@@ -113,6 +121,13 @@ export const VSMAnalysis: React.FC<VSMAnalysisProps> = ({ processes, flows, onAd
   return (
     <div className="space-y-4">
       {/* 主要 KPI */}
+      <Card className={`border ${trustedKpis.quality === 'trusted' ? 'border-emerald-500/30 bg-emerald-500/5' : trustedKpis.quality === 'estimated' ? 'border-amber-500/30 bg-amber-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
+        <CardContent className="pt-4 space-y-2">
+          <div className="flex items-center justify-between gap-2"><div><div className="text-xs font-bold text-slate-100">資料品質與計算範圍</div><div className="mt-1 text-[11px] text-slate-400">工作內容僅加總「製程工序」CT；搬運時間僅加總物流流線。</div></div><span className={`rounded px-2 py-1 text-[11px] font-bold ${trustedKpis.quality === 'trusted' ? 'bg-emerald-500/15 text-emerald-300' : trustedKpis.quality === 'estimated' ? 'bg-amber-500/15 text-amber-300' : 'bg-red-500/15 text-red-300'}`}>{trustedKpis.quality === 'trusted' ? '可信' : trustedKpis.quality === 'estimated' ? '估算' : '資料不足'}</span></div>
+          <div className="grid grid-cols-3 gap-2 text-xs"><div><p className="text-slate-500">工作內容</p><p className="mt-1 font-semibold text-cyan-300">{trustedKpis.totalWorkContentSec == null ? '—' : `${trustedKpis.totalWorkContentSec.toFixed(1)}s`}</p></div><div><p className="text-slate-500">增值時間</p><p className="mt-1 font-semibold text-emerald-300">{trustedKpis.valueAddedSec == null ? '—' : `${trustedKpis.valueAddedSec.toFixed(1)}s`}</p></div><div><p className="text-slate-500">物流搬運</p><p className="mt-1 font-semibold text-violet-300">{trustedKpis.materialTransportSec == null ? '—' : `${trustedKpis.materialTransportSec.toFixed(1)}s`}</p></div></div>
+          {qualityIssues.slice(0, 3).map((issue) => <p key={`${issue.code}-${issue.message}`} className={`text-[11px] ${issue.severity === 'error' ? 'text-red-300' : 'text-amber-300'}`}>• {issue.message}</p>)}
+        </CardContent>
+      </Card>
       <div className="grid grid-cols-2 gap-3">
         <Card className="bg-slate-800 border-slate-700">
           <CardContent className="pt-4">
