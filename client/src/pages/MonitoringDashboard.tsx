@@ -1,13 +1,14 @@
 "use client";
 
-import { useParams } from "wouter";
+import { useLocation, useParams } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, TrendingUp, ChevronDown, ChevronUp, Zap, Activity, Clock, Maximize2, Minimize2, RotateCw, ArrowUp, ArrowDown, SlidersHorizontal, Plus, Trash2 } from "lucide-react";
+import { AlertCircle, TrendingUp, ChevronDown, ChevronUp, Zap, Activity, Clock, Maximize2, Minimize2, RotateCw, ArrowUp, ArrowDown, SlidersHorizontal, Plus, Trash2, BarChart3 } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { getChangedWorkstationIds, summarizeProductFlows } from "../../../shared/monitoringRealtime";
+import { buildMonitoringBalanceUrl } from "../../../shared/monitoringBalanceContext";
 
 interface RealtimeWorkstation {
   id: number;
@@ -195,6 +196,7 @@ function RealtimeProductGantt({ records }: { records: MonitoringProductFlowRecor
 
 export default function MonitoringDashboard() {
   const { lineId } = useParams<{ lineId: string }>();
+  const [, setLocation] = useLocation();
   const monitoringLineId = Number.parseInt(lineId || "0", 10);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [selectedWs, setSelectedWs] = useState<number | null>(null);
@@ -480,6 +482,22 @@ export default function MonitoringDashboard() {
             <RotateCw size={14} className="sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">立即刷新</span>
             <span className="sm:hidden">刷新</span>
+          </button>
+          <button
+            onClick={() => realtimeStatus && setLocation(buildMonitoringBalanceUrl(monitoringLineId, {
+              balanceRate: realtimeStatus.balanceRate,
+              upph: realtimeStatus.upph,
+              taktAchievement: realtimeStatus.taktAchievement,
+              productionActual: realtimeStatus.productionActual,
+              productionTarget: realtimeStatus.productionTarget,
+              bottleneckWsId: realtimeStatus.bottleneckWsId,
+            }))}
+            className="rounded-lg bg-violet-500/20 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-violet-200 transition hover:bg-violet-500/30 flex items-center gap-1 sm:gap-2"
+            title="帶入即時 KPI 前往平衡診斷"
+          >
+            <BarChart3 size={14} className="sm:w-4 sm:h-4" />
+            <span className="hidden md:inline">平衡診斷</span>
+            <span className="md:hidden">診斷</span>
           </button>
           <button
             onClick={toggleFullscreen}

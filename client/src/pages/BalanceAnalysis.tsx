@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { FormulaTooltip } from "@/components/FormulaTooltip";
 import { getBalanceColor, getBalanceLabel } from "./Home";
+import { parseMonitoringBalanceContext } from "../../../shared/monitoringBalanceContext";
 
 // ─── Color Tokens ──────────────────────────────────────────────────────────────
 const COLORS = {
@@ -122,6 +123,7 @@ export default function BalanceAnalysis() {
   const params = useParams<{ id: string }>();
   const lineId = parseInt(params.id ?? "0");
   const [, setLocation] = useLocation();
+  const monitoringContext = parseMonitoringBalanceContext(window.location.search);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [snapName, setSnapName] = useState("");
   const [snapNote, setSnapNote] = useState("");
@@ -343,6 +345,24 @@ export default function BalanceAnalysis() {
           </Button>
         </div>
       </div>
+
+      {monitoringContext && (
+        <div className="rounded-lg border border-violet-500/30 bg-violet-500/[0.06] p-4">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+            <div>
+              <p className="flex items-center gap-2 text-sm font-semibold text-violet-300"><Activity className="h-4 w-4" />監控情境診斷</p>
+              <p className="mt-1 text-xs text-violet-200/65">以下即時 KPI 由戰情監控帶入；可與目前工站基準資料對照，以確認是否需要進一步調整工時或人力。</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setLocation(`/lines/${lineId}/monitoring`)} className="border-violet-400/35 text-violet-300 hover:bg-violet-400/10">返回戰情監控</Button>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <div className="rounded bg-background/50 p-2.5"><p className="text-muted-foreground">即時平衡率</p><p className="mt-1 text-base font-bold text-cyan-300">{monitoringContext.balanceRate.toFixed(1)}%</p>{analysis && <p className="mt-1 text-[11px] text-muted-foreground">基準 {analysis.balanceRate.toFixed(1)}%</p>}</div>
+            <div className="rounded bg-background/50 p-2.5"><p className="text-muted-foreground">即時 UPPH</p><p className="mt-1 text-base font-bold text-emerald-300">{monitoringContext.upph.toFixed(2)}</p>{analysis && <p className="mt-1 text-[11px] text-muted-foreground">基準 {analysis.upph.toFixed(2)}</p>}</div>
+            <div className="rounded bg-background/50 p-2.5"><p className="text-muted-foreground">Takt 達標</p><p className="mt-1 text-base font-bold text-violet-200">{monitoringContext.taktAchievement.toFixed(1)}%</p><p className="mt-1 text-[11px] text-muted-foreground">瓶頸工站 #{monitoringContext.bottleneckWsId || "—"}</p></div>
+            <div className="rounded bg-background/50 p-2.5"><p className="text-muted-foreground">即時產能</p><p className="mt-1 text-base font-bold text-foreground">{monitoringContext.productionActual} / {monitoringContext.productionTarget}</p><p className="mt-1 text-[11px] text-muted-foreground">達成 {monitoringContext.productionTarget > 0 ? ((monitoringContext.productionActual / monitoringContext.productionTarget) * 100).toFixed(1) : "0.0"}%</p></div>
+          </div>
+        </div>
+      )}
 
       {/* 儲存快照 Dialog */}
       <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
