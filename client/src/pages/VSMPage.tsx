@@ -18,6 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { exportVSMAsJSON, exportVSMProcessesAsCSV, exportVSMFlowsAsCSV, exportVSMAsPNG, exportVSMAsPDF } from '@/lib/vsmExport';
 import { parseMonitoringVsmContext } from '../../../shared/monitoringVsmContext';
 import { buildVsmComparisonPair } from '../../../shared/vsmVersionTimeline';
+import { buildVsmTrackingUrl } from '../../../shared/vsmTrackingContext';
 
 interface VSMProcessDisplay {
   id: number;
@@ -136,6 +137,9 @@ export const VSMPage: React.FC = () => {
     { enabled: !!selectedDiagramId }
   );
   const versions = versionsQuery.data || [];
+  const selectedProcessWorkstationId = selectedProcess
+    ? processes?.find((process) => process.id === selectedProcess.id)?.workstationId
+    : null;
 
   // 建立圖表 mutation
   const createDiagramMutation = trpc.vsm.createDiagram.useMutation({
@@ -653,6 +657,11 @@ export const VSMPage: React.FC = () => {
                     <Label className="text-slate-300 text-sm">增值率</Label>
                     <p className="text-white font-medium">{selectedProcess.valueAddedRate}%</p>
                   </div>
+                )}
+                {selectedProcessWorkstationId && (
+                  <Button size="sm" variant="outline" className="w-full border-cyan-400/35 text-cyan-200 hover:bg-cyan-400/10" onClick={() => setLocation(buildVsmTrackingUrl({ lineId: lineIdNum, workstationId: selectedProcessWorkstationId, processName: selectedProcess.name }))}>
+                    檢視此工站產品追蹤
+                  </Button>
                 )}
               </CardContent>
             </Card>

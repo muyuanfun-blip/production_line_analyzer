@@ -19,6 +19,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { parseMonitoringTrackingContext } from "../../../shared/monitoringTrackingContext";
+import { parseVsmTrackingContext } from "../../../shared/vsmTrackingContext";
 import {
   Plus, Trash2, ChevronRight, ArrowLeft, Edit2, Save, Clock, CheckCircle2,
   AlertCircle, RotateCcw, XCircle, ClipboardList, BarChart2, List,
@@ -48,6 +49,8 @@ const FLOW_STATUS_META: Record<FlowStatus, { label: string; color: string }> = {
 export default function ProductTracking() {
   const [, setLocation] = useLocation();
   const monitoringContext = useMemo(() => parseMonitoringTrackingContext(window.location.search), []);
+  const vsmContext = useMemo(() => parseVsmTrackingContext(window.location.search), []);
+  const inboundLineId = monitoringContext?.lineId ?? vsmContext?.lineId ?? null;
   const [selectedLineId, setSelectedLineId] = useState<number | null>(null);
   const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(null);
   const [showNewInstanceDialog, setShowNewInstanceDialog] = useState(false);
@@ -58,12 +61,12 @@ export default function ProductTracking() {
   const [showEfficiencyHeatmap, setShowEfficiencyHeatmap] = useState(false);
 
   useEffect(() => {
-    if (monitoringContext?.lineId && selectedLineId !== monitoringContext.lineId) {
-      setSelectedLineId(monitoringContext.lineId);
+    if (inboundLineId && selectedLineId !== inboundLineId) {
+      setSelectedLineId(inboundLineId);
       setSelectedInstanceId(null);
       setShowEfficiencyHeatmap(false);
     }
-  }, [monitoringContext, selectedLineId]);
+  }, [inboundLineId, selectedLineId]);
 
   // 新增產品個體表單
   const [newInstance, setNewInstance] = useState({
@@ -312,6 +315,17 @@ export default function ProductTracking() {
                   <p className="mt-1 text-xs text-violet-200/65">由戰情監控帶入：加工中 {monitoringContext.activeCount} 項、卡料／等待 {monitoringContext.waitingCount} 項{monitoringContext.productIds.length ? `；關注產品 ${monitoringContext.productIds.join("、")}` : ""}。</p>
                 </div>
                 <Button size="sm" variant="outline" className="h-7 shrink-0 border-violet-400/35 text-xs text-violet-300 hover:bg-violet-400/10" onClick={() => setLocation(`/lines/${monitoringContext.lineId}/monitoring`)}>返回戰情監控</Button>
+              </div>
+            </div>
+          )}
+          {vsmContext && !monitoringContext && (
+            <div className="shrink-0 border-b border-cyan-500/25 bg-cyan-500/[0.06] px-6 py-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-cyan-300">VSM 工序情境</p>
+                  <p className="mt-1 text-xs text-cyan-100/65">由 VSM 設計帶入：工序「{vsmContext.processName || `工站 #${vsmContext.workstationId}`}」；可在本頁檢視此產線的產品流程紀錄並新增對應工站作業資料。</p>
+                </div>
+                <Button size="sm" variant="outline" className="h-7 shrink-0 border-cyan-400/35 text-xs text-cyan-300 hover:bg-cyan-400/10" onClick={() => setLocation(`/lines/${vsmContext.lineId}/vsm`)}>返回 VSM 設計</Button>
               </div>
             </div>
           )}

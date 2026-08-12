@@ -668,7 +668,11 @@
 - [x] 在 DashboardLayout.tsx 侧邊欄新增「VSM 設計」導覽入口
 - [ ] 更新 UserGuide.tsx 新增 VSM 使用指南章節—選擇性実現
 - [ ] 與配置模擬器整合（從配置模擬匯出至 VSM）—選擇性実現
-- [ ] 與產品追蹤整合（VSM 流程對應產品追蹤路徑）—選擇性実現
+- [x] 與產品追蹤整合（VSM 流程對應產品追蹤路徑）—選擇性実現
+  - [x] 盤點 VSM 工序 workstationId 與產品流程紀錄的對應關係
+  - [x] 從選取 VSM 工序建立產品追蹤情境導覽
+  - [x] 在產品追蹤顯示帶入的 VSM 工序摘要
+  - [x] 補強 VSM 產品追蹤情境解析的單元測試
 - [ ] 試強 VSM 相關 Vitest 測試—選擇性実現
 
 
@@ -704,40 +708,40 @@
 ## 產線生產即時戰情監控系統（新增）
 
 ### 第一階段：後端 API（模擬資料生成）
-- [ ] 後端：新增 monitoring.getRealTimeStatus procedure（回傳當前產線即時狀態）
-- [ ] 後端：模擬資料生成邏輯（工站 CT 波動、產品流轉、異常工站）
-- [ ] 後端：新增 monitoring.getHistoricalTrend procedure（今日/本週趨勢）
-- [ ] 後端：新增 monitoring.getAnomalies procedure（異常工站與警示）
+- [x] 後端：新增 monitoring.getRealTimeStatus procedure（回傳當前產線即時狀態）
+- [x] 後端：模擬資料生成邏輯（工站 CT 波動、產品流轉、異常工站）
+- [x] 後端：新增 monitoring.getHistoricalTrend procedure（今日/本週趨勢）
+- [x] 後端：新增 monitoring.getAnomalies procedure（異常工站與警示）
 
 ### 第二階段：前端監控頁面
-- [ ] 建立 MonitoringDashboard.tsx 主頁面
-- [ ] 實時 KPI 儀表板（平衡率、UPPH、Takt 達標率、產能達成率）
-- [ ] 工站狀態面板（5 級風險等級：正常/預警/異常/停機/離線）
-- [ ] 瓶頸工站即時高亮與詳情卡片
-- [ ] 產品流程甘特圖（實時進度、卡料預警）
-- [ ] 工站效率熱圖（時段 × 工站效率矩陣）
+- [x] 建立 MonitoringDashboard.tsx 主頁面
+- [x] 實時 KPI 儀表板（平衡率、UPPH、Takt 達標率、產能達成率）
+- [x] 工站狀態面板（5 級風險等級：正常/預警/異常/停機/離線）
+- [x] 瓶頸工站即時高亮與詳情卡片
+- [x] 產品流程甘特圖（實時進度、卡料預警）
+- [x] 工站效率熱圖（時段 × 工站效率矩陣）
 
 ### 第三階段：實時更新與動畫
-- [ ] 前端：useEffect + setInterval 實現 3 秒輪詢更新
-- [ ] 前端：KPI 數值變化動畫（上升綠色、下降紅色）
-- [ ] 前端：工站狀態切換動畫（平滑過渡）
-- [ ] 前端：甘特圖即時滾動更新
+- [x] 前端：useEffect + setInterval 實現 3 秒輪詢更新
+- [x] 前端：KPI 數值變化動畫（上升綠色、下降紅色）
+- [x] 前端：工站狀態切換動畫（平滑過渡）
+- [x] 前端：甘特圖即時滾動更新
 
 ### 第四階段：警示與建議
-- [ ] 異常工站自動警示卡片（頂部通知欄）
-- [ ] 警示等級分類（提示/預警/緊急）
-- [ ] AI 即時改善建議（基於當前瓶頸）
-- [ ] 歷史對比（今日 vs 昨日、本週平均）
+- [x] 異常工站自動警示卡片（頂部通知欄）
+- [x] 警示等級分類（提示/預警/緊急）
+- [x] AI 即時改善建議（基於當前瓶頸）
+- [x] 歷史對比（今日 vs 昨日、本週平均）
 
 ### 第五階段：路由與導覽
-- [ ] 在 App.tsx 新增 /monitoring 路由
-- [ ] 在 DashboardLayout.tsx 側邊欄新增「戰情監控」入口（Activity icon）
-- [ ] 監控頁面與其他頁面的導覽連結
+- [x] 在 App.tsx 新增 /lines/:lineId/monitoring 路由
+- [x] 在 DashboardLayout.tsx 側邊欄新增「戰情監控」入口（Activity icon）
+- [x] 監控頁面與其他頁面的導覽連結
 
 ### 第六階段：測試與優化
-- [ ] 撰寫 monitoring procedures 的 Vitest 測試
-- [ ] 前端元件測試（KPI 更新、狀態切換）
-- [ ] 性能優化（輪詢頻率、記憶體使用）
+- [x] 撰寫 monitoring procedures 的 Vitest 測試
+- [x] 前端元件測試（KPI 更新、狀態切換）
+- [x] 性能優化（輪詢頻率、記憶體使用）
 
 
 ## 產線生產即時戰情監控系統（已完成）
