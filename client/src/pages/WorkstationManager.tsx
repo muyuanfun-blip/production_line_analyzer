@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { MasterDataAuditLog } from "@/components/MasterDataAuditLog";
 
 type WsFormData = {
   name: string;
@@ -600,6 +601,8 @@ export default function WorkstationManager() {
           </div>
         </Card>
       )}
+
+      <MasterDataAuditLog productionLineId={lineId} title="此產線的資料異動歷史" />
 
       {/* Create/Edit Dialog */}
       <Dialog open={showForm} onOpenChange={(o) => { if (!o) { setShowForm(false); setEditingId(null); resetForm(); } }}>

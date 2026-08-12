@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { MasterDataAuditLog } from "@/components/MasterDataAuditLog";
 
 type LineFormData = {
   name: string;
@@ -256,6 +257,8 @@ export default function ProductionLines() {
           })}
         </div>
       )}
+
+      <MasterDataAuditLog title="生產管理資料異動歷史" />
 
       {/* Create/Edit Dialog */}
       <Dialog open={showForm} onOpenChange={(o) => { if (!o) { setShowForm(false); setEditingId(null); resetForm(); } }}>

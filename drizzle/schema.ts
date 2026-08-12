@@ -61,6 +61,22 @@ export const workstations = mysqlTable("workstations", {
 export type Workstation = typeof workstations.$inferSelect;
 export type InsertWorkstation = typeof workstations.$inferInsert;
 
+// 生產主資料異動稽核：保留產線／工站建立、更新、刪除與批次匯入的可追溯事件
+export const masterDataAuditLogs = mysqlTable("master_data_audit_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  entityType: mysqlEnum("entityType", ["production_line", "workstation"]).notNull(),
+  entityId: int("entityId"),
+  productionLineId: int("productionLineId"),
+  action: mysqlEnum("action", ["create", "update", "delete", "bulk_import"]).notNull(),
+  beforeData: json("beforeData"),
+  afterData: json("afterData"),
+  operatorId: int("operatorId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type MasterDataAuditLog = typeof masterDataAuditLogs.$inferSelect;
+export type InsertMasterDataAuditLog = typeof masterDataAuditLogs.$inferInsert;
+
 // 動作步驟資料表
 export const actionSteps = mysqlTable("action_steps", {
   id: int("id").autoincrement().primaryKey(),

@@ -4,6 +4,7 @@ import {
   InsertUser, users,
   productionLines, InsertProductionLine,
   workstations, InsertWorkstation,
+  masterDataAuditLogs,
   actionSteps, InsertActionStep,
   handActions, InsertHandAction,
   analysisSnapshots, InsertAnalysisSnapshot,
@@ -177,6 +178,63 @@ export async function deleteProductionLine(id: number) {
   }
   await db.delete(workstations).where(eq(workstations.productionLineId, id));
   return db.delete(productionLines).where(eq(productionLines.id, id));
+}
+
+type MasterDataEntityType = "production_line" | "workstation";
+type MasterDataAuditAction = "create" | "update" | "delete" | "bulk_import";
+
+export async function createMasterDataAuditLog(data: {
+  entityType: MasterDataEntityType;
+  entityId: number | null;
+  productionLineId: number | null;
+  action: MasterDataAuditAction;
+  beforeData?: unknown | null;
+  afterData?: unknown | null;
+  operatorId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(masterDataAuditLogs).values({
+    entityType: data.entityType,
+    entityId: data.entityId,
+    productionLineId: data.productionLineId,
+    action: data.action,
+    beforeData: data.beforeData ?? null,
+    afterData: data.afterData ?? null,
+    operatorId: data.operatorId,
+  } as any);
+}
+
+export async function listMasterDataAuditLogs(filters: {
+  productionLineId?: number;
+  entityType?: MasterDataEntityType;
+  action?: MasterDataAuditAction;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const conditions = [] as any[];
+  if (filters.productionLineId !== undefined) conditions.push(eq(masterDataAuditLogs.productionLineId, filters.productionLineId));
+  if (filters.entityType !== undefined) conditions.push(eq(masterDataAuditLogs.entityType, filters.entityType));
+  if (filters.action !== undefined) conditions.push(eq(masterDataAuditLogs.action, filters.action));
+  const query = db.select({
+    id: masterDataAuditLogs.id,
+    entityType: masterDataAuditLogs.entityType,
+    entityId: masterDataAuditLogs.entityId,
+    productionLineId: masterDataAuditLogs.productionLineId,
+    action: masterDataAuditLogs.action,
+    beforeData: masterDataAuditLogs.beforeData,
+    afterData: masterDataAuditLogs.afterData,
+    operatorId: masterDataAuditLogs.operatorId,
+    operatorName: users.name,
+    operatorUsername: users.username,
+    createdAt: masterDataAuditLogs.createdAt,
+  }).from(masterDataAuditLogs)
+    .leftJoin(users, eq(masterDataAuditLogs.operatorId, users.id));
+  if (conditions.length > 0) {
+    return query.where(and(...conditions)).orderBy(desc(masterDataAuditLogs.createdAt)).limit(filters.limit ?? 100);
+  }
+  return query.orderBy(desc(masterDataAuditLogs.createdAt)).limit(filters.limit ?? 100);
 }
 
 // ─── Workstations ────────────────────────────────────────────────────────────

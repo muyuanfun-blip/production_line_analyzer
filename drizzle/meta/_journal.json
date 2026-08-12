@@ -141,6 +141,13 @@
       "when": 1786521137506,
       "tag": "0019_careless_jack_power",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1786521500568,
+      "tag": "0020_same_arachne",
+      "breakpoints": true
     }
   ]
 }

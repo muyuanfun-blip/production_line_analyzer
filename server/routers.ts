@@ -5,7 +5,7 @@ import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_
 import { z } from "zod";
 import {
   getAllProductionLines, getProductionLineById, createProductionLine,
-  updateProductionLine, deleteProductionLine,
+  updateProductionLine, deleteProductionLine, createMasterDataAuditLog, listMasterDataAuditLogs,
   getWorkstationsByLine, getWorkstationById, createWorkstation,
   updateWorkstation, deleteWorkstation, bulkCreateWorkstations,
   getActionStepsByWorkstation, getActionStepsByWorkstationIds, createActionStep, updateActionStep,
@@ -177,6 +177,17 @@ export const appRouter = router({
       }),
   }),
 
+  masterDataAudit: router({
+    list: adminProcedure
+      .input(z.object({
+        productionLineId: z.number().int().positive().optional(),
+        entityType: z.enum(["production_line", "workstation"]).optional(),
+        action: z.enum(["create", "update", "delete", "bulk_import"]).optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      }))
+      .query(async ({ input }) => listMasterDataAuditLogs(input)),
+  }),
+
   // ─── Production Lines ───────────────────────────────────────────────────
   productionLine: router({
     list: publicProcedure.query(async () => {
@@ -191,33 +202,80 @@ export const appRouter = router({
 
     create: adminProcedure
       .input(productionLineInput)
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const result = await createProductionLine({
           name: input.name,
           description: input.description ?? null,
           targetCycleTime: input.targetCycleTime?.toString() ?? null,
           status: input.status ?? "active",
         });
-        return { success: true, insertId: (result as any).insertId };
+        const insertId = (result as any).insertId ?? (result as any)[0]?.insertId;
+        const createdLine = insertId ? await getProductionLineById(Number(insertId)) : null;
+        if (createdLine) {
+          await createMasterDataAuditLog({
+            entityType: "production_line",
+            entityId: createdLine.id,
+            productionLineId: createdLine.id,
+            action: "create",
+            afterData: createdLine,
+            operatorId: ctx.user.id,
+          });
+        }
+        return { success: true, insertId };
       }),
 
     update: adminProcedure
       .input(z.object({ id: z.number().int().positive() }).merge(productionLineInput.partial()))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const { id, ...data } = input;
+        const before = await getProductionLineById(id);
+        if (!before) throw new Error("找不到生產線");
         const updateData: Record<string, unknown> = {};
         if (data.name !== undefined) updateData.name = data.name;
         if (data.description !== undefined) updateData.description = data.description;
         if (data.targetCycleTime !== undefined) updateData.targetCycleTime = data.targetCycleTime.toString();
         if (data.status !== undefined) updateData.status = data.status;
         await updateProductionLine(id, updateData as any);
+        const after = await getProductionLineById(id);
+        if (after) {
+          await createMasterDataAuditLog({
+            entityType: "production_line",
+            entityId: id,
+            productionLineId: id,
+            action: "update",
+            beforeData: before,
+            afterData: after,
+            operatorId: ctx.user.id,
+          });
+        }
         return { success: true };
       }),
 
     delete: adminProcedure
       .input(z.object({ id: z.number().int().positive() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        const before = await getProductionLineById(input.id);
+        if (!before) throw new Error("找不到生產線");
+        const relatedWorkstations = await getWorkstationsByLine(input.id);
         await deleteProductionLine(input.id);
+        await createMasterDataAuditLog({
+          entityType: "production_line",
+          entityId: input.id,
+          productionLineId: input.id,
+          action: "delete",
+          beforeData: before,
+          operatorId: ctx.user.id,
+        });
+        for (const workstation of relatedWorkstations) {
+          await createMasterDataAuditLog({
+            entityType: "workstation",
+            entityId: workstation.id,
+            productionLineId: input.id,
+            action: "delete",
+            beforeData: workstation,
+            operatorId: ctx.user.id,
+          });
+        }
         return { success: true };
       }),
   }),
@@ -238,7 +296,7 @@ export const appRouter = router({
 
     create: adminProcedure
       .input(workstationInput)
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const normalized = normalizeManpower({ ...input, manpower: input.manpower ?? 1 });
         if (normalized.totalManpower <= 0) throw new Error("早晚班合計人力必須大於 0");
         const result = await createWorkstation({
@@ -252,22 +310,34 @@ export const appRouter = router({
           description: input.description ?? null,
           notes: input.notes ?? null,
         });
-        return { success: true, insertId: (result as any).insertId };
+        const insertId = (result as any).insertId ?? (result as any)[0]?.insertId;
+        const createdWorkstation = insertId ? await getWorkstationById(Number(insertId)) : null;
+        if (createdWorkstation) {
+          await createMasterDataAuditLog({
+            entityType: "workstation",
+            entityId: createdWorkstation.id,
+            productionLineId: createdWorkstation.productionLineId,
+            action: "create",
+            afterData: createdWorkstation,
+            operatorId: ctx.user.id,
+          });
+        }
+        return { success: true, insertId };
       }),
 
     update: adminProcedure
       .input(z.object({ id: z.number().int().positive() }).merge(workstationInput.omit({ productionLineId: true }).partial()))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const { id, ...data } = input;
+        const before = await getWorkstationById(id);
+        if (!before) throw new Error("找不到工站");
         const updateData: Record<string, unknown> = {};
         if (data.name !== undefined) updateData.name = data.name;
         if (data.sequenceOrder !== undefined) updateData.sequenceOrder = data.sequenceOrder;
         if (data.cycleTime !== undefined) updateData.cycleTime = data.cycleTime.toString();
         const changesManpower = data.manpower !== undefined || data.morningManpower !== undefined || data.eveningManpower !== undefined;
         if (changesManpower) {
-          const existing = await getWorkstationById(id);
-          if (!existing) throw new Error("找不到工站");
-          const normalized = normalizeManpower(data, existing);
+          const normalized = normalizeManpower(data, before);
           if (normalized.totalManpower <= 0) throw new Error("早晚班合計人力必須大於 0");
           updateData.manpower = String(normalized.totalManpower);
           updateData.morningManpower = String(normalized.morningManpower);
@@ -276,13 +346,35 @@ export const appRouter = router({
         if (data.description !== undefined) updateData.description = data.description;
         if (data.notes !== undefined) updateData.notes = data.notes;
         await updateWorkstation(id, updateData as any);
+        const after = await getWorkstationById(id);
+        if (after) {
+          await createMasterDataAuditLog({
+            entityType: "workstation",
+            entityId: id,
+            productionLineId: before.productionLineId,
+            action: "update",
+            beforeData: before,
+            afterData: after,
+            operatorId: ctx.user.id,
+          });
+        }
         return { success: true };
       }),
 
     delete: adminProcedure
       .input(z.object({ id: z.number().int().positive() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        const before = await getWorkstationById(input.id);
+        if (!before) throw new Error("找不到工站");
         await deleteWorkstation(input.id);
+        await createMasterDataAuditLog({
+          entityType: "workstation",
+          entityId: input.id,
+          productionLineId: before.productionLineId,
+          action: "delete",
+          beforeData: before,
+          operatorId: ctx.user.id,
+        });
         return { success: true };
       }),
 
@@ -299,7 +391,7 @@ export const appRouter = router({
           description: z.string().optional(),
         })),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const data = input.workstations.map(w => {
           const normalized = normalizeManpower({ ...w, manpower: w.manpower ?? 1 });
           if (normalized.totalManpower <= 0) throw new Error(`工站「${w.name}」的早晚班合計人力必須大於 0`);
@@ -316,6 +408,14 @@ export const appRouter = router({
           };
         });
         await bulkCreateWorkstations(data);
+        await createMasterDataAuditLog({
+          entityType: "workstation",
+          entityId: null,
+          productionLineId: input.productionLineId,
+          action: "bulk_import",
+          afterData: { count: data.length, workstations: data },
+          operatorId: ctx.user.id,
+        });
         return { success: true, count: data.length };
       }),
 
