@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AI_REVIEW_ROLES, buildStructuredConsensusReport, evaluateConsensus, type ConsensusResult, type RoleReview } from "../shared/aiConsensus";
+import { AI_REVIEW_ROLES, buildConsensusClarificationSummary, buildStructuredConsensusReport, evaluateConsensus, type ConsensusResult, type RoleReview } from "../shared/aiConsensus";
 
 const reviews: RoleReview[] = AI_REVIEW_ROLES.map((role) => ({
   roleId: role.id,
@@ -35,5 +35,11 @@ describe("五角色 AI 共識流程", () => {
     expect(report).toContain("## 5. 優先改善行動");
     expect(report).toContain("## 8. 共識結論");
     expect(report).toContain("已達成共識（88 / 100）");
+  });
+
+  it("未達共識時輸出補充資料摘要，而非偽裝為正式核准報告", () => {
+    const report = buildConsensusClarificationSummary({ productionLineName: "示範線", dataScope: ["資料就緒度：不足"], reviews, consensus: { ...consensus, consensusAchieved: false } }, "五角色審查尚未達成共識");
+    expect(report).toContain("**尚未核准。**");
+    expect(report).toContain("補充資料缺口並重新執行五角色審查");
   });
 });

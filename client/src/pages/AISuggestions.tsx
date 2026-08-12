@@ -40,6 +40,8 @@ export default function AISuggestions() {
 
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
+  const [analysisStatus, setAnalysisStatus] = useState<"idle" | "approved" | "needs_clarification">("idle");
+  const [approvalReason, setApprovalReason] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [roleReviews, setRoleReviews] = useState<RoleReview[]>([]);
   const [consensus, setConsensus] = useState<ConsensusResult | null>(null);
@@ -58,8 +60,11 @@ export default function AISuggestions() {
       setSuggestion(content);
       setRoleReviews(data.reviews);
       setConsensus(data.consensus);
+      setAnalysisStatus(data.status);
+      setApprovalReason(data.approvalReason);
       setHasAnalyzed(true);
-      toast.success("五角色審查已達成共識，正式報告已就緒");
+      if (data.status === "approved") toast.success("五角色審查已達成共識，正式報告已就緒");
+      else toast.warning("五角色審查尚未達成共識，請先補充資料或釐清分歧");
     },
     onError: () => toast.error("AI 分析失敗，請稍後再試"),
   });
@@ -117,7 +122,7 @@ export default function AISuggestions() {
   }, [line?.targetCycleTime, workstations, allActionSteps]);
 
   const professionalReport = useMemo(() => {
-    if (!suggestion || !workstations?.length) return null;
+    if (!suggestion || analysisStatus !== "approved" || !workstations?.length) return null;
     return buildAIProfessionalReport({
       productionLineName: line?.name ?? "未命名產線",
       generatedAt: new Date(),
@@ -138,7 +143,7 @@ export default function AISuggestions() {
       })),
       aiSuggestion: suggestion,
     });
-  }, [suggestion, workstations, allActionSteps, line?.name, line?.targetCycleTime]);
+  }, [suggestion, analysisStatus, workstations, allActionSteps, line?.name, line?.targetCycleTime]);
 
   const professionalReportHtml = useMemo(
     () => professionalReport ? buildAIProfessionalReportHtml(professionalReport) : "",
@@ -150,6 +155,8 @@ export default function AISuggestions() {
     setSuggestion(null);
     setRoleReviews([]);
     setConsensus(null);
+    setAnalysisStatus("idle");
+    setApprovalReason(null);
     setInteractiveMessages([]);
     setInteractiveQuestion("");
     
@@ -450,10 +457,16 @@ export default function AISuggestions() {
             </div>
           ) : suggestion ? (
             <div className="prose prose-invert max-w-none space-y-4">
-              {consensus && (
+              {consensus && analysisStatus === "approved" && (
                 <div className="not-prose rounded-xl border border-emerald-400/30 bg-emerald-400/5 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-emerald-300">五角色審查已達成共識</p><p className="mt-1 text-xs text-muted-foreground">精實與工業工程、製造營運、品質與可靠度、製程與設備、風險與治理皆已完成審查。</p></div><div className="rounded-lg bg-emerald-400/10 px-3 py-2 text-center"><p className="text-[10px] text-muted-foreground">共識分數</p><p className="text-lg font-bold text-emerald-300">{consensus.agreementScore.toFixed(0)} / 100</p></div></div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{roleReviews.map((review) => <div key={review.roleId} className="rounded-lg border border-border/70 bg-background/30 p-2"><p className="text-xs font-medium text-foreground">{review.roleName}</p><p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">{review.findings[0] ?? "已完成審查"}</p></div>)}</div>
+                </div>
+              )}
+              {consensus && analysisStatus === "needs_clarification" && (
+                <div className="not-prose rounded-xl border border-orange-400/35 bg-orange-400/5 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-orange-200">五角色審查尚未形成正式共識</p><p className="mt-1 text-xs text-muted-foreground">原因：{approvalReason ?? "尚待補充資料或釐清角色分歧"}。本次內容僅作補充資料與現場確認用途，尚不可建立改善行動或匯出正式報告。</p></div><div className="rounded-lg bg-orange-400/10 px-3 py-2 text-center"><p className="text-[10px] text-muted-foreground">目前共識分數</p><p className="text-lg font-bold text-orange-300">{consensus.agreementScore.toFixed(0)} / 100</p></div></div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{roleReviews.map((review) => <div key={review.roleId} className="rounded-lg border border-border/70 bg-background/30 p-2"><p className="text-xs font-medium text-foreground">{review.roleName}</p><p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">{review.risks[0] ?? review.findings[0] ?? "請現場確認審查前提"}</p></div>)}</div>
                 </div>
               )}
               <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-5">
@@ -474,7 +487,7 @@ export default function AISuggestions() {
                   </ReactMarkdown>
                 </div>
               </div>
-              {consensus && (
+              {consensus && analysisStatus === "approved" && (
                 <div className="not-prose rounded-xl border border-violet-400/25 bg-violet-400/5 p-4">
                   <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
                     <div><p className="flex items-center gap-2 font-medium text-violet-200"><MessageSquare className="h-4 w-4" />互動分析</p><p className="mt-1 text-xs text-muted-foreground">針對目前五角色共識、工站資料、優先行動與風險提出追問；回答不會修改已核准的正式報告。</p></div>
@@ -485,10 +498,7 @@ export default function AISuggestions() {
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row"><Textarea value={interactiveQuestion} onChange={(event) => setInteractiveQuestion(event.target.value)} placeholder="例如：若瓶頸工站增加 0.5 人，先要驗證哪些條件？" className="min-h-20 text-sm" maxLength={800} disabled={interactiveMutation.isPending} /><Button className="self-end sm:self-stretch" disabled={interactiveMutation.isPending || !interactiveQuestion.trim()} onClick={() => handleInteractiveAnalyze()}><Send className="mr-2 h-4 w-4" />追問</Button></div>
                 </div>
               )}
-              <div className="not-prose flex flex-col gap-3 rounded-xl border border-cyan-400/25 bg-cyan-400/5 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div><p className="font-medium text-foreground">AI 專業圖文分析報告已就緒</p><p className="mt-1 text-xs text-muted-foreground">報告整合目前 KPI、動作分類圖、工站負荷與本次 AI 建議，可預覽、下載或列印為 PDF。</p></div>
-                <Button className="shrink-0" onClick={() => setReportOpen(true)}><FileText className="mr-2 h-4 w-4" />匯出專業報告</Button>
-              </div>
+              {analysisStatus === "approved" ? <div className="not-prose flex flex-col gap-3 rounded-xl border border-cyan-400/25 bg-cyan-400/5 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-foreground">AI 專業圖文分析報告已就緒</p><p className="mt-1 text-xs text-muted-foreground">報告整合目前 KPI、動作分類圖、工站負荷與本次 AI 建議，可預覽、下載或列印為 PDF。</p></div><Button className="shrink-0" onClick={() => setReportOpen(true)}><FileText className="mr-2 h-4 w-4" />匯出專業報告</Button></div> : <div className="not-prose flex flex-col gap-3 rounded-xl border border-orange-400/25 bg-orange-400/5 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-foreground">正式報告尚未開放</p><p className="mt-1 text-xs text-muted-foreground">請依上方資料缺口補充資料，或先釐清五角色的未決事項後重新分析。</p></div><Button variant="outline" className="shrink-0" onClick={handleAnalyze}><RefreshCw className="mr-2 h-4 w-4" />重新分析</Button></div>}
             </div>
           ) : (
             <div className="py-12 text-center">

@@ -42,7 +42,7 @@ import { ENV } from "./_core/env";
 import { buildSimulationRunPlan, normalizeSimulationWorkstations } from "../shared/simulationRun";
 import { buildEfficiencyHeatmap } from "../shared/efficiencyHeatmap";
 import { getManpowerQuality, normalizeManpower } from "../shared/workstationManpower";
-import { AI_REVIEW_ROLES, buildStructuredConsensusReport, evaluateConsensus, type ConsensusResult, type RoleReview } from "../shared/aiConsensus";
+import { AI_REVIEW_ROLES, buildConsensusClarificationSummary, buildStructuredConsensusReport, evaluateConsensus, type ConsensusResult, type RoleReview } from "../shared/aiConsensus";
 import { buildInteractiveAnalysisContext, validateInteractiveQuestion } from "../shared/interactiveAnalysis";
 import { assessAnalysisDataReadiness, getReadinessLevel } from "../shared/analysisDataReadiness";
 
@@ -771,9 +771,13 @@ export const appRouter = router({
         );
         const consensus: ConsensusResult = consensusResponseSchema.parse(rawConsensus);
         const decision = evaluateConsensus(consensus, reviews.length);
-        if (!decision.approved) throw new Error(`五角色審查未形成可核准共識：${decision.reason ?? "請補充資料後重新分析"}`);
-        const suggestion = buildStructuredConsensusReport({ productionLineName: input.productionLineName, dataScope, reviews, consensus });
-        return { suggestion, reviews, consensus, dataGaps, readinessLevel };
+        const reportInput = { productionLineName: input.productionLineName, dataScope, reviews, consensus };
+        const approved = decision.approved;
+        const approvalReason = decision.reason ?? null;
+        const suggestion = approved
+          ? buildStructuredConsensusReport(reportInput)
+          : buildConsensusClarificationSummary(reportInput, approvalReason ?? "尚未形成可核准共識");
+        return { status: approved ? "approved" as const : "needs_clarification" as const, approvalReason, suggestion, reviews, consensus, dataGaps, readinessLevel };
       }),
 
     interactiveAnalyze: protectedProcedure

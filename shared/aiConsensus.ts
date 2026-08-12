@@ -97,3 +97,26 @@ ${unresolved}
 ## 8. 共識結論
 本報告所列行動已通過五角色共識審查。執行前仍應由現場管理、工程與品質單位依實際設備能力、作業安全與產品規格完成核准。`;
 }
+
+export function buildConsensusClarificationSummary(input: StructuredConsensusReportInput, reason: string): string {
+  const unresolved = input.consensus.unresolvedItems.length > 0
+    ? input.consensus.unresolvedItems.map((item) => `- ${item}`).join("\n")
+    : "- 請由現場人員確認五角色提出的資料限制與改善前提。";
+  const gaps = input.dataScope.filter((item) => item.includes("資料") || item.includes("節拍"));
+  return `# 五角色審查結果：尚待補充資料或釐清分歧
+
+## 1. 正式報告狀態
+**尚未核准。** 原因：${reason}。本次結果僅供補充資料與現場釐清使用，不能視為正式改善方案或建立改善行動的依據。
+
+## 2. 五角色已觀察到的重點
+${input.reviews.map((review) => `### ${review.roleName}\n${review.findings.map((item) => `- ${item}`).join("\n") || "- 無具體發現"}`).join("\n\n")}
+
+## 3. 建議補充或確認的資料
+${gaps.map((item) => `- ${item}`).join("\n") || "- 請確認各角色的風險提示、設備條件與品質資料。"}
+
+## 4. 未決事項
+${unresolved}
+
+## 5. 下一步
+請補充資料缺口並重新執行五角色審查；只有全部角色完成、共識分數達門檻且行動可驗證時，系統才會開放正式報告、互動追問與改善行動建立。`;
+}
