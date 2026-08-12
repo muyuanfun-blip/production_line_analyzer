@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useParams, useLocation, useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { FormulaTooltip } from "@/components/FormulaTooltip";
+import { rankCycleTimeDifferences } from "@shared/snapshotComparison";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,8 @@ type WorkstationData = {
   name: string;
   cycleTime: number;
   manpower: number;
+  morningManpower?: number | null;
+  eveningManpower?: number | null;
   sequenceOrder: number;
   description?: string;
   // 動作拆解摘要（新快照才有）
@@ -257,6 +260,8 @@ export default function SnapshotCompare() {
       const vaDelta = vaA != null && vaB != null ? vaB - vaA : null;
       return {
         name,
+        stationA: a,
+        stationB: b,
         "A 週期時間": a?.cycleTime ?? null,
         "B 週期時間": b?.cycleTime ?? null,
         delta,
@@ -272,6 +277,12 @@ export default function SnapshotCompare() {
       };
     });
   }, [wsA, wsB]);
+
+  // 依週期時間的絕對變化排序，保留前三個差異最大的工站。
+  // 只有一側快照有資料的新增／移除工站，也會列入比較以利追溯流程變動。
+  const topStationDifferences = useMemo(() => {
+    return rankCycleTimeDifferences(stationDiff);
+  }, [stationDiff]);
 
   // 增值率對比圖表資料（只取兩快照都有 valueAddedRate 的工站）
   const vaChartData = useMemo(() => {
@@ -918,6 +929,113 @@ export default function SnapshotCompare() {
               </ReactMarkdown>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* 可折疊的前三大工站差異明細 */}
+      <Card className="bg-card border-amber-500/25">
+        <CardContent className="p-0">
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 hover:bg-amber-500/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-sm font-bold text-amber-300">3</div>
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold text-foreground">差異最大的前三個工站</h2>
+                  <p className="mt-0.5 text-xs text-muted-foreground">依兩個快照的週期時間絕對變化排序；展開可查看完整比較數據</p>
+                </div>
+              </div>
+              <span className="shrink-0 text-lg text-amber-300 transition-transform duration-200 group-open:rotate-180" aria-hidden="true">⌄</span>
+            </summary>
+
+            <div className="border-t border-amber-500/15 px-5 py-4">
+              {topStationDifferences.length === 0 ? (
+                <div className="py-6 text-center text-sm text-muted-foreground">兩個快照沒有可供比較的工站資料。</div>
+              ) : (
+                <div className="space-y-4">
+                  {topStationDifferences.map((station, index) => {
+                    const a = station.stationA;
+                    const b = station.stationB;
+                    const isImproved = station.improved;
+                    const isWorsened = station.worsened;
+                    const statusLabel = station.onlyB ? "新增工站" : station.onlyA ? "移除工站" : isImproved ? "週期縮短" : isWorsened ? "週期增加" : "週期持平";
+                    const statusClass = station.onlyB
+                      ? "bg-blue-500/15 text-blue-300 border-blue-500/30"
+                      : station.onlyA
+                        ? "bg-slate-500/15 text-slate-300 border-slate-500/30"
+                        : isImproved
+                          ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                          : isWorsened
+                            ? "bg-red-500/15 text-red-300 border-red-500/30"
+                            : "bg-slate-500/15 text-slate-300 border-slate-500/30";
+
+                    return (
+                      <div key={station.name} className="rounded-lg border border-border bg-background/30 p-4">
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-xs font-bold text-amber-300">{index + 1}</span>
+                            <h3 className="truncate text-sm font-semibold text-foreground">{station.name}</h3>
+                            <Badge className={`border text-xs ${statusClass}`}>{statusLabel}</Badge>
+                          </div>
+                          <div className={`font-mono text-sm font-bold ${isImproved ? "text-emerald-400" : isWorsened ? "text-red-400" : "text-muted-foreground"}`}>
+                            {station.onlyB || station.onlyA
+                              ? `Δ 週期 ${station.absoluteCycleTimeDelta.toFixed(1)}s`
+                              : `${station.delta > 0 ? "+" : ""}${station.delta.toFixed(1)}s`}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                          <div className="rounded-md bg-cyan-500/[0.06] p-3">
+                            <div className="text-[11px] text-cyan-300/80">週期時間 A → B</div>
+                            <div className="mt-1 font-mono text-sm text-foreground">
+                              {a ? `${a.cycleTime.toFixed(1)}s` : "—"}
+                              <span className="px-1.5 text-muted-foreground">→</span>
+                              {b ? `${b.cycleTime.toFixed(1)}s` : "—"}
+                            </div>
+                          </div>
+                          <div className="rounded-md bg-violet-500/[0.06] p-3">
+                            <div className="text-[11px] text-violet-300/80">配置人力 A → B</div>
+                            <div className="mt-1 font-mono text-sm text-foreground">
+                              {a ? `${a.manpower.toFixed(2)} 人` : "—"}
+                              <span className="px-1.5 text-muted-foreground">→</span>
+                              {b ? `${b.manpower.toFixed(2)} 人` : "—"}
+                            </div>
+                          </div>
+                          <div className="rounded-md bg-emerald-500/[0.06] p-3">
+                            <div className="text-[11px] text-emerald-300/80">增值率 A → B</div>
+                            <div className="mt-1 font-mono text-sm text-foreground">
+                              {a?.valueAddedRate != null ? `${a.valueAddedRate.toFixed(1)}%` : "—"}
+                              <span className="px-1.5 text-muted-foreground">→</span>
+                              {b?.valueAddedRate != null ? `${b.valueAddedRate.toFixed(1)}%` : "—"}
+                            </div>
+                          </div>
+                          <div className="rounded-md bg-amber-500/[0.06] p-3">
+                            <div className="text-[11px] text-amber-300/80">動作步驟 A → B</div>
+                            <div className="mt-1 font-mono text-sm text-foreground">
+                              {a?.actionStepCount != null ? `${a.actionStepCount} 步` : "—"}
+                              <span className="px-1.5 text-muted-foreground">→</span>
+                              {b?.actionStepCount != null ? `${b.actionStepCount} 步` : "—"}
+                            </div>
+                          </div>
+                        </div>
+
+                        {(a?.description || b?.description || a?.totalStepSec != null || b?.totalStepSec != null) && (
+                          <div className="mt-3 grid gap-2 border-t border-border/70 pt-3 text-xs text-muted-foreground md:grid-cols-2">
+                            <div>
+                              <span className="text-foreground/80">動作拆解總秒數：</span>
+                              A {a?.totalStepSec != null ? `${a.totalStepSec.toFixed(1)}s` : "—"} / B {b?.totalStepSec != null ? `${b.totalStepSec.toFixed(1)}s` : "—"}
+                            </div>
+                            <div className="truncate" title={b?.description ?? a?.description}>
+                              <span className="text-foreground/80">工站說明：</span>{b?.description ?? a?.description ?? "—"}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </details>
         </CardContent>
       </Card>
     </div>
