@@ -42,6 +42,7 @@ import { ENV } from "./_core/env";
 import { buildSimulationRunPlan, normalizeSimulationWorkstations } from "../shared/simulationRun";
 import { buildEfficiencyHeatmap } from "../shared/efficiencyHeatmap";
 import { getManpowerQuality, normalizeManpower } from "../shared/workstationManpower";
+import { AI_REVIEW_ROLES, buildStructuredConsensusReport, evaluateConsensus, type ConsensusResult, type RoleReview } from "../shared/aiConsensus";
 
 // ─── Zod Schemas ─────────────────────────────────────────────────────────────
 
@@ -72,6 +73,54 @@ const actionStepInput = z.object({
   actionType: z.enum(["value_added", "non_value_added", "necessary_waste"]).optional(),
   description: z.string().optional(),
 });
+
+const roleReviewResponseSchema = z.object({
+  findings: z.array(z.string().min(1)),
+  recommendations: z.array(z.string().min(1)),
+  risks: z.array(z.string().min(1)),
+  confidence: z.enum(["high", "medium", "low"]),
+});
+
+const consensusResponseSchema = z.object({
+  consensusAchieved: z.boolean(),
+  agreementScore: z.number().min(0).max(100),
+  managementSummary: z.string(),
+  agreedFindings: z.array(z.string()),
+  actions: z.array(z.object({
+    priority: z.enum(["P1", "P2", "P3"]),
+    title: z.string(),
+    rationale: z.string(),
+    ownerRole: z.string(),
+    validationMetric: z.string(),
+    targetHorizon: z.string(),
+  })),
+  risksAndValidation: z.array(z.string()),
+  unresolvedItems: z.array(z.string()),
+});
+
+function parseOllamaJson(content: string): unknown {
+  const normalized = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  return JSON.parse(normalized);
+}
+
+async function requestOllamaJson(system: string, user: string) {
+  const response = await fetch(`${ENV.ollamaBaseUrl}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ENV.ollamaApiKey}` },
+    body: JSON.stringify({ model: ENV.ollamaModel, messages: [{ role: "system", content: system }, { role: "user", content: user }], format: "json", stream: false }),
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Ollama API 錯誤 (${response.status}): ${errText}`);
+  }
+  const data = await response.json() as { message?: { content?: string } };
+  if (!data.message?.content) throw new Error("五角色 AI 審查未回傳有效內容，請稍後再試。");
+  try {
+    return parseOllamaJson(data.message.content);
+  } catch {
+    throw new Error("五角色 AI 審查回傳格式無法驗證；本次不產出未經共識的報告，請重新分析。");
+  }
+}
 
 // ─── Router ──────────────────────────────────────────────────────────────────
 
@@ -620,7 +669,7 @@ export const appRouter = router({
             necessaryWasteCount: z.number(),
             valueAddedRate: z.string(),
           }).optional(),
-        })),
+        })).min(1),
       }))
       .mutation(async ({ input }) => {
         // 本地部署：若未設定 OLLAMA_API_KEY，回傳友善錯誤訊息
@@ -669,69 +718,34 @@ export const appRouter = router({
           ? `\n**Takt Time 達標率：** ${taktPassRate}% (${passStations.length}/${input.workstations.length} 工站達標)\n**超出 Takt Time 工站：** ${exceedStations.length > 0 ? exceedStations.map(w => `${w.name}(${w.cycleTime}s)`).join('、') : '無'}`
           : "";
 
-        const prompt = `你是一位精通精實生產（Lean Manufacturing）和工業工程的專家顧問。請根據以下產線數據，提供專業的平衡優化建議：
-
-**產線名稱：** ${input.productionLineName}${taktTimeInfo}
-**工站數量：** ${input.workstations.length} 個
-**瓶頸工站：** ${bottleneck?.name ?? "無"} (${bottleneck?.cycleTime ?? 0}s)
-**平均工序時間：** ${avgTime.toFixed(1)}s
-**產線平衡率：** ${balanceRate}%${taktSummary}
-
-**各工站資料（含 Takt Time 達標狀態）：**
-${workstationList}
-
-請提供以下分析（使用繁體中文，格式清晰）：
-
-## 1. 現況診斷
-分析目前產線的主要問題和瓶頸，特別說明 Takt Time 達標情況（若有設定）。
-
-## 2. 動作拆解分析
-分析各工站的動作拆解數標（增值動作、非增值動作、必要浪費），識別可消除的浪費。
-
-## 2. Takt Time 達標改善方案
-${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工序壓縮或人員調配方案。' : '建議設定合理的 Takt Time，並說明如何依客戶需求計算。'}
-
-## 3. 平衡優化建議
-具體說明如何重新分配工序、調整人員配置以提升平衡率。
-
-## 4. 瓶頸改善方案
-針對瓶頸工站提出3-5個具體可行的改善措施。
-
-## 5. 預期效益
-估算優化後的平衡率提升、Takt Time 達標率改善和效率提升幅度。
-
-## 6. 實施優先順序
-按重要性排列改善項目的實施順序。`;
-
-        // 呼叫 Ollama API（OpenAI 相容格式）
-        const ollamaRes = await fetch(`${ENV.ollamaBaseUrl}/api/chat`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${ENV.ollamaApiKey}`,
-          },
-          body: JSON.stringify({
-            model: ENV.ollamaModel,
-            messages: [
-              { role: "system", content: "你是一位精通精實生產（Lean Manufacturing）和工業工程的專家顧問，擅長產線平衡分析和改善建議。請用繁體中文回答，格式清晰專業。" },
-              { role: "user", content: prompt },
-            ],
-            stream: false,
-          }),
-        });
-
-        if (!ollamaRes.ok) {
-          const errText = await ollamaRes.text();
-          throw new Error(`Ollama API 錯誤 (${ollamaRes.status}): ${errText}`);
+        const dataScope = [
+          `工站數量：${input.workstations.length} 個`,
+          `平衡率：${balanceRate}%`,
+          `瓶頸工站：${bottleneck?.name ?? "無"}（${bottleneck?.cycleTime ?? 0} 秒）`,
+          `平均工序時間：${avgTime.toFixed(1)} 秒`,
+          input.targetCycleTime ? `目標節拍：${input.targetCycleTime} 秒；達標率：${taktPassRate ?? "未計算"}%` : "目標節拍：未設定",
+          "資料限制：建議僅依本次匯入的工站與動作拆解資料形成；未提供的品質、設備或成本資料不可假設。",
+        ];
+        const dataContext = `產線名稱：${input.productionLineName}\n${dataScope.join("\n")}${taktSummary}\n\n各工站資料：\n${workstationList}`;
+        const reviewSystem = "你是製造現場審查團隊的一員。請以繁體中文、僅依提供資料判斷，禁止捏造數字、設備能力、成本、品質缺陷或已完成結果。你必須只輸出有效 JSON。";
+        const reviews: RoleReview[] = [];
+        for (const role of AI_REVIEW_ROLES) {
+          const rawReview = await requestOllamaJson(
+            reviewSystem,
+            `你的角色：${role.name}\n審查焦點：${role.focus}\n\n請審查下列產線資料。僅輸出 JSON：{"findings":["最多 3 項依據資料的發現"],"recommendations":["最多 3 項可執行建議"],"risks":["最多 3 項風險或資料限制"],"confidence":"high|medium|low"}\n\n${dataContext}`,
+          );
+          const parsed = roleReviewResponseSchema.parse(rawReview);
+          reviews.push({ roleId: role.id, roleName: role.name, ...parsed });
         }
-
-        const ollamaData = await ollamaRes.json() as {
-          message?: { content?: string };
-          error?: string;
-        };
-
-        const content = ollamaData.message?.content ?? "無法生成建議，請稍後再試。";
-        return { suggestion: content };
+        const rawConsensus = await requestOllamaJson(
+          "你是製造改善審查委員會主席。請比較五份審查意見，僅採用可由提供資料支持的共識。不可捏造效益數字；若有重大分歧、資料不足或行動無法驗證，必須將 consensusAchieved 設為 false。只輸出有效 JSON。",
+          `產線資料：\n${dataContext}\n\n五角色審查意見：\n${JSON.stringify(reviews)}\n\n輸出 JSON：{"consensusAchieved":true,"agreementScore":0-100,"managementSummary":"摘要","agreedFindings":["共同發現"],"actions":[{"priority":"P1|P2|P3","title":"行動","rationale":"理由","ownerRole":"責任角色","validationMetric":"驗證指標","targetHorizon":"時程"}],"risksAndValidation":["風險與驗證"],"unresolvedItems":["未決事項"]}`,
+        );
+        const consensus: ConsensusResult = consensusResponseSchema.parse(rawConsensus);
+        const decision = evaluateConsensus(consensus, reviews.length);
+        if (!decision.approved) throw new Error(`五角色審查未形成可核准共識：${decision.reason ?? "請補充資料後重新分析"}`);
+        const suggestion = buildStructuredConsensusReport({ productionLineName: input.productionLineName, dataScope, reviews, consensus });
+        return { suggestion, reviews, consensus };
       }),
 
     compareSnapshots: publicProcedure

@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { buildAIProfessionalReport, buildAIProfessionalReportHtml } from "../../../shared/aiProfessionalReport";
+import type { ConsensusResult, RoleReview } from "../../../shared/aiConsensus";
 import { Streamdown } from "streamdown";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -35,13 +36,17 @@ export default function AISuggestions() {
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [roleReviews, setRoleReviews] = useState<RoleReview[]>([]);
+  const [consensus, setConsensus] = useState<ConsensusResult | null>(null);
 
   const aiMutation = trpc.analysis.aiSuggest.useMutation({
     onSuccess: (data) => {
       const content = typeof data.suggestion === 'string' ? data.suggestion : JSON.stringify(data.suggestion);
       setSuggestion(content);
+      setRoleReviews(data.reviews);
+      setConsensus(data.consensus);
       setHasAnalyzed(true);
-      toast.success("AI 分析完成");
+      toast.success("五角色審查已達成共識，正式報告已就緒");
     },
     onError: () => toast.error("AI 分析失敗，請稍後再試"),
   });
@@ -96,6 +101,9 @@ export default function AISuggestions() {
 
   const handleAnalyze = () => {
     if (!workstations?.length) { toast.error("請先新增工站資料"); return; }
+    setSuggestion(null);
+    setRoleReviews([]);
+    setConsensus(null);
     
     // 為每個工站附加動作拆解資料
     const workstationsWithActions = workstations.map(w => {
@@ -319,10 +327,16 @@ export default function AISuggestions() {
                 <Brain className="absolute inset-0 m-auto h-7 w-7 text-amber-400" />
               </div>
               <p className="text-base font-medium mb-1">AI 正在分析產線數據...</p>
-              <p className="text-sm text-muted-foreground">正在生成平衡優化建議，請稍候</p>
+              <p className="text-sm text-muted-foreground">正在執行五角色審查與共識整合，請稍候</p>
             </div>
           ) : suggestion ? (
             <div className="prose prose-invert max-w-none space-y-4">
+              {consensus && (
+                <div className="not-prose rounded-xl border border-emerald-400/30 bg-emerald-400/5 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-emerald-300">五角色審查已達成共識</p><p className="mt-1 text-xs text-muted-foreground">精實與工業工程、製造營運、品質與可靠度、製程與設備、風險與治理皆已完成審查。</p></div><div className="rounded-lg bg-emerald-400/10 px-3 py-2 text-center"><p className="text-[10px] text-muted-foreground">共識分數</p><p className="text-lg font-bold text-emerald-300">{consensus.agreementScore.toFixed(0)} / 100</p></div></div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{roleReviews.map((review) => <div key={review.roleId} className="rounded-lg border border-border/70 bg-background/30 p-2"><p className="text-xs font-medium text-foreground">{review.roleName}</p><p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">{review.findings[0] ?? "已完成審查"}</p></div>)}</div>
+                </div>
+              )}
               <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-5">
                 <div className="text-sm leading-relaxed">
                   <ReactMarkdown
@@ -353,13 +367,13 @@ export default function AISuggestions() {
               </div>
               <h3 className="text-base font-semibold mb-2">準備好進行 AI 分析</h3>
               <p className="text-muted-foreground text-sm mb-6 max-w-md mx-auto">
-                AI 將分析您的產線數據，識別瓶頸工站，並提供具體的平衡優化建議和改善方案
+                AI 將以五個專業角色獨立審查相同產線資料；只有達成共識後，才會產出可匯出的正式改善報告。
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-lg mx-auto mb-6 text-xs">
                 {[
-                  { icon: BarChart3, text: "瓶頸識別與分析" },
-                  { icon: TrendingUp, text: "平衡優化建議" },
-                  { icon: Brain, text: "改善方案規劃" },
+                  { icon: BarChart3, text: "五角色獨立審查" },
+                  { icon: TrendingUp, text: "共識門檻確認" },
+                  { icon: Brain, text: "結構化改善報告" },
                 ].map(item => (
                   <div key={item.text} className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border">
                     <item.icon className="h-4 w-4 text-amber-400 shrink-0" />
