@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import DashboardLayout from "@/components/DashboardLayout";
 import ProductTimeline from "@/components/ProductTimeline";
+import { EfficiencyHeatmap } from "@/components/EfficiencyHeatmap";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +20,7 @@ import { toast } from "sonner";
 import {
   Plus, Trash2, ChevronRight, ArrowLeft, Edit2, Save, Clock, CheckCircle2,
   AlertCircle, RotateCcw, XCircle, ClipboardList, BarChart2, List,
+  Grid3X3,
 } from "lucide-react";
 
 // ─── 型別 ─────────────────────────────────────────────────────────────────────
@@ -49,6 +51,7 @@ export default function ProductTracking() {
   const [editingFlowId, setEditingFlowId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<ViewTab>("records");
+  const [showEfficiencyHeatmap, setShowEfficiencyHeatmap] = useState(false);
 
   // 新增產品個體表單
   const [newInstance, setNewInstance] = useState({
@@ -213,7 +216,7 @@ export default function ProductTracking() {
           {/* 頂部：產線選擇 */}
           <div className="p-4 border-b border-border space-y-3">
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">產品追蹤</h2>
-            <Select value={selectedLineId ? String(selectedLineId) : ""} onValueChange={(v) => { setSelectedLineId(parseInt(v)); setSelectedInstanceId(null); }}>
+            <Select value={selectedLineId ? String(selectedLineId) : ""} onValueChange={(v) => { setSelectedLineId(parseInt(v)); setSelectedInstanceId(null); setShowEfficiencyHeatmap(false); }}>
               <SelectTrigger className="h-8 text-sm">
                 <SelectValue placeholder="選擇產線" />
               </SelectTrigger>
@@ -224,17 +227,27 @@ export default function ProductTracking() {
               </SelectContent>
             </Select>
             {selectedLineId && (
-              <div className="flex gap-2">
-                <Input
-                  placeholder="搜尋序號 / 批次"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-7 text-xs"
-                />
-                <Button size="sm" className="h-7 px-2 shrink-0" onClick={() => setShowNewInstanceDialog(true)}>
-                  <Plus className="w-3.5 h-3.5" />
+              <>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="搜尋序號 / 批次"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                  <Button size="sm" className="h-7 px-2 shrink-0" onClick={() => setShowNewInstanceDialog(true)}>
+                    <Plus className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={`h-7 w-full gap-1.5 text-xs ${showEfficiencyHeatmap ? "border-violet-400/60 bg-violet-500/10 text-violet-300" : ""}`}
+                  onClick={() => { setShowEfficiencyHeatmap(true); setSelectedInstanceId(null); }}
+                >
+                  <Grid3X3 className="h-3.5 w-3.5" />工站效率熱圖
                 </Button>
-              </div>
+              </>
             )}
           </div>
 
@@ -255,7 +268,7 @@ export default function ProductTracking() {
                 return (
                   <div
                     key={inst.id}
-                    onClick={() => { setSelectedInstanceId(inst.id); setActiveTab("records"); }}
+                    onClick={() => { setSelectedInstanceId(inst.id); setActiveTab("records"); setShowEfficiencyHeatmap(false); }}
                     className={`px-4 py-3 cursor-pointer border-b border-border/50 transition-colors hover:bg-accent/40 ${isSelected ? "bg-accent/60 border-l-2 border-l-primary" : ""}`}
                   >
                     <div className="flex items-center justify-between">
@@ -279,7 +292,18 @@ export default function ProductTracking() {
 
         {/* 右欄：流程記錄 / 時間軸 */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {!selectedInstanceId ? (
+          {showEfficiencyHeatmap && selectedLineId ? (
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <div className="flex shrink-0 items-center justify-between border-b border-border bg-card/20 px-6 py-3">
+                <div>
+                  <div className="flex items-center gap-2"><Grid3X3 className="h-4 w-4 text-violet-400" /><span className="text-sm font-semibold text-foreground">產線效率分析</span></div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">依產品流程實績，從工站與時段兩個維度檢視效率。</p>
+                </div>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowEfficiencyHeatmap(false)}><ArrowLeft className="mr-1 h-3.5 w-3.5" />返回產品清單</Button>
+              </div>
+              <div className="flex-1 overflow-auto"><EfficiencyHeatmap productionLineId={selectedLineId} /></div>
+            </div>
+          ) : !selectedInstanceId ? (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
               <div className="text-center">
                 <ClipboardList className="w-12 h-12 mx-auto mb-3 opacity-20" />

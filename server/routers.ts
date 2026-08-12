@@ -37,6 +37,7 @@ import bcrypt from "bcryptjs";
 import { sdk } from "./_core/sdk";
 import { ENV } from "./_core/env";
 import { buildSimulationRunPlan, normalizeSimulationWorkstations } from "../shared/simulationRun";
+import { buildEfficiencyHeatmap } from "../shared/efficiencyHeatmap";
 import {
   generateRealtimeLineStatus,
   generateHistoricalTrend,
@@ -1357,6 +1358,46 @@ ${input.targetCycleTime ? '針對超出 Takt Time 的工站，提出具體的工
     listFlowRecordsBatch: protectedProcedure
       .input(z.object({ instanceIds: z.array(z.number()) }))
       .query(async ({ input }) => listFlowRecordsByInstances(input.instanceIds)),
+
+    // 依工站與時段彙整流程實績，產生效率熱圖矩陣。
+    getEfficiencyHeatmap: protectedProcedure
+      .input(z.object({
+        productionLineId: z.number().int().positive(),
+        from: z.date(),
+        to: z.date(),
+        bucketMinutes: z.number().int().min(15).max(240).default(60),
+      }).refine((input) => input.to.getTime() >= input.from.getTime(), {
+        message: "結束時間不得早於開始時間。",
+        path: ["to"],
+      }).refine((input) => input.to.getTime() - input.from.getTime() <= 31 * 24 * 60 * 60 * 1000, {
+        message: "效率熱圖最多支援 31 天的查詢區間。",
+        path: ["to"],
+      }))
+      .query(async ({ input }) => {
+        const [lineWorkstations, instances] = await Promise.all([
+          getWorkstationsByLine(input.productionLineId),
+          listProductInstances(input.productionLineId),
+        ]);
+        const flowRecords = await listFlowRecordsByInstances(instances.map((instance) => instance.id));
+
+        return buildEfficiencyHeatmap({
+          workstations: lineWorkstations.map((workstation) => ({
+            id: workstation.id,
+            name: workstation.name,
+            standardCycleTime: Number(workstation.cycleTime),
+          })),
+          records: flowRecords.map((record) => ({
+            workstationId: record.workstationId,
+            workstationName: record.workstationName,
+            actualCycleTime: record.actualCycleTime,
+            entryTime: record.entryTime,
+            createdAt: record.createdAt,
+          })),
+          from: input.from,
+          to: input.to,
+          bucketMinutes: input.bucketMinutes,
+        });
+      }),
 
     createFlowRecord: protectedProcedure
       .input(z.object({
