@@ -6,6 +6,8 @@ import {
   workstations, InsertWorkstation,
   masterDataAuditLogs,
   aiConsensusReviewEvents, InsertAIConsensusReviewEvent,
+  governanceDataCompletionTasks, InsertGovernanceDataCompletionTask,
+  governanceTaskNotifications, InsertGovernanceTaskNotification,
   actionSteps, InsertActionStep,
   handActions, InsertHandAction,
   analysisSnapshots, InsertAnalysisSnapshot,
@@ -24,6 +26,7 @@ import { resolveActionTypeForReview } from "../shared/actionReview";
 import { summarizeActionReviewQuality } from "../shared/actionReviewQuality";
 import { hasMasterDataAuditChangedField } from "../shared/masterDataAudit";
 import { summarizeAIConsensusGovernanceEvents } from "../shared/aiGovernance";
+import { shouldCreateHighFrequencyCompletionTask } from "../shared/governanceCompletionTasks";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -71,6 +74,68 @@ export async function listAIConsensusReviewEvents(filters: AIConsensusReviewEven
 export async function getAIConsensusGovernanceStats(filters: AIConsensusReviewEventFilters = {}) {
   const events = await listAIConsensusReviewEvents({ ...filters, limit: 500 });
   return { ...summarizeAIConsensusGovernanceEvents(events), events };
+}
+
+export async function resolveAIConsensusReviewEvent(input: { id: number; decision: "approved" | "returned" | "closed"; decisionNote: string; roleDisagreements: unknown; decidedBy: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(aiConsensusReviewEvents).set({ resolutionStatus: input.decision, manualDecision: input.decision, decisionNote: input.decisionNote, roleDisagreements: input.roleDisagreements, decidedBy: input.decidedBy, decidedAt: new Date() }).where(eq(aiConsensusReviewEvents.id, input.id));
+  const rows = await db.select().from(aiConsensusReviewEvents).where(eq(aiConsensusReviewEvents.id, input.id));
+  return rows[0] ?? null;
+}
+
+export async function listGovernanceDataCompletionTasks(filters: { productionLineId?: number; assigneeId?: number; status?: "open" | "in_progress" | "completed" | "cancelled" } = {}) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [] as any[];
+  if (filters.productionLineId) conditions.push(eq(governanceDataCompletionTasks.productionLineId, filters.productionLineId));
+  if (filters.assigneeId) conditions.push(eq(governanceDataCompletionTasks.assigneeId, filters.assigneeId));
+  if (filters.status) conditions.push(eq(governanceDataCompletionTasks.status, filters.status));
+  return db.select().from(governanceDataCompletionTasks).where(conditions.length ? and(...conditions) : undefined).orderBy(desc(governanceDataCompletionTasks.createdAt));
+}
+
+export async function createGovernanceDataCompletionTask(data: InsertGovernanceDataCompletionTask) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(governanceDataCompletionTasks).values(data);
+  const id = (result as any)[0]?.insertId as number;
+  const rows = await db.select().from(governanceDataCompletionTasks).where(eq(governanceDataCompletionTasks.id, id));
+  return rows[0] ?? null;
+}
+
+export async function updateGovernanceDataCompletionTask(id: number, data: Partial<Pick<InsertGovernanceDataCompletionTask, "assigneeId" | "status" | "dueDate">>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(governanceDataCompletionTasks).set(data).where(eq(governanceDataCompletionTasks.id, id));
+  const rows = await db.select().from(governanceDataCompletionTasks).where(eq(governanceDataCompletionTasks.id, id));
+  return rows[0] ?? null;
+}
+
+export async function createGovernanceTaskNotification(data: InsertGovernanceTaskNotification) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(governanceTaskNotifications).values(data);
+}
+
+export async function listGovernanceTaskNotifications(recipientId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(governanceTaskNotifications).where(eq(governanceTaskNotifications.recipientId, recipientId)).orderBy(desc(governanceTaskNotifications.createdAt)).limit(50);
+}
+
+export async function createHighFrequencyDataCompletionTasks(input: { productionLineId: number; sourceEventId: number; dataGaps: Array<{ key: string; title: string; impact: string; requestedData: string; recommendedProvider: string }>; createdBy?: number | null; threshold?: number }) {
+  const threshold = input.threshold ?? 3;
+  const events = await listAIConsensusReviewEvents({ productionLineId: input.productionLineId, limit: 500 });
+  const existingTasks = await listGovernanceDataCompletionTasks({ productionLineId: input.productionLineId });
+  const created = [] as Awaited<ReturnType<typeof createGovernanceDataCompletionTask>>[];
+  for (const gap of input.dataGaps) {
+    const frequencyCount = events.reduce((count, event) => count + (Array.isArray(event.dataGaps) && event.dataGaps.some((item: any) => item?.key === gap.key) ? 1 : 0), 0);
+    const hasActiveTask = existingTasks.some((task) => task.sourceGapKey === gap.key && (task.status === "open" || task.status === "in_progress"));
+    if (!shouldCreateHighFrequencyCompletionTask({ frequencyCount, threshold, hasActiveTask })) continue;
+    const task = await createGovernanceDataCompletionTask({ productionLineId: input.productionLineId, sourceGapKey: gap.key, title: `補件：${gap.title}`, description: `${gap.impact}\n\n需補充資料：${gap.requestedData}`, recommendedProvider: gap.recommendedProvider, assigneeId: null, status: "open", frequencyCount, threshold, sourceEventId: input.sourceEventId, dueDate: null, createdBy: input.createdBy ?? null });
+    if (task) created.push(task);
+  }
+  return created;
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {

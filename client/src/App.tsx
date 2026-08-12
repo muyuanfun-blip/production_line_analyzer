@@ -24,6 +24,7 @@ import ProductTracking from "./pages/ProductTracking";
 import GanttPage from "./pages/GanttPage";
 import ActionReviewDashboard from "./pages/ActionReviewDashboard";
 import AIConsensusGovernanceDashboard from "./pages/AIConsensusGovernanceDashboard";
+import DataCompletionInbox from "./pages/DataCompletionInbox";
 import { VSMPage } from "./pages/VSMPage";
 import { trpc } from "@/lib/trpc";
 import { useEffect } from "react";
@@ -79,6 +80,7 @@ function Router() {
               <Route path={"/admin/users"} component={AdminUsers} />
               <Route path={"/admin/action-review-quality"} component={ActionReviewDashboard} />
               <Route path={"/admin/ai-consensus-governance"} component={AIConsensusGovernanceDashboard} />
+              <Route path={"/data-completion-inbox"} component={DataCompletionInbox} />
               <Route path={"/data-refinement"} component={DataRefinement} />
               <Route path={"/simulator"} component={SimulationPage} />
               <Route path={"/product-models"} component={ProductModels} />

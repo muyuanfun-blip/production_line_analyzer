@@ -155,6 +155,13 @@
       "when": 1786529933367,
       "tag": "0021_modern_hedge_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1786531302177,
+      "tag": "0022_neat_adam_warlock",
+      "breakpoints": true
     }
   ]
 }

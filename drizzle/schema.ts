@@ -89,12 +89,54 @@ export const aiConsensusReviewEvents = mysqlTable("ai_consensus_review_events", 
   dataGaps: json("dataGaps").notNull(),
   reviews: json("reviews").notNull(),
   unresolvedItems: json("unresolvedItems").notNull(),
+  resolutionStatus: mysqlEnum("resolutionStatus", ["not_required", "pending", "approved", "returned", "closed"]).default("pending").notNull(),
+  manualDecision: mysqlEnum("manualDecision", ["approved", "returned", "closed"]),
+  decisionNote: text("decisionNote"),
+  roleDisagreements: json("roleDisagreements"),
+  decidedBy: int("decidedBy"),
+  decidedAt: timestamp("decidedAt"),
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
 export type AIConsensusReviewEvent = typeof aiConsensusReviewEvents.$inferSelect;
 export type InsertAIConsensusReviewEvent = typeof aiConsensusReviewEvents.$inferInsert;
+
+// 高頻資料缺口補件任務：自動由多次審查重複出現的資料缺口建立，並可指派與追蹤補件狀態
+export const governanceDataCompletionTasks = mysqlTable("governance_data_completion_tasks", {
+  id: int("id").autoincrement().primaryKey(),
+  productionLineId: int("productionLineId").notNull(),
+  sourceGapKey: varchar("sourceGapKey", { length: 96 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  recommendedProvider: varchar("recommendedProvider", { length: 255 }).notNull(),
+  assigneeId: int("assigneeId"),
+  status: mysqlEnum("status", ["open", "in_progress", "completed", "cancelled"]).default("open").notNull(),
+  frequencyCount: int("frequencyCount").notNull(),
+  threshold: int("threshold").notNull(),
+  sourceEventId: int("sourceEventId"),
+  dueDate: timestamp("dueDate"),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type GovernanceDataCompletionTask = typeof governanceDataCompletionTasks.$inferSelect;
+export type InsertGovernanceDataCompletionTask = typeof governanceDataCompletionTasks.$inferInsert;
+
+// 系統內補件通知：任務自動建立時通知管理者，指派後通知實際責任人
+export const governanceTaskNotifications = mysqlTable("governance_task_notifications", {
+  id: int("id").autoincrement().primaryKey(),
+  taskId: int("taskId").notNull(),
+  recipientId: int("recipientId").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  content: text("content").notNull(),
+  readAt: timestamp("readAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type GovernanceTaskNotification = typeof governanceTaskNotifications.$inferSelect;
+export type InsertGovernanceTaskNotification = typeof governanceTaskNotifications.$inferInsert;
 
 // 動作步驟資料表
 export const actionSteps = mysqlTable("action_steps", {

@@ -1,0 +1,16 @@
+import { Bell, ClipboardCheck, FileWarning, Inbox, UserRound } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useLocation } from "wouter";
+import { trpc } from "@/lib/trpc";
+
+const statusMeta = { open: { label: "待處理", className: "text-orange-300 bg-orange-400/10" }, in_progress: { label: "處理中", className: "text-cyan-300 bg-cyan-400/10" }, completed: { label: "已完成", className: "text-emerald-300 bg-emerald-400/10" }, cancelled: { label: "已取消", className: "text-muted-foreground bg-muted" } } as const;
+
+export default function DataCompletionInbox() {
+  const [, setLocation] = useLocation();
+  const { data: tasks, isLoading: tasksLoading } = trpc.aiGovernance.myDataCompletionTasks.useQuery();
+  const { data: notifications } = trpc.aiGovernance.myTaskNotifications.useQuery();
+  return <div className="space-y-6 p-6"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm text-muted-foreground">我的工作／資料治理</p><h1 className="text-2xl font-bold">補件任務與通知</h1><p className="mt-1 text-sm text-muted-foreground">此處列出指派給你的高頻資料缺口補件任務；完成補件後請回到對應模組更新資料。</p></div><Button variant="outline" onClick={() => setLocation("/")}>返回首頁</Button></div>
+    <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]"><Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><ClipboardCheck className="h-4 w-4 text-cyan-300" />我的補件任務</CardTitle></CardHeader><CardContent className="space-y-3">{tasksLoading ? <p className="py-8 text-center text-sm text-muted-foreground">載入中…</p> : !tasks?.length ? <div className="py-10 text-center"><Inbox className="mx-auto h-9 w-9 text-muted-foreground/40" /><p className="mt-2 text-sm text-muted-foreground">目前沒有指派給你的補件任務。</p></div> : tasks.map((task) => { const meta = statusMeta[task.status]; return <div key={task.id} className="rounded-lg border border-border/70 bg-muted/15 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-medium">{task.title}</p><p className="mt-1 text-sm text-muted-foreground whitespace-pre-line">{task.description}</p></div><span className={`rounded-full px-2 py-1 text-xs ${meta.className}`}>{meta.label}</span></div><div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3"><span><UserRound className="mr-1 inline h-3.5 w-3.5" />建議提供者：{task.recommendedProvider}</span><span><FileWarning className="mr-1 inline h-3.5 w-3.5" />出現 {task.frequencyCount} 次</span><span>建立：{new Date(task.createdAt).toLocaleDateString("zh-TW")}</span></div></div>; })}</CardContent></Card><Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><Bell className="h-4 w-4 text-amber-300" />系統通知</CardTitle></CardHeader><CardContent className="space-y-3">{!notifications?.length ? <p className="py-8 text-center text-sm text-muted-foreground">目前沒有新通知。</p> : notifications.map((notification) => <div key={notification.id} className="rounded-lg border border-border/60 p-3"><p className="text-sm font-medium">{notification.title}</p><p className="mt-1 text-xs text-muted-foreground">{notification.content}</p><p className="mt-2 text-[10px] text-muted-foreground">{new Date(notification.createdAt).toLocaleString("zh-TW")}</p></div>)}</CardContent></Card></div>
+  </div>;
+}

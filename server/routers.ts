@@ -35,7 +35,9 @@ import {
   listVSMVersions, getVSMVersionById, createVSMVersion, restoreVSMVersion, deleteVSMVersionsByDiagram,
   listVSMImprovementActions, createVSMImprovementAction, updateVSMImprovementAction,
   deleteVSMImprovementAction, deleteVSMImprovementActionsByDiagram, deleteVSMImprovementActionsByProcess,
-  createAIConsensusReviewEvent, getAIConsensusGovernanceStats,
+  createAIConsensusReviewEvent, getAIConsensusGovernanceStats, resolveAIConsensusReviewEvent,
+  listGovernanceDataCompletionTasks, updateGovernanceDataCompletionTask,
+  createGovernanceTaskNotification, listGovernanceTaskNotifications, createHighFrequencyDataCompletionTasks,
 } from "./db";
 import bcrypt from "bcryptjs";
 import { sdk } from "./_core/sdk";
@@ -274,6 +276,29 @@ export const appRouter = router({
         startDate: input?.from,
         endDate: input?.to,
       })),
+    resolveReview: adminProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        decision: z.enum(["approved", "returned", "closed"]),
+        decisionNote: z.string().min(3).max(3000),
+        roleDisagreements: z.array(z.object({ roleId: z.enum(["lean_ie", "operations", "quality", "process_equipment", "risk_governance"]), note: z.string().min(1).max(1000) })).max(5),
+      }))
+      .mutation(async ({ input, ctx }) => resolveAIConsensusReviewEvent({ ...input, decidedBy: ctx.user.id })),
+    listDataCompletionTasks: adminProcedure
+      .input(z.object({ productionLineId: z.number().int().positive().optional(), status: z.enum(["open", "in_progress", "completed", "cancelled"]).optional() }).optional())
+      .query(async ({ input }) => listGovernanceDataCompletionTasks(input ?? {})),
+    updateDataCompletionTask: adminProcedure
+      .input(z.object({ id: z.number().int().positive(), assigneeId: z.number().int().positive().nullable().optional(), status: z.enum(["open", "in_progress", "completed", "cancelled"]).optional(), dueDate: z.date().nullable().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const { id, assigneeId, status, dueDate } = input;
+        const task = await updateGovernanceDataCompletionTask(id, { assigneeId, status, dueDate });
+        if (task && assigneeId) await createGovernanceTaskNotification({ taskId: task.id, recipientId: assigneeId, title: "已指派資料補件任務", content: `任務：${task.title}。建議提供者：${task.recommendedProvider}。請依期限補充所需資料。` });
+        return task;
+      }),
+    myTaskNotifications: protectedProcedure
+      .query(async ({ ctx }) => listGovernanceTaskNotifications(ctx.user.id)),
+    myDataCompletionTasks: protectedProcedure
+      .query(async ({ ctx }) => listGovernanceDataCompletionTasks({ assigneeId: ctx.user.id })),
   }),
 
   // ─── Production Lines ───────────────────────────────────────────────────
@@ -797,7 +822,7 @@ export const appRouter = router({
           workstations: input.workstations.map((station, index) => ({ id: index + 1, name: station.name, cycleTime: station.cycleTime, manpower: station.manpower })),
           actionSteps: input.workstations.flatMap((station, index) => (station.actionSteps ?? []).map((step) => ({ workstationId: index + 1, duration: step.duration }))),
         });
-        await createAIConsensusReviewEvent({
+        const reviewEvent = await createAIConsensusReviewEvent({
           productionLineId: input.productionLineId,
           status: approved ? "approved" : "needs_clarification",
           agreementScore: Math.round(consensus.agreementScore),
@@ -809,6 +834,22 @@ export const appRouter = router({
           unresolvedItems: consensus.unresolvedItems,
           createdBy: ctx.user?.id ?? null,
         });
+        if (!approved && reviewEvent) {
+          const createdTasks = await createHighFrequencyDataCompletionTasks({
+            productionLineId: input.productionLineId,
+            sourceEventId: reviewEvent.id,
+            dataGaps,
+            createdBy: ctx.user?.id ?? null,
+          });
+          if (createdTasks.length > 0) {
+            const administrators = (await getAllUsers()).filter((user) => user.role === "admin" && user.isActive === 1);
+            for (const task of createdTasks) {
+              for (const administrator of administrators) {
+                await createGovernanceTaskNotification({ taskId: task.id, recipientId: administrator.id, title: "高頻資料缺口補件任務待指派", content: `已建立「${task.title}」，累計出現 ${task.frequencyCount} 次。建議由：${task.recommendedProvider} 補充資料並指派責任人。` });
+              }
+            }
+          }
+        }
         const suggestion = approved
           ? buildStructuredConsensusReport(reportInput)
           : buildConsensusClarificationSummary(reportInput, approvalReason ?? "尚未形成可核准共識");

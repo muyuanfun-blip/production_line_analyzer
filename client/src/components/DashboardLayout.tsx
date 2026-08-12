@@ -40,6 +40,7 @@ import {
   GitBranch,
   ScanSearch,
   BarChart3,
+  ClipboardCheck,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -58,6 +59,7 @@ const navGroups = [
     label: "資料管理",
     items: [
       { icon: GitBranch,   label: "VSM 設計", path: "/lines/1/vsm" },
+      { icon: ClipboardCheck, label: "我的補件任務", path: "/data-completion-inbox" },
     ],
   },
 ];
