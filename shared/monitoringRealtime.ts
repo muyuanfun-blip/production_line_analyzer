@@ -17,3 +17,14 @@ export function summarizeProductFlows(records: Array<{ status: FlowStatus }>) {
     { completed: 0, in_progress: 0, waiting: 0 },
   );
 }
+
+export function buildActionCockpitSummary(workstation: { status: MonitoringStatus; utilization: number; waitingProducts: number }) {
+  const hasWaiting = workstation.waitingProducts > 0;
+  return {
+    hasWaiting,
+    severity: workstation.status === "critical" || workstation.status === "offline" ? "critical" : workstation.status === "warning" || hasWaiting ? "warning" : "normal",
+    message: hasWaiting
+      ? `目前有 ${workstation.waitingProducts} 件等待產品，建議優先確認物料與前後工站節拍。`
+      : `暫無等待產品；目前利用率 ${workstation.utilization.toFixed(1)}%。`,
+  };
+}

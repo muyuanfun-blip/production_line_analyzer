@@ -677,7 +677,7 @@
   - [x] 從選取 VSM 工序建立產品追蹤情境導覽
   - [x] 在產品追蹤顯示帶入的 VSM 工序摘要
   - [x] 補強 VSM 產品追蹤情境解析的單元測試
-- [ ] 試強 VSM 相關 Vitest 測試—選擇性実現
+- [x] 補強 VSM 相關 Vitest 測試—選擇性實現
 
 
 ## VSM 模組完成總結
@@ -710,6 +710,14 @@
 - [x] 所有 132 項測試通過
 
 ## 產線生產即時戰情監控系統（新增）
+
+### 戰情看板重構方案（新增）
+- [x] 提出三種戰情看板資訊架構與視覺重構方案
+- [x] 實作 A+B 混合戰情看板重構
+  - [x] 建立全線健康列、數位產線流程與固定警示佇列
+  - [x] 建立瓶頸處置駕駛艙抽屜，呈現影響鏈與 AI 行動建議
+  - [x] 整合前往平衡分析、VSM、產品追蹤與配置模擬的行動入口
+  - [x] 補強視覺資料轉換與抽屜狀態的單元測試
 
 ### 第一階段：後端 API（模擬資料生成）
 - [x] 後端：新增 monitoring.getRealTimeStatus procedure（回傳當前產線即時狀態）
@@ -839,7 +847,7 @@
 ## 早晚班人力配置支援（新增）
 - [x] 修改 workstations 資料表：新增 morningManpower 和 eveningManpower 欄位
 - [x] 執行資料庫遷移（ALTER TABLE）
-- [ ] 建立資料遷移指令汁：將現有 manpower 資料遷移到 morningManpower
+- [x] 建立資料遷移指令：將現有 manpower 資料遷移到 morningManpower
 - [x] 更新後端 workstation CRUD API：支援早晚班人力輸入
 - [x] 更新前端工站管理介面：分別輸入早班和晚班人力
 - [x] 修正 UPPH 計算公式：使用 (morningManpower + eveningManpower) 替代 totalManpower

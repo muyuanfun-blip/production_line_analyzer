@@ -293,6 +293,14 @@ export default function MonitoringDashboard() {
     () => realtimeStatus?.anomalies.filter((anomaly) => anomaly.level === "warning") ?? [],
     [realtimeStatus?.anomalies],
   );
+  const selectedWsData = useMemo(
+    () => realtimeStatus?.workstations.find((workstation) => workstation.id === selectedWs) ?? null,
+    [realtimeStatus?.workstations, selectedWs],
+  );
+  const selectedWsAnomalies = useMemo(
+    () => realtimeStatus?.anomalies.filter((anomaly) => anomaly.wsId === selectedWs) ?? [],
+    [realtimeStatus?.anomalies, selectedWs],
+  );
 
   useEffect(() => {
     latestStatusRef.current = realtimeStatus ?? null;
@@ -910,20 +918,17 @@ export default function MonitoringDashboard() {
           )}
         </div>
 
-        {/* 工站詳細分析 */}
-        {selectedWs && (
-          <div className="mt-4 sm:mt-6 rounded-lg border border-cyan-500/20 bg-slate-900/50 backdrop-blur p-3 sm:p-4">
-            <h2 className="mb-3 sm:mb-4 text-xs sm:text-sm font-bold uppercase tracking-widest text-cyan-400">
-              {realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.name} - 詳細分析
-            </h2>
-            {realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs) && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
-                <KPICard label="效率" value={`${isNaN((realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.efficiency) || 0) ? '0' : (realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.efficiency || 0).toFixed(1)}%`} />
-                <KPICard label="利用率" value={`${isNaN((realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.utilization) || 0) ? '0' : (realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.utilization || 0).toFixed(1)}%`} />
-                <KPICard label="等待產品" value={(realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.waitingProducts) || 0} />
-                <KPICard label="狀態" value={getStatusLabel((realtimeStatus.workstations.find((ws: RealtimeWorkstation) => ws.id === selectedWs)?.status) || "")} />
-              </div>
-            )}
+        {selectedWsData && (
+          <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-cyan-400/30 bg-slate-950/95 shadow-2xl shadow-cyan-950/60 backdrop-blur-xl">
+            <div className="border-b border-cyan-500/20 px-5 py-4">
+              <div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-400">Bottleneck Action Cockpit</p><h2 className="mt-1 text-xl font-bold text-white">{selectedWsData.name}</h2><p className="mt-1 text-xs text-slate-400">{selectedWsData.id === realtimeStatus.bottleneckWsId ? "目前全線瓶頸工站" : "工站即時處置資訊"}</p></div><button onClick={() => setSelectedWs(null)} className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800">關閉</button></div>
+            </div>
+            <div className="flex-1 space-y-5 overflow-y-auto p-5">
+              <div className="grid grid-cols-2 gap-3"><KPICard label="效率" value={`${selectedWsData.efficiency.toFixed(1)}%`} status={selectedWsData.efficiency >= 85 ? "good" : "warning"} /><KPICard label="等待產品" value={selectedWsData.waitingProducts} status={selectedWsData.waitingProducts > 0 ? "warning" : "good"} /><KPICard label="目前 CT" value={`${selectedWsData.cycleTime.toFixed(1)}s`} /><KPICard label="目標 CT" value={`${selectedWsData.targetCycleTime.toFixed(1)}s`} /></div>
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3"><p className="text-xs font-bold text-amber-300">影響鏈</p><p className="mt-1 text-xs leading-5 text-amber-100/75">此站狀態為「{getStatusLabel(selectedWsData.status)}」，利用率 {selectedWsData.utilization.toFixed(1)}%。{selectedWsData.waitingProducts > 0 ? `目前有 ${selectedWsData.waitingProducts} 件等待產品，建議優先確認物料與前後工站節拍。` : "暫無等待產品。"}</p></div>
+              <div><p className="mb-2 text-xs font-bold uppercase tracking-widest text-cyan-300">即時警示與建議</p>{selectedWsAnomalies.length ? selectedWsAnomalies.map((anomaly) => <div key={anomaly.id} className="mb-2 rounded border border-red-500/25 bg-red-500/10 p-3 text-xs"><p className="font-semibold text-red-300">{anomaly.message}</p><p className="mt-1 text-red-100/70">{anomaly.suggestedAction || getAISuggestions(selectedWsData.name, anomaly.level === "critical" ? "critical" : "warning", selectedWsData.id)}</p></div>) : <div className="rounded border border-emerald-500/25 bg-emerald-500/10 p-3 text-xs text-emerald-200">此工站目前未有待處置警示。</div>}</div>
+              <div className="grid grid-cols-2 gap-2"><button onClick={() => setLocation(buildMonitoringBalanceUrl(monitoringLineId, { balanceRate: realtimeStatus.balanceRate, upph: realtimeStatus.upph, taktAchievement: realtimeStatus.taktAchievement, productionActual: realtimeStatus.productionActual, productionTarget: realtimeStatus.productionTarget, bottleneckWsId: selectedWsData.id }))} className="rounded bg-violet-500/20 px-3 py-2 text-xs font-semibold text-violet-100 hover:bg-violet-500/30">平衡診斷</button><button onClick={() => setLocation(buildMonitoringVsmUrl({ lineId: monitoringLineId, bottleneckWsId: selectedWsData.id, balanceRate: realtimeStatus.balanceRate, criticalCount: criticalAnomalies.length, warningCount: warningAnomalies.length }))} className="rounded bg-amber-500/20 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-500/30">查看 VSM</button></div>
+            </div>
           </div>
         )}
       </div>
