@@ -3,7 +3,7 @@
 import { useLocation, useParams } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, TrendingUp, ChevronDown, ChevronUp, Zap, Activity, Clock, Maximize2, Minimize2, RotateCw, ArrowUp, ArrowDown, SlidersHorizontal, Plus, Trash2, BarChart3 } from "lucide-react";
+import { AlertCircle, TrendingUp, ChevronDown, ChevronUp, Zap, Activity, Clock, Maximize2, Minimize2, RotateCw, ArrowUp, ArrowDown, SlidersHorizontal, Plus, Trash2, BarChart3, Settings } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
@@ -11,6 +11,7 @@ import { getChangedWorkstationIds, summarizeProductFlows } from "../../../shared
 import { buildMonitoringBalanceUrl } from "../../../shared/monitoringBalanceContext";
 import { buildMonitoringTrackingUrl } from "../../../shared/monitoringTrackingContext";
 import { buildMonitoringVsmUrl } from "../../../shared/monitoringVsmContext";
+import { buildMonitoringSimulationUrl } from "../../../shared/monitoringSimulationContext";
 
 interface RealtimeWorkstation {
   id: number;
@@ -516,6 +517,21 @@ export default function MonitoringDashboard() {
             <Activity size={14} className="sm:w-4 sm:h-4" />
             <span className="hidden lg:inline">VSM 流程</span>
             <span className="lg:hidden">VSM</span>
+          </button>
+          <button
+            onClick={() => realtimeStatus && setLocation(buildMonitoringSimulationUrl({
+              lineId: monitoringLineId,
+              bottleneckWsId: realtimeStatus.bottleneckWsId,
+              balanceRate: realtimeStatus.balanceRate,
+              upph: realtimeStatus.upph,
+              criticalCount: criticalAnomalies.length,
+            }))}
+            className="rounded-lg bg-cyan-500/15 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-cyan-200 transition hover:bg-cyan-500/25 flex items-center gap-1 sm:gap-2"
+            title="以即時 KPI 建立或調整配置模擬"
+          >
+            <Settings size={14} className="sm:w-4 sm:h-4" />
+            <span className="hidden xl:inline">配置模擬</span>
+            <span className="xl:hidden">模擬</span>
           </button>
           <button
             onClick={toggleFullscreen}
