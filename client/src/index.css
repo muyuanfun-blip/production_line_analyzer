@@ -165,6 +165,39 @@ html:not(.dark) .data-table td { border-color: var(--border); }
 html:not(.dark) .data-table tr:hover td { background: var(--accent); }
 html:not(.dark) ::-webkit-scrollbar-thumb { background: oklch(0.74 0.025 220); }
 
+/* Legacy analysis/VSM surfaces still use Tailwind slate utilities. Normalize
+ * them in light mode instead of allowing near-white text on pale surfaces. */
+html:not(.dark) .bg-slate-950,
+html:not(.dark) .bg-slate-900 { background-color: var(--card) !important; }
+html:not(.dark) .bg-slate-800 { background-color: var(--surface-raised) !important; }
+html:not(.dark) .bg-slate-700,
+html:not(.dark) .bg-slate-700\/60 { background-color: var(--muted) !important; }
+html:not(.dark) .border-slate-900,
+html:not(.dark) .border-slate-800,
+html:not(.dark) .border-slate-700,
+html:not(.dark) .border-slate-600 { border-color: var(--border) !important; }
+html:not(.dark) .text-slate-100,
+html:not(.dark) .text-slate-200 { color: var(--foreground) !important; }
+html:not(.dark) .text-slate-300,
+html:not(.dark) .text-slate-400,
+html:not(.dark) .text-slate-500 { color: var(--muted-foreground) !important; }
+html:not(.dark) .bg-slate-950 .text-white,
+html:not(.dark) .bg-slate-900 .text-white,
+html:not(.dark) .bg-slate-800 .text-white,
+html:not(.dark) .bg-slate-700 .text-white { color: var(--foreground) !important; }
+html:not(.dark) .text-cyan-300,
+html:not(.dark) .text-cyan-400 { color: oklch(0.470 0.135 212) !important; }
+html:not(.dark) .text-emerald-300,
+html:not(.dark) .text-emerald-400 { color: oklch(0.440 0.130 155) !important; }
+html:not(.dark) .text-amber-300,
+html:not(.dark) .text-amber-400 { color: oklch(0.500 0.135 72) !important; }
+html:not(.dark) .text-violet-300,
+html:not(.dark) .text-purple-400 { color: oklch(0.440 0.125 292) !important; }
+html:not(.dark) .text-blue-400 { color: oklch(0.450 0.135 255) !important; }
+html:not(.dark) .text-red-300,
+html:not(.dark) .text-red-400 { color: oklch(0.490 0.175 27) !important; }
+html:not(.dark) .text-orange-400 { color: oklch(0.520 0.160 52) !important; }
+
 /* ── Base layer ─────────────────────────────────────────────────────────── */
 @layer base {
   * {
