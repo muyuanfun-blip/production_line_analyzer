@@ -21,6 +21,7 @@ describe("AI 專業圖文報告", () => {
     expect(report.kpis).toMatchObject({ workstationCount: 2, totalCycleTime: 30, maxCycleTime: 20, averageCycleTime: 15, totalManpower: 3, balanceRate: 75, taktPassCount: 2, bottleneckName: "組裝" });
     expect(report.kpis.upph).toBe(60);
     expect(report.actionBreakdown.find((item) => item.type === "value_added")).toMatchObject({ duration: 12, count: 1, share: 60 });
+    expect(report.completeness).toMatchObject({ score: 75, level: "usable", label: "可用但仍有缺口" });
   });
 
   it("將 AI Markdown 安全轉換為可下載的報告 HTML，不執行輸入標籤", () => {
@@ -28,6 +29,8 @@ describe("AI 專業圖文報告", () => {
     const html = buildAIProfessionalReportHtml(report);
     expect(html).toContain("AI 產線優化分析報告");
     expect(html).toContain("示範產線");
+    expect(html).toContain("資訊完整度與可採信範圍");
+    expect(html).toContain("不代表改善成效、成本效益或正式核准結論");
     expect(html).toContain("&lt;script&gt;");
     expect(html).not.toContain("<script>alert");
   });

@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { useLocation, useParams } from "wouter";
 import {
   ArrowLeft, ChevronRight, Brain, Sparkles, Download, RefreshCw,
-  BarChart3, AlertTriangle, TrendingUp, Clock, Users, FileText, MessageSquare, Send, ShieldCheck
+  BarChart3, AlertTriangle, TrendingUp, Clock, Users, FileText, MessageSquare, Send, ShieldCheck, Gauge
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import type { ConsensusResult, RoleReview } from "../../../shared/aiConsensus";
 import { INTERACTIVE_QUICK_QUESTIONS } from "../../../shared/interactiveAnalysis";
 import { assessAnalysisDataReadiness, getReadinessLevel } from "../../../shared/analysisDataReadiness";
 import { deriveInteractiveActionDraft, type InteractiveActionDraft } from "../../../shared/interactiveActionPlan";
+import type { ReportCompleteness } from "../../../shared/reportCompleteness";
 import { Streamdown } from "streamdown";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -42,6 +43,7 @@ export default function AISuggestions() {
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
   const [analysisStatus, setAnalysisStatus] = useState<"idle" | "approved" | "needs_clarification">("idle");
   const [approvalReason, setApprovalReason] = useState<string | null>(null);
+  const [analysisCompleteness, setAnalysisCompleteness] = useState<ReportCompleteness | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [roleReviews, setRoleReviews] = useState<RoleReview[]>([]);
   const [consensus, setConsensus] = useState<ConsensusResult | null>(null);
@@ -62,6 +64,7 @@ export default function AISuggestions() {
       setConsensus(data.consensus);
       setAnalysisStatus(data.status);
       setApprovalReason(data.approvalReason);
+      setAnalysisCompleteness(data.completeness);
       setHasAnalyzed(true);
       if (data.status === "approved") toast.success("五角色審查已達成共識，正式報告已就緒");
       else toast.warning("五角色審查尚未達成共識，請先補充資料或釐清分歧");
@@ -157,6 +160,7 @@ export default function AISuggestions() {
     setConsensus(null);
     setAnalysisStatus("idle");
     setApprovalReason(null);
+    setAnalysisCompleteness(null);
     setInteractiveMessages([]);
     setInteractiveQuestion("");
     
@@ -467,6 +471,12 @@ export default function AISuggestions() {
                 <div className="not-prose rounded-xl border border-orange-400/35 bg-orange-400/5 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-orange-200">五角色審查尚未形成正式共識</p><p className="mt-1 text-xs text-muted-foreground">原因：{approvalReason ?? "尚待補充資料或釐清角色分歧"}。本次內容僅作補充資料與現場確認用途，尚不可建立改善行動或匯出正式報告。</p></div><div className="rounded-lg bg-orange-400/10 px-3 py-2 text-center"><p className="text-[10px] text-muted-foreground">目前共識分數</p><p className="text-lg font-bold text-orange-300">{consensus.agreementScore.toFixed(0)} / 100</p></div></div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{roleReviews.map((review) => <div key={review.roleId} className="rounded-lg border border-border/70 bg-background/30 p-2"><p className="text-xs font-medium text-foreground">{review.roleName}</p><p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">{review.risks[0] ?? review.findings[0] ?? "請現場確認審查前提"}</p></div>)}</div>
+                </div>
+              )}
+              {analysisCompleteness && (
+                <div className="not-prose rounded-xl border border-cyan-400/25 bg-cyan-400/5 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-cyan-100">資訊完整度：{analysisCompleteness.score} / 100</p><p className="mt-1 text-xs text-muted-foreground">{analysisCompleteness.label}。評分衡量節拍、CT、人力、動作拆解與資料對齊的覆蓋程度，不代表改善效益或正式核准結論。</p></div><Gauge className="h-7 w-7 text-cyan-300" /></div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{analysisCompleteness.components.map((component) => <div key={component.key} className="rounded-lg border border-border/70 bg-background/30 p-2"><p className="text-[11px] text-muted-foreground">{component.label}</p><p className="mt-1 text-sm font-semibold text-cyan-100">{component.score} / {component.maxScore}</p><p className="mt-1 text-[10px] text-muted-foreground">{component.detail}</p></div>)}</div>
                 </div>
               )}
               <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-5">

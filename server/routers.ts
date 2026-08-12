@@ -35,6 +35,7 @@ import {
   listVSMVersions, getVSMVersionById, createVSMVersion, restoreVSMVersion, deleteVSMVersionsByDiagram,
   listVSMImprovementActions, createVSMImprovementAction, updateVSMImprovementAction,
   deleteVSMImprovementAction, deleteVSMImprovementActionsByDiagram, deleteVSMImprovementActionsByProcess,
+  createAIConsensusReviewEvent, getAIConsensusGovernanceStats,
 } from "./db";
 import bcrypt from "bcryptjs";
 import { sdk } from "./_core/sdk";
@@ -45,6 +46,7 @@ import { getManpowerQuality, normalizeManpower } from "../shared/workstationManp
 import { AI_REVIEW_ROLES, buildConsensusClarificationSummary, buildStructuredConsensusReport, evaluateConsensus, type ConsensusResult, type RoleReview } from "../shared/aiConsensus";
 import { buildInteractiveAnalysisContext, validateInteractiveQuestion } from "../shared/interactiveAnalysis";
 import { assessAnalysisDataReadiness, getReadinessLevel } from "../shared/analysisDataReadiness";
+import { calculateReportCompleteness } from "../shared/reportCompleteness";
 
 // ─── Zod Schemas ─────────────────────────────────────────────────────────────
 
@@ -256,6 +258,22 @@ export const appRouter = router({
         limit: z.number().int().min(1).max(500).optional(),
       }))
       .query(async ({ input }) => listMasterDataAuditLogs(input)),
+  }),
+
+  aiGovernance: router({
+    getStats: adminProcedure
+      .input(z.object({
+        productionLineId: z.number().int().positive().optional(),
+        status: z.enum(["approved", "needs_clarification"]).optional(),
+        from: z.date().optional(),
+        to: z.date().optional(),
+      }).optional())
+      .query(async ({ input }) => getAIConsensusGovernanceStats({
+        productionLineId: input?.productionLineId,
+        status: input?.status,
+        startDate: input?.from,
+        endDate: input?.to,
+      })),
   }),
 
   // ─── Production Lines ───────────────────────────────────────────────────
@@ -687,7 +705,7 @@ export const appRouter = router({
           }).optional(),
         })).min(1),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         // 本地部署：若未設定 OLLAMA_API_KEY，回傳友善錯誤訊息
         if (!ENV.ollamaApiKey) {
           throw new Error('AI 分析功能需要設定 OLLAMA_API_KEY 環境變數。請在 .env 檔案中設定 OLLAMA_API_KEY，並確認本地 Ollama 服務已啟動（預設 http://localhost:11434）。');
@@ -774,10 +792,27 @@ export const appRouter = router({
         const reportInput = { productionLineName: input.productionLineName, dataScope, reviews, consensus };
         const approved = decision.approved;
         const approvalReason = decision.reason ?? null;
+        const completeness = calculateReportCompleteness({
+          targetCycleTime: input.targetCycleTime,
+          workstations: input.workstations.map((station, index) => ({ id: index + 1, name: station.name, cycleTime: station.cycleTime, manpower: station.manpower })),
+          actionSteps: input.workstations.flatMap((station, index) => (station.actionSteps ?? []).map((step) => ({ workstationId: index + 1, duration: step.duration }))),
+        });
+        await createAIConsensusReviewEvent({
+          productionLineId: input.productionLineId,
+          status: approved ? "approved" : "needs_clarification",
+          agreementScore: Math.round(consensus.agreementScore),
+          approvalReason,
+          readinessLevel,
+          completenessScore: completeness.score,
+          dataGaps,
+          reviews,
+          unresolvedItems: consensus.unresolvedItems,
+          createdBy: ctx.user?.id ?? null,
+        });
         const suggestion = approved
           ? buildStructuredConsensusReport(reportInput)
           : buildConsensusClarificationSummary(reportInput, approvalReason ?? "尚未形成可核准共識");
-        return { status: approved ? "approved" as const : "needs_clarification" as const, approvalReason, suggestion, reviews, consensus, dataGaps, readinessLevel };
+        return { status: approved ? "approved" as const : "needs_clarification" as const, approvalReason, suggestion, reviews, consensus, dataGaps, readinessLevel, completeness };
       }),
 
     interactiveAnalyze: protectedProcedure

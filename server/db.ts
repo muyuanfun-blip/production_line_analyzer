@@ -5,6 +5,7 @@ import {
   productionLines, InsertProductionLine,
   workstations, InsertWorkstation,
   masterDataAuditLogs,
+  aiConsensusReviewEvents, InsertAIConsensusReviewEvent,
   actionSteps, InsertActionStep,
   handActions, InsertHandAction,
   analysisSnapshots, InsertAnalysisSnapshot,
@@ -22,6 +23,7 @@ import { ENV } from './_core/env';
 import { resolveActionTypeForReview } from "../shared/actionReview";
 import { summarizeActionReviewQuality } from "../shared/actionReviewQuality";
 import { hasMasterDataAuditChangedField } from "../shared/masterDataAudit";
+import { summarizeAIConsensusGovernanceEvents } from "../shared/aiGovernance";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -35,6 +37,40 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+export interface AIConsensusReviewEventFilters {
+  productionLineId?: number;
+  status?: "approved" | "needs_clarification";
+  startDate?: Date;
+  endDate?: Date;
+  limit?: number;
+}
+
+export async function createAIConsensusReviewEvent(data: InsertAIConsensusReviewEvent) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(aiConsensusReviewEvents).values(data);
+  const id = (result as any)[0]?.insertId as number;
+  const rows = await db.select().from(aiConsensusReviewEvents).where(eq(aiConsensusReviewEvents.id, id));
+  return rows[0] ?? null;
+}
+
+export async function listAIConsensusReviewEvents(filters: AIConsensusReviewEventFilters = {}) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [] as any[];
+  if (filters.productionLineId) conditions.push(eq(aiConsensusReviewEvents.productionLineId, filters.productionLineId));
+  if (filters.status) conditions.push(eq(aiConsensusReviewEvents.status, filters.status));
+  if (filters.startDate) conditions.push(gte(aiConsensusReviewEvents.createdAt, filters.startDate));
+  if (filters.endDate) conditions.push(lte(aiConsensusReviewEvents.createdAt, filters.endDate));
+  const query = db.select().from(aiConsensusReviewEvents).where(conditions.length > 0 ? and(...conditions) : undefined).orderBy(desc(aiConsensusReviewEvents.createdAt));
+  return query.limit(Math.min(filters.limit ?? 250, 500));
+}
+
+export async function getAIConsensusGovernanceStats(filters: AIConsensusReviewEventFilters = {}) {
+  const events = await listAIConsensusReviewEvents({ ...filters, limit: 500 });
+  return { ...summarizeAIConsensusGovernanceEvents(events), events };
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {

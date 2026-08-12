@@ -77,6 +77,25 @@ export const masterDataAuditLogs = mysqlTable("master_data_audit_logs", {
 export type MasterDataAuditLog = typeof masterDataAuditLogs.$inferSelect;
 export type InsertMasterDataAuditLog = typeof masterDataAuditLogs.$inferInsert;
 
+// 五角色 AI 審查治理歷程：保留核准／未共識結果與當次資料限制，供阻礙原因趨勢分析
+export const aiConsensusReviewEvents = mysqlTable("ai_consensus_review_events", {
+  id: int("id").autoincrement().primaryKey(),
+  productionLineId: int("productionLineId").notNull(),
+  status: mysqlEnum("status", ["approved", "needs_clarification"]).notNull(),
+  agreementScore: int("agreementScore").notNull(),
+  approvalReason: varchar("approvalReason", { length: 500 }),
+  readinessLevel: mysqlEnum("readinessLevel", ["ready", "limited", "blocked"]).notNull(),
+  completenessScore: int("completenessScore").notNull(),
+  dataGaps: json("dataGaps").notNull(),
+  reviews: json("reviews").notNull(),
+  unresolvedItems: json("unresolvedItems").notNull(),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AIConsensusReviewEvent = typeof aiConsensusReviewEvents.$inferSelect;
+export type InsertAIConsensusReviewEvent = typeof aiConsensusReviewEvents.$inferInsert;
+
 // 動作步驟資料表
 export const actionSteps = mysqlTable("action_steps", {
   id: int("id").autoincrement().primaryKey(),
