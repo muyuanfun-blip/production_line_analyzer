@@ -49,9 +49,9 @@ export const workstations = mysqlTable("workstations", {
   name: varchar("name", { length: 255 }).notNull(),
   sequenceOrder: int("sequenceOrder").notNull().default(0), // 工站順序
   cycleTime: decimal("cycleTime", { precision: 10, scale: 2 }).notNull(), // 工序時間（秒）
-  manpower: decimal("manpower", { precision: 5, scale: 1 }).notNull().default("1.0"), // 人員配置（支援小數，如 0.5）- 保留以相容舊資料
-  morningManpower: decimal("morningManpower", { precision: 5, scale: 1 }).default("0.0"), // 早班人力
-  eveningManpower: decimal("eveningManpower", { precision: 5, scale: 1 }).default("0.0"), // 晚班人力
+  manpower: decimal("manpower", { precision: 5, scale: 2 }).notNull().default("1.00"), // 合計人力（由早晚班人力衍生，保留以相容舊資料）
+  morningManpower: decimal("morningManpower", { precision: 5, scale: 2 }).default("0.00"), // 早班人力（最小單位 0.25）
+  eveningManpower: decimal("eveningManpower", { precision: 5, scale: 2 }).default("0.00"), // 晚班人力（最小單位 0.25）
   description: text("description"),
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

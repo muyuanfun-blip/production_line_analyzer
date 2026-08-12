@@ -61,8 +61,22 @@ export function normalizeManpower(input: ManpowerInput, fallback?: ManpowerInput
 
 export function getManpowerQuality(input: ManpowerInput) {
   const legacy = toNumber(input.manpower);
-  const normalized = normalizeManpower(input);
+  let normalized: NormalizedManpower;
   const issues: string[] = [];
+
+  try {
+    normalized = normalizeManpower(input);
+  } catch (error) {
+    const morningManpower = toNumber(input.morningManpower) ?? 0;
+    const eveningManpower = toNumber(input.eveningManpower) ?? 0;
+    normalized = {
+      morningManpower,
+      eveningManpower,
+      totalManpower: morningManpower + eveningManpower,
+      source: input.morningManpower !== undefined || input.eveningManpower !== undefined ? "shifts" : "legacy",
+    };
+    issues.push(error instanceof Error ? error.message : "人力資料格式無效");
+  }
 
   if (normalized.totalManpower <= 0) issues.push("早晚班合計人力必須大於 0");
   if (legacy !== undefined && Math.abs(legacy - normalized.totalManpower) > 1e-8) {
