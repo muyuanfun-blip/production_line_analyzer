@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { parseMonitoringSimulationContext } from "../../../shared/monitoringSimulationContext";
+import { buildSimulationVsmUrl } from "../../../shared/simulationVsmContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SimWorkstation = {
@@ -669,6 +670,7 @@ export default function SimulationPage() {
             <SelectContent>{lines?.map(line => <SelectItem key={line.id} value={line.id.toString()}>{line.name}</SelectItem>)}</SelectContent>
           </Select>
           {taktTime && <Badge variant="outline" className="text-violet-400 border-violet-400/50 text-xs">Takt {taktTime}s</Badge>}
+          {selectedScenario && selectedLineId && kpi && <Button variant="outline" size="sm" className="h-8 border-amber-400/35 text-amber-200 hover:bg-amber-400/10" onClick={() => setLocation(buildSimulationVsmUrl({ lineId: selectedLineId, scenarioId: selectedScenario.id, scenarioName: selectedScenario.name, balanceRate: kpi.balanceRate, upph: kpi.upph }))}>VSM 流程</Button>}
           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => setLeftCollapsed(v => !v)}><PanelLeft className="w-4 h-4" /></Button>
           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => setRightCollapsed(v => !v)}><PanelRight className="w-4 h-4" /></Button>
         </div>

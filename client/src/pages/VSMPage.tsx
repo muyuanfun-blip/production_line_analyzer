@@ -19,6 +19,7 @@ import { exportVSMAsJSON, exportVSMProcessesAsCSV, exportVSMFlowsAsCSV, exportVS
 import { parseMonitoringVsmContext } from '../../../shared/monitoringVsmContext';
 import { buildVsmComparisonPair } from '../../../shared/vsmVersionTimeline';
 import { buildVsmTrackingUrl } from '../../../shared/vsmTrackingContext';
+import { parseSimulationVsmContext } from '../../../shared/simulationVsmContext';
 
 interface VSMProcessDisplay {
   id: number;
@@ -78,6 +79,7 @@ export const VSMPage: React.FC = () => {
 
   const lineIdNum = lineId ? parseInt(lineId) : 0;
   const monitoringContext = parseMonitoringVsmContext(window.location.search, lineIdNum);
+  const simulationContext = parseSimulationVsmContext(window.location.search, lineIdNum);
 
   // 查詢圖表列表
   const { data: diagrams, isLoading: diagramsLoading } = trpc.vsm.listDiagrams.useQuery(
@@ -355,6 +357,11 @@ export const VSMPage: React.FC = () => {
                   </div>
                   <Button size="sm" variant="outline" onClick={() => setLocation(`/lines/${lineIdNum}/monitoring`)} className="h-7 shrink-0 border-amber-400/35 text-xs text-amber-200 hover:bg-amber-400/10">返回戰情監控</Button>
                 </div>
+              </div>
+            )}
+            {simulationContext && !monitoringContext && (
+              <div className="border-b border-amber-500/25 bg-amber-500/[0.07] px-4 py-2.5 text-xs text-amber-100/75">
+                模擬情境「{simulationContext.scenarioName}」：平衡率 {simulationContext.balanceRate.toFixed(1)}%，UPPH {simulationContext.upph.toFixed(2)}。可在此檢視或調整對應流程。
               </div>
             )}
             {/* 工具列 */}
