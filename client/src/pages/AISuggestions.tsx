@@ -217,7 +217,7 @@ export default function AISuggestions() {
           <Button variant="outline" size="sm" onClick={handleExportJSON}>
             <Download className="h-4 w-4 mr-2" />JSON
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setReportOpen(true)} disabled={!professionalReport}>
+          <Button variant={professionalReport ? "default" : "outline"} size="sm" onClick={() => professionalReport ? setReportOpen(true) : toast.info("請先完成 AI 分析後，再開啟專業報告") }>
             <FileText className="h-4 w-4 mr-2" />專業報告
           </Button>
         </div>
@@ -322,7 +322,7 @@ export default function AISuggestions() {
               <p className="text-sm text-muted-foreground">正在生成平衡優化建議，請稍候</p>
             </div>
           ) : suggestion ? (
-            <div className="prose prose-invert max-w-none">
+            <div className="prose prose-invert max-w-none space-y-4">
               <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-5">
                 <div className="text-sm leading-relaxed">
                   <ReactMarkdown
@@ -340,6 +340,10 @@ export default function AISuggestions() {
                     {suggestion}
                   </ReactMarkdown>
                 </div>
+              </div>
+              <div className="not-prose flex flex-col gap-3 rounded-xl border border-cyan-400/25 bg-cyan-400/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div><p className="font-medium text-foreground">AI 專業圖文分析報告已就緒</p><p className="mt-1 text-xs text-muted-foreground">報告整合目前 KPI、動作分類圖、工站負荷與本次 AI 建議，可預覽、下載或列印為 PDF。</p></div>
+                <Button className="shrink-0" onClick={() => setReportOpen(true)}><FileText className="mr-2 h-4 w-4" />匯出專業報告</Button>
               </div>
             </div>
           ) : (
@@ -363,6 +367,7 @@ export default function AISuggestions() {
                   </div>
                 ))}
               </div>
+              <p className="mb-3 text-xs text-muted-foreground">完成分析後，頁面頂端與分析結果下方都會出現「專業報告」匯出入口。</p>
               <Button onClick={handleAnalyze} size="lg" className="glow-primary">
                 <Sparkles className="h-4 w-4 mr-2" />
                 開始 AI 分析
