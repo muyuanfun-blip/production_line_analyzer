@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { buildAIProfessionalReport, buildAIProfessionalReportHtml } from "../../../shared/aiProfessionalReport";
 import { Streamdown } from "streamdown";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -32,6 +34,7 @@ export default function AISuggestions() {
 
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
 
   const aiMutation = trpc.analysis.aiSuggest.useMutation({
     onSuccess: (data) => {
@@ -61,6 +64,35 @@ export default function AISuggestions() {
     const upph = maxTime > 0 && totalManpower > 0 ? 3600 / maxTime / totalManpower : null;
     return { totalTime, maxTime, avgTime, balanceRate, bottleneck, totalManpower, upph };
   }, [workstations]);
+
+  const professionalReport = useMemo(() => {
+    if (!suggestion || !workstations?.length) return null;
+    return buildAIProfessionalReport({
+      productionLineName: line?.name ?? "未命名產線",
+      generatedAt: new Date(),
+      targetCycleTime: line?.targetCycleTime,
+      workstations: workstations.map((station) => ({
+        id: station.id,
+        name: station.name,
+        sequenceOrder: station.sequenceOrder,
+        cycleTime: station.cycleTime,
+        manpower: station.manpower,
+        morningManpower: station.morningManpower,
+        eveningManpower: station.eveningManpower,
+      })),
+      actionSteps: (allActionSteps ?? []).map((step: any) => ({
+        workstationId: step.workstationId,
+        duration: step.duration,
+        actionType: step.actionType,
+      })),
+      aiSuggestion: suggestion,
+    });
+  }, [suggestion, workstations, allActionSteps, line?.name, line?.targetCycleTime]);
+
+  const professionalReportHtml = useMemo(
+    () => professionalReport ? buildAIProfessionalReportHtml(professionalReport) : "",
+    [professionalReport],
+  );
 
   const handleAnalyze = () => {
     if (!workstations?.length) { toast.error("請先新增工站資料"); return; }
@@ -103,30 +135,27 @@ export default function AISuggestions() {
     });
   };
 
-  const handleExportReport = () => {
-    if (!suggestion) { toast.error("請先執行 AI 分析"); return; }
-    const content = [
-      `生產工站 AI 優化分析報告`,
-      `生產線：${line?.name}`,
-      `分析時間：${new Date().toLocaleString("zh-TW")}`,
-      ``,
-      `=== 產線概況 ===`,
-      `工站數量：${workstations?.length ?? 0}`,
-      `平衡率：${analysis?.balanceRate.toFixed(1) ?? "N/A"}%`,
-      `UPPH：${analysis?.upph != null ? analysis.upph.toFixed(2) + " 件/人/時" : "N/A"}`,
-      `瓶頸工站：${analysis?.bottleneck?.name ?? "N/A"}`,
-      ``,
-      `=== AI 優化建議 ===`,
-      suggestion,
-    ].join("\n");
-    const blob = new Blob(["\uFEFF" + content], { type: "text/plain;charset=utf-8;" });
+  const handleDownloadProfessionalReport = () => {
+    if (!professionalReportHtml) { toast.error("請先執行 AI 分析"); return; }
+    const blob = new Blob([professionalReportHtml], { type: "text/html;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${line?.name ?? "ai"}_AI優化報告.txt`;
+    a.download = `${line?.name ?? "ai"}_AI專業分析報告.html`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("報告已下載");
+    toast.success("專業報告 HTML 已下載");
+  };
+
+  const handlePrintProfessionalReport = () => {
+    if (!professionalReportHtml) { toast.error("請先執行 AI 分析"); return; }
+    const reportWindow = window.open("", "_blank", "noopener,noreferrer");
+    if (!reportWindow) { toast.error("瀏覽器封鎖了報告視窗，請允許彈出視窗後再試"); return; }
+    reportWindow.document.open();
+    reportWindow.document.write(professionalReportHtml);
+    reportWindow.document.close();
+    reportWindow.focus();
+    window.setTimeout(() => reportWindow.print(), 250);
   };
 
   const handleExportJSON = () => {
@@ -188,8 +217,8 @@ export default function AISuggestions() {
           <Button variant="outline" size="sm" onClick={handleExportJSON}>
             <Download className="h-4 w-4 mr-2" />JSON
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExportReport} disabled={!suggestion}>
-            <FileText className="h-4 w-4 mr-2" />報告
+          <Button variant="outline" size="sm" onClick={() => setReportOpen(true)} disabled={!professionalReport}>
+            <FileText className="h-4 w-4 mr-2" />專業報告
           </Button>
         </div>
       </div>
@@ -342,6 +371,18 @@ export default function AISuggestions() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent className="w-[96vw] max-w-6xl p-0">
+          <DialogHeader className="border-b border-border px-6 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 pr-8">
+              <div><DialogTitle>AI 專業圖文分析報告</DialogTitle><p className="mt-1 text-xs text-muted-foreground">內容使用目前產線資料、本次 AI 分析結果與動作拆解統計產出。</p></div>
+              <div className="flex gap-2"><Button variant="outline" size="sm" onClick={handleDownloadProfessionalReport}><Download className="mr-2 h-4 w-4" />下載 HTML</Button><Button size="sm" onClick={handlePrintProfessionalReport}><FileText className="mr-2 h-4 w-4" />列印／另存 PDF</Button></div>
+            </div>
+          </DialogHeader>
+          {professionalReportHtml && <iframe title="AI 專業圖文分析報告預覽" srcDoc={professionalReportHtml} className="h-[72vh] w-full bg-white" />}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
