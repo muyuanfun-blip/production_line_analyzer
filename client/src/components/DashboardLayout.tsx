@@ -1,358 +1,92 @@
-import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  useSidebar,
-} from "@/components/ui/sidebar";
-import { useIsMobile } from "@/hooks/useMobile";
-import {
-  BookOpen,
-  Factory,
-  Home,
-  LogOut,
-  PencilLine,
-  ShieldCheck,
-  Users,
-  FlaskConical,
-  Package,
-  ScanBarcode,
-  GanttChartSquare,
-  ChevronRight,
-  Activity,
-  Settings,
-  PanelLeftClose,
-  PanelLeftOpen,
-  GitBranch,
-  ScanSearch,
-  BarChart3,
-  ClipboardCheck,
-} from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
+import { Activity, BarChart3, ChevronRight, ClipboardCheck, Factory, GitBranch, Home, LogOut, PanelLeftClose, PanelLeftOpen, ScanSearch, Settings, ShieldCheck } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
+import { getSidebarGroups, shouldCloseNavigationAfterSelect } from "../../../shared/sidebarNavigation";
+import { useAuth } from "@/_core/hooks/useAuth";
 
-// ── Navigation structure ───────────────────────────────────────────────────
-const navGroups = [
-  {
-    label: "分析工具",
-    items: [
-      { icon: Home,             label: "首頁總覽",   path: "/" },
-      { icon: Factory,          label: "生產線管理", path: "/lines" },
-    ],
-  },
-  {
-    label: "資料管理",
-    items: [
-      { icon: GitBranch,   label: "VSM 設計", path: "/lines/1/vsm" },
-      { icon: ClipboardCheck, label: "我的補件任務", path: "/data-completion-inbox" },
-    ],
-  },
-];
-
-const adminNavItems: typeof navGroups[0]["items"] = [
-  { icon: ScanSearch, label: "覆核品質儀表板", path: "/admin/action-review-quality" },
-  { icon: BarChart3, label: "AI 審查治理", path: "/admin/ai-consensus-governance" },
-];
-
+const navIcons = {
+  "/": Home,
+  "/data-completion-inbox": ClipboardCheck,
+  "/lines": Factory,
+  "/lines/1/vsm": GitBranch,
+  "/admin/action-review-quality": ScanSearch,
+  "/admin/ai-consensus-governance": BarChart3,
+} as const;
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
+const SIDEBAR_PINNED_KEY = "sidebar-pinned";
 const DEFAULT_WIDTH = 240;
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 360;
 
-// ── Root component ─────────────────────────────────────────────────────────
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
   const { loading, user } = useAuth();
-
-  useEffect(() => {
-    localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
-  }, [sidebarWidth]);
-
+  useEffect(() => { localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString()); }, [sidebarWidth]);
   if (loading) return <DashboardLayoutSkeleton />;
   if (!user) return null;
-
-  return (
-    <SidebarProvider style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
-      <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>
-        {children}
-      </DashboardLayoutContent>
-    </SidebarProvider>
-  );
+  return <SidebarProvider defaultOpen={false} style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}><DashboardLayoutContent setSidebarWidth={setSidebarWidth}>{children}</DashboardLayoutContent></SidebarProvider>;
 }
 
-// ── Inner layout ───────────────────────────────────────────────────────────
-function DashboardLayoutContent({
-  children,
-  setSidebarWidth,
-}: {
-  children: React.ReactNode;
-  setSidebarWidth: (w: number) => void;
-}) {
+function DashboardLayoutContent({ children, setSidebarWidth }: { children: React.ReactNode; setSidebarWidth: (width: number) => void }) {
   const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
-  const { state, toggleSidebar } = useSidebar();
-  const isCollapsed = state === "collapsed";
+  const { state, setOpen, setOpenMobile, isMobile } = useSidebar();
+  const [isPinned, setIsPinned] = useState(() => localStorage.getItem(SIDEBAR_PINNED_KEY) === "true");
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const isMobile = useIsMobile();
+  const isCollapsed = state === "collapsed";
+  const navGroups = getSidebarGroups(user?.role);
+  const allItems = navGroups.flatMap((group) => group.items);
+  const activeItem = allItems.find((item) => location === item.path || (item.path !== "/" && location.startsWith(`${item.path}/`)));
 
-  const allItems = navGroups.flatMap(g => g.items);
-  const activeItem = allItems.find(i => i.path === location);
-
+  useEffect(() => { if (!isMobile) setOpen(isPinned); }, [isPinned, isMobile, setOpen]);
+  useEffect(() => { localStorage.setItem(SIDEBAR_PINNED_KEY, String(isPinned)); }, [isPinned]);
   useEffect(() => {
-    if (isCollapsed) setIsResizing(false);
-  }, [isCollapsed]);
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
+    const onMove = (event: MouseEvent) => {
       if (!isResizing) return;
       const left = sidebarRef.current?.getBoundingClientRect().left ?? 0;
-      const w = e.clientX - left;
-      if (w >= MIN_WIDTH && w <= MAX_WIDTH) setSidebarWidth(w);
+      const width = event.clientX - left;
+      if (width >= MIN_WIDTH && width <= MAX_WIDTH) setSidebarWidth(width);
     };
     const onUp = () => setIsResizing(false);
-    if (isResizing) {
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-    }
-    return () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
+    if (isResizing) { document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp); document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none"; }
+    return () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); document.body.style.cursor = ""; document.body.style.userSelect = ""; };
   }, [isResizing, setSidebarWidth]);
 
-  const handleLogout = async () => {
-    await logout();
-    setLocation("/login");
-  };
+  const navigate = (path: string) => { setLocation(path); if (shouldCloseNavigationAfterSelect(isMobile)) setOpenMobile(false); };
+  const handleLogout = async () => { await logout(); setLocation("/login"); };
+  const expandOnIntent = () => { if (!isMobile && !isPinned) setOpen(true); };
+  const collapseOnLeave = () => { if (!isMobile && !isPinned) setOpen(false); };
+  const collapseOnBlur = () => { if (isMobile || isPinned) return; window.setTimeout(() => { if (!sidebarRef.current?.contains(document.activeElement)) setOpen(false); }, 0); };
+  const togglePin = () => { const next = !isPinned; setIsPinned(next); if (!isMobile) setOpen(next); };
 
-  return (
-    <>
-      {/* ── Sidebar ─────────────────────────────────────────────────────── */}
-      <div className="relative" ref={sidebarRef}>
-        <Sidebar collapsible="icon" className="border-r-0" disableTransition={isResizing}>
-
-          {/* Brand header */}
-          <SidebarHeader className="h-[44px] border-b border-sidebar-border/60 px-0 justify-center">
-            <div className="sidebar-brand">
-              <div className="sidebar-brand-icon shrink-0">
-                <Activity className="h-3.5 w-3.5 text-white" />
-              </div>
-              {!isCollapsed && (
-                <div className="flex-1 min-w-0">
-                  <div className="sidebar-brand-text">PLA System</div>
-                  <div className="sidebar-brand-version">v2.0 · Production</div>
-                </div>
-              )}
-              <button
-                onClick={toggleSidebar}
-                className="ml-auto h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors shrink-0 focus:outline-none"
-                aria-label="Toggle sidebar"
-              >
-                {isCollapsed
-                  ? <PanelLeftOpen className="h-3.5 w-3.5" />
-                  : <PanelLeftClose className="h-3.5 w-3.5" />
-                }
-              </button>
-            </div>
-          </SidebarHeader>
-
-          {/* Navigation groups */}
-          <SidebarContent className="gap-0 py-2 overflow-x-hidden">
-            {navGroups.map((group) => (
-              <div key={group.label} className="mb-1">
-                {!isCollapsed && (
-                  <div className="nav-group-label">{group.label}</div>
-                )}
-                <SidebarMenu className="px-1.5 gap-0.5">
-                  {group.items.map((item) => {
-                    const isActive = location === item.path;
-                    return (
-                      <SidebarMenuItem key={item.path}>
-                        <SidebarMenuButton
-                          isActive={isActive}
-                          onClick={() => setLocation(item.path)}
-                          tooltip={item.label}
-                          className={[
-                            "h-8 text-[0.8125rem] rounded transition-all",
-                            isActive
-                              ? "nav-item-active font-medium"
-                              : "font-normal text-sidebar-foreground/65 hover:text-sidebar-foreground hover:bg-sidebar-accent/50",
-                          ].join(" ")}
-                        >
-                          <item.icon className={`h-3.5 w-3.5 shrink-0 ${isActive ? "text-primary" : "text-muted-foreground/70"}`} />
-                          <span>{item.label}</span>
-                          {isActive && !isCollapsed && (
-                            <ChevronRight className="ml-auto h-3 w-3 text-primary/50" />
-                          )}
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    );
-                  })}
-                </SidebarMenu>
-              </div>
-            ))}
-
-            {/* Admin section */}
-            {user?.role === "admin" && (
-              <div className="mt-1">
-                {!isCollapsed && (
-                  <div className="nav-group-label flex items-center gap-1">
-                    <ShieldCheck className="h-2.5 w-2.5" />管理員
-                  </div>
-                )}
-                <SidebarMenu className="px-1.5 gap-0.5">
-                  {adminNavItems.map((item) => {
-                    const isActive = location === item.path;
-                    return (
-                      <SidebarMenuItem key={item.path}>
-                        <SidebarMenuButton
-                          isActive={isActive}
-                          onClick={() => setLocation(item.path)}
-                          tooltip={item.label}
-                          className={[
-                            "h-8 text-[0.8125rem] rounded transition-all",
-                            isActive
-                              ? "nav-item-active font-medium"
-                              : "font-normal text-sidebar-foreground/65 hover:text-sidebar-foreground hover:bg-sidebar-accent/50",
-                          ].join(" ")}
-                        >
-                          <item.icon className={`h-3.5 w-3.5 shrink-0 ${isActive ? "text-primary" : "text-muted-foreground/70"}`} />
-                          <span>{item.label}</span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    );
-                  })}
-                </SidebarMenu>
-              </div>
-            )}
-          </SidebarContent>
-
-          {/* Footer: user profile */}
-          <SidebarFooter className="border-t border-sidebar-border/60 p-1.5">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-sidebar-accent/60 transition-colors w-full text-left focus:outline-none group-data-[collapsible=icon]:justify-center">
-                  <Avatar className="h-6 w-6 border border-border/60 shrink-0">
-                    <AvatarFallback className="text-[0.5625rem] font-semibold bg-primary/20 text-primary">
-                      {user?.name?.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  {!isCollapsed && (
-                    <>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[0.75rem] font-medium truncate leading-none text-foreground">
-                          {user?.name || "—"}
-                        </p>
-                        <p className="text-[0.625rem] text-muted-foreground truncate mt-0.5">
-                          {user?.role === "admin" ? "管理員" : "一般使用者"}
-                        </p>
-                      </div>
-                      <Settings className="h-3 w-3 text-muted-foreground/40 shrink-0" />
-                    </>
-                  )}
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={handleLogout}
-                  className="cursor-pointer text-destructive focus:text-destructive"
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>登出</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarFooter>
-        </Sidebar>
-
-        {/* Resize handle */}
-        {!isCollapsed && (
-          <div
-            className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/25 transition-colors"
-            onMouseDown={() => setIsResizing(true)}
-            style={{ zIndex: 50 }}
-          />
-        )}
-      </div>
-
-      {/* ── Main content ────────────────────────────────────────────────── */}
-      <SidebarInset>
-        {/* Topbar – always visible */}
-        <div className="topbar">
-          {isMobile && (
-            <button
-              onClick={toggleSidebar}
-              className="h-7 w-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus:outline-none"
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-            </button>
-          )}
-
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-1 text-[0.75rem]">
-            <span className="text-muted-foreground/40 font-mono">PLA</span>
-            <ChevronRight className="h-3 w-3 text-muted-foreground/25" />
-            <span className="text-foreground/80 font-medium">
-              {activeItem?.label ?? "儀表板"}
-            </span>
-          </div>
-
-          <div className="flex-1" />
-
-          {/* System clock */}
-          <SystemClock />
-
-          {/* System status pill */}
-          <div className="flex items-center gap-1.5 text-[0.625rem] text-muted-foreground border border-border/40 rounded px-2 py-1 font-mono">
-            <span className="status-dot status-dot-ok" />
-            系統正常
-          </div>
-        </div>
-
-        <main className="flex-1 p-5">{children}</main>
-      </SidebarInset>
-    </>
-  );
+  return <>
+    <div ref={sidebarRef} className="relative" onMouseEnter={expandOnIntent} onMouseLeave={collapseOnLeave} onFocusCapture={expandOnIntent} onBlurCapture={collapseOnBlur}>
+      <Sidebar collapsible="icon" className="border-r-0" disableTransition={isResizing}>
+        <SidebarHeader className="h-[44px] justify-center border-b border-sidebar-border/60 px-0">
+          <div className="sidebar-brand"><div className="sidebar-brand-icon shrink-0"><Activity className="h-3.5 w-3.5 text-white" /></div>{!isCollapsed && <div className="min-w-0 flex-1"><div className="sidebar-brand-text">PLA System</div><div className="sidebar-brand-version">v2.0 · Decision Center</div></div>}<button onClick={togglePin} className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus:outline-none" aria-label={isPinned ? "解除固定並收合側欄" : "固定並展開側欄"} title={isPinned ? "解除固定側欄" : "固定展開側欄"}>{isCollapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}</button></div>
+        </SidebarHeader>
+        <SidebarContent className="gap-0 overflow-x-hidden py-2">
+          {navGroups.map((group) => <div key={group.key} className="mb-1">{!isCollapsed && <div className="nav-group-label flex items-center gap-1">{group.key === "governance" && <ShieldCheck className="h-2.5 w-2.5" />}{group.label}</div>}<SidebarMenu className="gap-0.5 px-1.5">{group.items.map((item) => { const Icon = navIcons[item.path as keyof typeof navIcons]; const isActive = location === item.path || (item.path !== "/" && location.startsWith(`${item.path}/`)); return <SidebarMenuItem key={item.path}><SidebarMenuButton isActive={isActive} onClick={() => navigate(item.path)} tooltip={item.label} className={`h-8 rounded text-[0.8125rem] transition-all ${isActive ? "nav-item-active font-medium" : "font-normal text-sidebar-foreground/65 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"}`}><Icon className={`h-3.5 w-3.5 shrink-0 ${isActive ? "text-primary" : "text-muted-foreground/70"}`} /><span>{item.label}</span>{isActive && !isCollapsed && <ChevronRight className="ml-auto h-3 w-3 text-primary/50" />}</SidebarMenuButton></SidebarMenuItem>; })}</SidebarMenu></div>)}
+        </SidebarContent>
+        <SidebarFooter className="border-t border-sidebar-border/60 p-1.5"><DropdownMenu><DropdownMenuTrigger asChild><button className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent/60 focus:outline-none group-data-[collapsible=icon]:justify-center"><Avatar className="h-6 w-6 shrink-0 border border-border/60"><AvatarFallback className="bg-primary/20 text-[0.5625rem] font-semibold text-primary">{user?.name?.charAt(0).toUpperCase()}</AvatarFallback></Avatar>{!isCollapsed && <><div className="min-w-0 flex-1"><p className="truncate text-[0.75rem] font-medium leading-none text-foreground">{user?.name || "—"}</p><p className="mt-0.5 truncate text-[0.625rem] text-muted-foreground">{user?.role === "admin" ? "管理員" : "一般使用者"}</p></div><Settings className="h-3 w-3 shrink-0 text-muted-foreground/40" /></>}</button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-48"><DropdownMenuSeparator /><DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive"><LogOut className="mr-2 h-4 w-4" /><span>登出</span></DropdownMenuItem></DropdownMenuContent></DropdownMenu></SidebarFooter>
+      </Sidebar>
+      {!isCollapsed && isPinned && <div className="absolute right-0 top-0 z-50 h-full w-1 cursor-col-resize transition-colors hover:bg-primary/25" onMouseDown={() => setIsResizing(true)} />}
+    </div>
+    <SidebarInset><div className="topbar">{isMobile && <button onClick={() => setOpenMobile(true)} className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none" aria-label="開啟導覽選單"><PanelLeftOpen className="h-4 w-4" /></button>}<div className="flex items-center gap-1 text-[0.75rem]"><span className="font-mono text-muted-foreground/40">PLA</span><ChevronRight className="h-3 w-3 text-muted-foreground/25" /><span className="font-medium text-foreground/80">{activeItem?.label ?? "決策中心"}</span></div><div className="flex-1" /><SystemClock /><div className="flex items-center gap-1.5 rounded border border-border/40 px-2 py-1 font-mono text-[0.625rem] text-muted-foreground"><span className="status-dot status-dot-ok" />系統正常</div></div><main className="flex-1 p-4 sm:p-5">{children}</main></SidebarInset>
+  </>;
 }
 
-// ── System clock ───────────────────────────────────────────────────────────
 function SystemClock() {
   const [time, setTime] = useState(() => new Date());
-  useEffect(() => {
-    const t = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const timeStr = `${pad(time.getHours())}:${pad(time.getMinutes())}:${pad(time.getSeconds())}`;
-  const dateStr = `${time.getFullYear()}-${pad(time.getMonth() + 1)}-${pad(time.getDate())}`;
-  return (
-    <div className="flex items-center gap-2 text-[0.625rem] text-muted-foreground font-mono">
-      <span>{dateStr}</span>
-      <span className="text-foreground/70 font-medium">{timeStr}</span>
-    </div>
-  );
+  useEffect(() => { const timer = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(timer); }, []);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return <div className="flex items-center gap-2 font-mono text-[0.625rem] text-muted-foreground"><span>{`${time.getFullYear()}-${pad(time.getMonth() + 1)}-${pad(time.getDate())}`}</span><span className="font-medium text-foreground/70">{`${pad(time.getHours())}:${pad(time.getMinutes())}:${pad(time.getSeconds())}`}</span></div>;
 }
