@@ -133,6 +133,25 @@ export const analysisSnapshots = mysqlTable("analysis_snapshots", {
 export type AnalysisSnapshot = typeof analysisSnapshots.$inferSelect;
 export type InsertAnalysisSnapshot = typeof analysisSnapshots.$inferInsert;
 
+// 戰情監控歷史快照：保存即時 KPI、工站狀態與警示，以供跨工作階段趨勢分析。
+export const monitoringSnapshots = mysqlTable("monitoring_snapshots", {
+  id: int("id").autoincrement().primaryKey(),
+  productionLineId: int("productionLineId").notNull(),
+  balanceRate: decimal("balanceRate", { precision: 6, scale: 2 }).notNull(),
+  upph: decimal("upph", { precision: 10, scale: 4 }).notNull(),
+  taktAchievement: decimal("taktAchievement", { precision: 6, scale: 2 }).notNull(),
+  productionTarget: int("productionTarget").notNull(),
+  productionActual: int("productionActual").notNull(),
+  bottleneckWsId: int("bottleneckWsId"),
+  workstationsData: json("workstationsData").notNull(),
+  anomaliesData: json("anomaliesData").notNull(),
+  note: text("note"),
+  capturedAt: timestamp("capturedAt").defaultNow().notNull(),
+});
+
+export type MonitoringSnapshot = typeof monitoringSnapshots.$inferSelect;
+export type InsertMonitoringSnapshot = typeof monitoringSnapshots.$inferInsert;
+
 // 配置模擬情境資料表
 export const simulationScenarios = mysqlTable("simulation_scenarios", {
   id: int("id").autoincrement().primaryKey(),

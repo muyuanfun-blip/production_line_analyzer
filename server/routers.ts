@@ -14,6 +14,7 @@ import {
   getAllLinesLatestSnapshot,
   getAllLinesLatestSnapshotByDate,
   getAllLinesSnapshotHistory,
+  createMonitoringSnapshot, listMonitoringSnapshots,
   getHandActionsByStep, getHandActionsByStepIds,
   upsertHandAction, deleteHandAction, deleteHandActionsByStep,
   getUserByUsername, getAllUsers, createLocalUser,
@@ -38,6 +39,7 @@ import { sdk } from "./_core/sdk";
 import { ENV } from "./_core/env";
 import { buildSimulationRunPlan, normalizeSimulationWorkstations } from "../shared/simulationRun";
 import { buildEfficiencyHeatmap } from "../shared/efficiencyHeatmap";
+import { buildMonitoringSnapshotPayload } from "../shared/monitoringSnapshot";
 import {
   generateRealtimeLineStatus,
   generateHistoricalTrend,
@@ -1854,6 +1856,51 @@ ${processList}
         );
         
         return trend;
+      }),
+
+    captureSnapshot: protectedProcedure
+      .input(z.object({
+        productionLineId: z.number().int().positive(),
+        productionTarget: z.number().int().positive().default(100),
+        note: z.string().trim().max(1000).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const line = await getProductionLineById(input.productionLineId);
+        if (!line) throw new Error("Production line not found");
+        const targetCycleTime = typeof line.targetCycleTime === "string"
+          ? Number(line.targetCycleTime)
+          : Number(line.targetCycleTime ?? 60);
+        const status = await generateRealtimeLineStatus(
+          input.productionLineId,
+          line.name,
+          Number.isFinite(targetCycleTime) && targetCycleTime > 0 ? targetCycleTime : 60,
+          input.productionTarget,
+        );
+        const snapshot = await createMonitoringSnapshot({
+          productionLineId: input.productionLineId,
+          ...buildMonitoringSnapshotPayload(status, input.note),
+        });
+        return { success: true, snapshot };
+      }),
+
+    listSnapshots: protectedProcedure
+      .input(z.object({
+        productionLineId: z.number().int().positive(),
+        from: z.date().optional(),
+        to: z.date().optional(),
+        limit: z.number().int().min(1).max(200).default(100),
+      }).refine((input) => !input.from || !input.to || input.to.getTime() >= input.from.getTime(), {
+        message: "結束時間不得早於開始時間。",
+        path: ["to"],
+      }))
+      .query(async ({ input }) => {
+        const rows = await listMonitoringSnapshots(input.productionLineId, input.from, input.to, input.limit);
+        return rows.map((row) => ({
+          ...row,
+          balanceRate: Number(row.balanceRate),
+          upph: Number(row.upph),
+          taktAchievement: Number(row.taktAchievement),
+        }));
       }),
 
     getProductFlowRecords: protectedProcedure

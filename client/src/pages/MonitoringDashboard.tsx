@@ -186,6 +186,7 @@ function RealtimeProductGantt({ records }: { records: MonitoringProductFlowRecor
 
 export default function MonitoringDashboard() {
   const { lineId } = useParams<{ lineId: string }>();
+  const monitoringLineId = Number.parseInt(lineId || "0", 10);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [selectedWs, setSelectedWs] = useState<number | null>(null);
   const [expandedAlerts, setExpandedAlerts] = useState(true);
@@ -197,25 +198,48 @@ export default function MonitoringDashboard() {
   const [aiSuggestions, setAiSuggestions] = useState<Record<number, string>>({});
   const [loadingAI, setLoadingAI] = useState<Record<number, boolean>>({});
   const [changedWsIds, setChangedWsIds] = useState<Set<number>>(new Set());
+  const [snapshotNote, setSnapshotNote] = useState("");
   const latestStatusRef = useRef<RealtimeLineStatus | null>(null);
   const statusMapRef = useRef<Map<number, RealtimeWorkstation["status"]>>(new Map());
   const refreshInFlightRef = useRef(false);
+  const historyRange = useMemo(() => {
+    const to = new Date();
+    const from = new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+    return { from, to };
+  }, [monitoringLineId]);
 
   // 實時狀態查詢
   const { data: realtimeStatus, isLoading: statusLoading, refetch: refetchStatus } = trpc.monitoring.getRealTimeStatus.useQuery(
-    { productionLineId: parseInt(lineId || "0"), productionTarget: 100 },
+    { productionLineId: monitoringLineId, productionTarget: 100 },
     { enabled: !!lineId }
   );
 
   // 歷史趨勢查詢
   const { data: historicalTrend, isLoading: trendLoading, refetch: refetchTrend } = trpc.monitoring.getHistoricalTrend.useQuery(
-    { productionLineId: parseInt(lineId || "0"), productionTarget: 100 },
+    { productionLineId: monitoringLineId, productionTarget: 100 },
     { enabled: !!lineId }
   );
   const { data: productFlowRecords = [], refetch: refetchProductFlows } = trpc.monitoring.getProductFlowRecords.useQuery(
-    { productionLineId: parseInt(lineId || "0"), productCount: 8 },
+    { productionLineId: monitoringLineId, productCount: 8 },
     { enabled: !!lineId },
   );
+  const { data: persistedSnapshots = [], refetch: refetchPersistedSnapshots } = trpc.monitoring.listSnapshots.useQuery(
+    { productionLineId: monitoringLineId, ...historyRange, limit: 100 },
+    { enabled: !!lineId },
+  );
+  const captureSnapshotMutation = trpc.monitoring.captureSnapshot.useMutation({
+    onSuccess: () => {
+      setSnapshotNote("");
+      void refetchPersistedSnapshots();
+    },
+  });
+  const persistedTrendData = useMemo(() => [...persistedSnapshots].reverse().map((snapshot) => ({
+    time: new Date(snapshot.capturedAt).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+    balanceRate: snapshot.balanceRate,
+    upph: snapshot.upph,
+    taktAchievement: snapshot.taktAchievement,
+    productionActual: snapshot.productionActual,
+  })), [persistedSnapshots]);
 
   const criticalAnomalies = useMemo(
     () => realtimeStatus?.anomalies.filter((anomaly) => anomaly.level === "critical") ?? [],
@@ -558,6 +582,57 @@ export default function MonitoringDashboard() {
                 </LineChart>
               </ResponsiveContainer>
               </div>
+            </div>
+
+            <div className="rounded-lg border border-violet-500/25 bg-slate-900/50 p-3 sm:p-4 backdrop-blur">
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                <div>
+                  <h2 className="text-xs font-bold uppercase tracking-widest text-violet-300">留存的監控快照</h2>
+                  <p className="mt-1 text-[11px] text-violet-200/60">手動保存當前 KPI、工站狀態及警示，供跨班次與跨日期比較。</p>
+                </div>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                  <input
+                    value={snapshotNote}
+                    onChange={(event) => setSnapshotNote(event.target.value)}
+                    placeholder="留存備註（選填）"
+                    maxLength={1000}
+                    className="h-8 min-w-0 rounded border border-violet-500/25 bg-slate-950/70 px-2 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-violet-400 sm:w-44"
+                  />
+                  <button
+                    onClick={() => captureSnapshotMutation.mutate({ productionLineId: monitoringLineId, productionTarget: realtimeStatus.productionTarget, note: snapshotNote.trim() || undefined })}
+                    disabled={captureSnapshotMutation.isPending}
+                    className="h-8 whitespace-nowrap rounded bg-violet-500/20 px-3 text-xs font-semibold text-violet-200 transition hover:bg-violet-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {captureSnapshotMutation.isPending ? "留存中…" : "留存目前狀態"}
+                  </button>
+                </div>
+              </div>
+              {captureSnapshotMutation.error && <p className="mt-2 text-xs text-red-300">留存失敗：{captureSnapshotMutation.error.message}</p>}
+              {persistedSnapshots.length === 0 ? (
+                <div className="mt-4 flex h-28 items-center justify-center rounded border border-dashed border-violet-500/20 bg-violet-500/[0.03] text-center text-xs text-slate-400">尚未留存監控快照。可在交班、異常發生或改善前後保存當前狀態。</div>
+              ) : (
+                <>
+                  <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                    <div className="rounded bg-slate-950/50 p-2"><p className="text-slate-500">快照數</p><p className="mt-1 font-bold text-violet-200">{persistedSnapshots.length}</p></div>
+                    <div className="rounded bg-slate-950/50 p-2"><p className="text-slate-500">最新平衡率</p><p className="mt-1 font-bold text-cyan-300">{persistedSnapshots[0]?.balanceRate.toFixed(1)}%</p></div>
+                    <div className="rounded bg-slate-950/50 p-2"><p className="text-slate-500">最新 UPPH</p><p className="mt-1 font-bold text-emerald-300">{persistedSnapshots[0]?.upph.toFixed(2)}</p></div>
+                    <div className="rounded bg-slate-950/50 p-2"><p className="text-slate-500">最後留存</p><p className="mt-1 truncate font-medium text-slate-200">{new Date(persistedSnapshots[0]!.capturedAt).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</p></div>
+                  </div>
+                  <div className="mt-3 h-[180px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={persistedTrendData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(167, 139, 250, 0.12)" />
+                        <XAxis dataKey="time" stroke="rgba(196, 181, 253, 0.55)" style={{ fontSize: "10px" }} minTickGap={32} />
+                        <YAxis stroke="rgba(196, 181, 253, 0.55)" style={{ fontSize: "10px" }} />
+                        <Tooltip contentStyle={{ backgroundColor: "rgba(15, 23, 42, 0.95)", border: "1px solid rgba(167, 139, 250, 0.35)" }} />
+                        <Legend />
+                        <Line type="monotone" dataKey="balanceRate" stroke="#a78bfa" name="平衡率" dot={{ r: 2 }} />
+                        <Line type="monotone" dataKey="taktAchievement" stroke="#34d399" name="Takt達標" dot={{ r: 2 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

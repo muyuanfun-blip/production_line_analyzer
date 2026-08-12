@@ -1,4 +1,4 @@
-import { eq, asc, desc, inArray } from "drizzle-orm";
+import { eq, asc, desc, inArray, and, gte, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser, users,
@@ -7,6 +7,7 @@ import {
   actionSteps, InsertActionStep,
   handActions, InsertHandAction,
   analysisSnapshots, InsertAnalysisSnapshot,
+  monitoringSnapshots, InsertMonitoringSnapshot,
   simulationScenarios, InsertSimulationScenario,
   productModels, InsertProductModel,
   productInstances, InsertProductInstance,
@@ -333,6 +334,36 @@ export async function deleteSnapshot(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.delete(analysisSnapshots).where(eq(analysisSnapshots.id, id));
+}
+
+// ─── Monitoring Snapshot Queries ─────────────────────────────────────────────
+
+export async function createMonitoringSnapshot(data: InsertMonitoringSnapshot) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(monitoringSnapshots).values(data);
+  const id = Number((result as any)[0]?.insertId);
+  if (!id) throw new Error("Failed to create monitoring snapshot");
+  const rows = await db.select().from(monitoringSnapshots).where(eq(monitoringSnapshots.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function listMonitoringSnapshots(
+  productionLineId: number,
+  from?: Date,
+  to?: Date,
+  limit = 200,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const conditions = [eq(monitoringSnapshots.productionLineId, productionLineId)];
+  if (from) conditions.push(gte(monitoringSnapshots.capturedAt, from));
+  if (to) conditions.push(lte(monitoringSnapshots.capturedAt, to));
+  return db.select()
+    .from(monitoringSnapshots)
+    .where(and(...conditions))
+    .orderBy(desc(monitoringSnapshots.capturedAt))
+    .limit(limit);
 }
 
 /**
