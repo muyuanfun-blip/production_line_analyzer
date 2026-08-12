@@ -40,4 +40,18 @@ describe("AI 專業圖文報告", () => {
     expect(normalized).toBe("P1 (Immediate) → (UPPH / 人力) ≥ 90%");
     expect(markdownToSafeReportHtml(String.raw`改善路徑：$\rightarrow$ 測試站`)).toContain("改善路徑：→ 測試站");
   });
+
+  it("未共識報告使用待驗證標示並揭露治理限制與資料缺口", () => {
+    const conditional = buildAIProfessionalReport({
+      productionLineName: "示範產線", generatedAt: new Date("2026-08-12T00:00:00.000Z"), targetCycleTime: 20,
+      workstations: [{ id: 1, name: "組裝", sequenceOrder: 1, cycleTime: "20", manpower: "1" }], actionSteps: [],
+      aiSuggestion: "## 待驗證建議\n- 先量測瓶頸 CT", reportMode: "conditional",
+      governance: { approvalReason: "共識分數未達門檻", agreementScore: 66, unresolvedItems: ["品質資料待確認"], dataGaps: [{ title: "缺少良率資料", impact: "品質結論受限", requestedData: "不良率與重工率" }] },
+    });
+    const html = buildAIProfessionalReportHtml(conditional);
+    expect(html).toContain("AI 待驗證改善建議報告");
+    expect(html).toContain("待驗證／非正式核准");
+    expect(html).toContain("不能作為效益承諾、正式核准或直接建立改善行動的依據");
+    expect(html).toContain("缺少良率資料");
+  });
 });

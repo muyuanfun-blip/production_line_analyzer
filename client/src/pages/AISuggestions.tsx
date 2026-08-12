@@ -125,7 +125,7 @@ export default function AISuggestions() {
   }, [line?.targetCycleTime, workstations, allActionSteps]);
 
   const professionalReport = useMemo(() => {
-    if (!suggestion || analysisStatus !== "approved" || !workstations?.length) return null;
+    if (!suggestion || analysisStatus === "idle" || !workstations?.length) return null;
     return buildAIProfessionalReport({
       productionLineName: line?.name ?? "未命名產線",
       generatedAt: new Date(),
@@ -145,8 +145,15 @@ export default function AISuggestions() {
         actionType: step.actionType,
       })),
       aiSuggestion: suggestion,
+      reportMode: analysisStatus === "approved" ? "formal" : "conditional",
+      governance: analysisStatus === "needs_clarification" ? {
+        approvalReason,
+        agreementScore: consensus?.agreementScore ?? null,
+        unresolvedItems: consensus?.unresolvedItems ?? [],
+        dataGaps: readinessPreview.gaps,
+      } : undefined,
     });
-  }, [suggestion, analysisStatus, workstations, allActionSteps, line?.name, line?.targetCycleTime]);
+  }, [suggestion, analysisStatus, approvalReason, consensus?.agreementScore, consensus?.unresolvedItems, readinessPreview.gaps, workstations, allActionSteps, line?.name, line?.targetCycleTime]);
 
   const professionalReportHtml = useMemo(
     () => professionalReport ? buildAIProfessionalReportHtml(professionalReport) : "",
@@ -508,7 +515,7 @@ export default function AISuggestions() {
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row"><Textarea value={interactiveQuestion} onChange={(event) => setInteractiveQuestion(event.target.value)} placeholder="例如：若瓶頸工站增加 0.5 人，先要驗證哪些條件？" className="min-h-20 text-sm" maxLength={800} disabled={interactiveMutation.isPending} /><Button className="self-end sm:self-stretch" disabled={interactiveMutation.isPending || !interactiveQuestion.trim()} onClick={() => handleInteractiveAnalyze()}><Send className="mr-2 h-4 w-4" />追問</Button></div>
                 </div>
               )}
-              {analysisStatus === "approved" ? <div className="not-prose flex flex-col gap-3 rounded-xl border border-cyan-400/25 bg-cyan-400/5 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-foreground">AI 專業圖文分析報告已就緒</p><p className="mt-1 text-xs text-muted-foreground">報告整合目前 KPI、動作分類圖、工站負荷與本次 AI 建議，可預覽、下載或列印為 PDF。</p></div><Button className="shrink-0" onClick={() => setReportOpen(true)}><FileText className="mr-2 h-4 w-4" />匯出專業報告</Button></div> : <div className="not-prose flex flex-col gap-3 rounded-xl border border-orange-400/25 bg-orange-400/5 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-foreground">正式報告尚未開放</p><p className="mt-1 text-xs text-muted-foreground">請依上方資料缺口補充資料，或先釐清五角色的未決事項後重新分析。</p></div><Button variant="outline" className="shrink-0" onClick={handleAnalyze}><RefreshCw className="mr-2 h-4 w-4" />重新分析</Button></div>}
+              {analysisStatus === "approved" ? <div className="not-prose flex flex-col gap-3 rounded-xl border border-cyan-400/25 bg-cyan-400/5 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-foreground">AI 專業圖文分析報告已就緒</p><p className="mt-1 text-xs text-muted-foreground">報告整合目前 KPI、動作分類圖、工站負荷與本次 AI 建議，可預覽、下載或列印為 PDF。</p></div><Button className="shrink-0" onClick={() => setReportOpen(true)}><FileText className="mr-2 h-4 w-4" />匯出專業報告</Button></div> : <div className="not-prose flex flex-col gap-3 rounded-xl border border-orange-400/35 bg-orange-400/5 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-orange-100">可匯出待驗證改善建議報告</p><p className="mt-1 text-xs text-muted-foreground">本報告依現有資料提供改善假設，會標示未共識原因、資料缺口、角色分歧與驗證條件；不構成正式核准，亦不會開放互動追問或自動建立改善行動。</p></div><div className="flex shrink-0 gap-2"><Button variant="outline" onClick={handleAnalyze}><RefreshCw className="mr-2 h-4 w-4" />重新分析</Button><Button className="bg-orange-600 hover:bg-orange-500" onClick={() => setReportOpen(true)}><FileText className="mr-2 h-4 w-4" />匯出待驗證報告</Button></div></div>}
             </div>
           ) : (
             <div className="py-12 text-center">

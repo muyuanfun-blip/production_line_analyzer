@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AI_REVIEW_ROLES, buildConsensusClarificationSummary, buildStructuredConsensusReport, evaluateConsensus, type ConsensusResult, type RoleReview } from "../shared/aiConsensus";
+import { AI_REVIEW_ROLES, buildConditionalSuggestionReport, buildConsensusClarificationSummary, buildStructuredConsensusReport, evaluateConsensus, type ConsensusResult, type RoleReview } from "../shared/aiConsensus";
 
 const reviews: RoleReview[] = AI_REVIEW_ROLES.map((role) => ({
   roleId: role.id,
@@ -41,5 +41,14 @@ describe("五角色 AI 共識流程", () => {
     const report = buildConsensusClarificationSummary({ productionLineName: "示範線", dataScope: ["資料就緒度：不足"], reviews, consensus: { ...consensus, consensusAchieved: false } }, "五角色審查尚未達成共識");
     expect(report).toContain("**尚未核准。**");
     expect(report).toContain("補充資料缺口並重新執行五角色審查");
+  });
+
+  it("未達共識時仍可輸出待驗證改善建議，但清楚保留正式治理門檻", () => {
+    const report = buildConditionalSuggestionReport({ productionLineName: "示範線", dataScope: ["資料就緒度：不足", "缺少目標節拍"], reviews, consensus: { ...consensus, consensusAchieved: false, agreementScore: 66, unresolvedItems: ["品質角色要求先確認不良率"] } }, "五角色審查尚未達成共識");
+    expect(report).toContain("待驗證／非正式核准");
+    expect(report).toContain("## 5. 優先改善假設");
+    expect(report).toContain("縮短瓶頸 CT（待驗證）");
+    expect(report).toContain("不得視為已核准方案");
+    expect(report).toContain("只有達成共識或完成管理員人工裁決");
   });
 });
