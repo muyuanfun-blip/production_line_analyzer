@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, TrendingUp, ChevronDown, ChevronUp, Zap, Activity, Clock, Maximize2, Minimize2, RotateCw, ArrowUp, ArrowDown } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { getChangedWorkstationIds, summarizeProductFlows } from "../../../shared/monitoringRealtime";
 
 interface RealtimeWorkstation {
   id: number;
@@ -49,6 +50,16 @@ interface HistoricalTrend {
   upph: number;
   taktAchievement: number;
   productionActual: number;
+}
+
+interface MonitoringProductFlowRecord {
+  productId: string;
+  wsId: number;
+  wsName: string;
+  startTime: Date;
+  endTime?: Date;
+  cycleTime: number;
+  status: "in_progress" | "completed" | "waiting";
 }
 
 const getStatusColor = (status: string) => {
@@ -112,18 +123,83 @@ const KPICard = ({ label, value, unit, status, previousValue }: { label: string;
   );
 };
 
+function RealtimeProductGantt({ records }: { records: MonitoringProductFlowRecord[] }) {
+  const now = Date.now();
+  const products = Array.from(new Set(records.map((record) => record.productId)));
+  const rangeStart = Math.min(...records.map((record) => new Date(record.startTime).getTime()), now);
+  const rangeEnd = Math.max(...records.map((record) => record.endTime ? new Date(record.endTime).getTime() : now), rangeStart + 1);
+  const rangeMs = Math.max(rangeEnd - rangeStart, 1);
+  const flowSummary = summarizeProductFlows(records);
+
+  return (
+    <div className="rounded-lg border border-cyan-500/20 bg-slate-900/50 p-3 sm:p-4 backdrop-blur">
+      <div className="mb-3 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+        <div>
+          <h2 className="text-xs font-bold uppercase tracking-widest text-cyan-400">產品流程即時進度</h2>
+          <p className="mt-1 text-[11px] text-cyan-400/60">依工站流程呈現最新產品位置；紅色段落代表卡料或等待。</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-emerald-300">完成 {flowSummary.completed}</span>
+          <span className="rounded border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-cyan-300">加工中 {flowSummary.in_progress}</span>
+          <span className={`rounded border px-2 py-1 ${flowSummary.waiting > 0 ? "border-red-500/40 bg-red-500/15 text-red-300" : "border-slate-500/30 bg-slate-500/10 text-slate-300"}`}>卡料 {flowSummary.waiting}</span>
+        </div>
+      </div>
+      {!records.length ? (
+        <div className="flex h-28 items-center justify-center text-xs text-slate-400">尚無產品流程資料</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <div className="min-w-[620px]">
+            <div className="mb-1 ml-24 flex justify-between text-[10px] text-slate-500"><span>{new Date(rangeStart).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}</span><span>現在</span><span>{new Date(rangeEnd).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}</span></div>
+            <div className="space-y-1.5">
+              {products.slice(0, 8).map((productId) => {
+                const productRecords = records.filter((record) => record.productId === productId).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+                const progress = productRecords.length ? Math.round((productRecords.filter((record) => record.status === "completed").length / productRecords.length) * 100) : 0;
+                return (
+                  <div key={productId} className="flex items-center gap-2">
+                    <div className="w-[88px] shrink-0 truncate text-[11px] font-mono text-slate-300" title={productId}>{productId}</div>
+                    <div className="relative h-8 flex-1 overflow-hidden rounded bg-slate-950/60 ring-1 ring-inset ring-cyan-500/10">
+                      {productRecords.map((record, index) => {
+                        const start = new Date(record.startTime).getTime();
+                        const end = record.endTime ? new Date(record.endTime).getTime() : now;
+                        const left = ((start - rangeStart) / rangeMs) * 100;
+                        const width = Math.max(((end - start) / rangeMs) * 100, 3.5);
+                        const className = record.status === "waiting"
+                          ? "bg-red-500/85 text-white ring-1 ring-red-200/70 animate-pulse"
+                          : record.status === "in_progress"
+                            ? "bg-cyan-500/85 text-white ring-1 ring-cyan-200/70"
+                            : "bg-emerald-500/75 text-white";
+                        const label = record.status === "waiting" ? `卡料 · ${record.wsName}` : record.wsName;
+                        return <div key={`${record.wsId}-${index}`} title={`${label}\nCT ${record.cycleTime.toFixed(1)}s`} className={`absolute top-1 flex h-6 items-center truncate rounded px-1.5 text-[10px] font-medium shadow-sm transition-all duration-500 ${className}`} style={{ left: `${Math.max(left, 0)}%`, width: `${Math.min(width, 100 - Math.max(left, 0))}%` }}>{label}</div>;
+                      })}
+                    </div>
+                    <div className="w-8 text-right text-[10px] text-slate-400">{progress}%</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MonitoringDashboard() {
   const { lineId } = useParams<{ lineId: string }>();
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [selectedWs, setSelectedWs] = useState<number | null>(null);
   const [expandedAlerts, setExpandedAlerts] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [refreshInterval, setRefreshInterval] = useState(30); // 30 秒
+  const [refreshInterval, setRefreshInterval] = useState(3);
   const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date());
   const containerRef = useRef<HTMLDivElement>(null);
   const [previousKPI, setPreviousKPI] = useState<any>(null);
   const [aiSuggestions, setAiSuggestions] = useState<Record<number, string>>({});
   const [loadingAI, setLoadingAI] = useState<Record<number, boolean>>({});
+  const [changedWsIds, setChangedWsIds] = useState<Set<number>>(new Set());
+  const latestStatusRef = useRef<RealtimeLineStatus | null>(null);
+  const statusMapRef = useRef<Map<number, RealtimeWorkstation["status"]>>(new Map());
+  const refreshInFlightRef = useRef(false);
 
   // 實時狀態查詢
   const { data: realtimeStatus, isLoading: statusLoading, refetch: refetchStatus } = trpc.monitoring.getRealTimeStatus.useQuery(
@@ -132,29 +208,78 @@ export default function MonitoringDashboard() {
   );
 
   // 歷史趨勢查詢
-  const { data: historicalTrend, isLoading: trendLoading } = trpc.monitoring.getHistoricalTrend.useQuery(
+  const { data: historicalTrend, isLoading: trendLoading, refetch: refetchTrend } = trpc.monitoring.getHistoricalTrend.useQuery(
     { productionLineId: parseInt(lineId || "0"), productionTarget: 100 },
     { enabled: !!lineId }
   );
+  const { data: productFlowRecords = [], refetch: refetchProductFlows } = trpc.monitoring.getProductFlowRecords.useQuery(
+    { productionLineId: parseInt(lineId || "0"), productCount: 8 },
+    { enabled: !!lineId },
+  );
 
-  // 自動刷新效果（30 秒）
+  const criticalAnomalies = useMemo(
+    () => realtimeStatus?.anomalies.filter((anomaly) => anomaly.level === "critical") ?? [],
+    [realtimeStatus?.anomalies],
+  );
+  const warningAnomalies = useMemo(
+    () => realtimeStatus?.anomalies.filter((anomaly) => anomaly.level === "warning") ?? [],
+    [realtimeStatus?.anomalies],
+  );
+
+  useEffect(() => {
+    latestStatusRef.current = realtimeStatus ?? null;
+  }, [realtimeStatus]);
+
+  const refreshMonitoring = useCallback(async () => {
+    if (refreshInFlightRef.current) return;
+    const priorStatus = latestStatusRef.current;
+    if (priorStatus) {
+      setPreviousKPI({
+        balanceRate: priorStatus.balanceRate,
+        upph: priorStatus.upph,
+        taktAchievement: priorStatus.taktAchievement,
+        productionActual: priorStatus.productionActual,
+      });
+    }
+    refreshInFlightRef.current = true;
+    try {
+      await Promise.all([refetchStatus(), refetchTrend(), refetchProductFlows()]);
+      setLastUpdateTime(new Date());
+    } finally {
+      refreshInFlightRef.current = false;
+    }
+  }, [refetchStatus, refetchTrend, refetchProductFlows]);
+
+  // 自動刷新：背景頁面不輪詢，重新回到頁面時立即同步一次，避免無效請求。
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
-      // 保存前一次的 KPI 數據
-      if (realtimeStatus) {
-        setPreviousKPI({
-          balanceRate: realtimeStatus.balanceRate,
-          upph: realtimeStatus.upph,
-          taktAchievement: realtimeStatus.taktAchievement,
-          productionActual: realtimeStatus.productionActual,
-        });
-      }
-      refetchStatus();
-      setLastUpdateTime(new Date());
+      if (document.visibilityState === "visible") void refreshMonitoring();
     }, refreshInterval * 1000);
     return () => clearInterval(interval);
-  }, [autoRefresh, refetchStatus, refreshInterval, realtimeStatus]);
+  }, [autoRefresh, refreshInterval, refreshMonitoring]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshMonitoring();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [autoRefresh, refreshMonitoring]);
+
+  // 工站狀態變化時短暫標記，讓操作者能看出即時切換而不造成版面跳動。
+  useEffect(() => {
+    const workstations = realtimeStatus?.workstations ?? [];
+    const previousMap = statusMapRef.current;
+    const nextMap = new Map(workstations.map((workstation) => [workstation.id, workstation.status]));
+    const changed = getChangedWorkstationIds(previousMap, workstations);
+    statusMapRef.current = nextMap;
+    if (changed.length === 0) return;
+    setChangedWsIds(new Set(changed));
+    const timeout = window.setTimeout(() => setChangedWsIds(new Set()), 1800);
+    return () => window.clearTimeout(timeout);
+  }, [realtimeStatus?.workstations]);
 
   // 全螢幕功能
   const toggleFullscreen = async () => {
@@ -209,9 +334,6 @@ export default function MonitoringDashboard() {
     taktAchievement: item.taktAchievement,
   })) || [];
 
-  const criticalAnomalies = useMemo(() => realtimeStatus.anomalies.filter((a: any) => a.level === "critical"), [realtimeStatus.anomalies]);
-  const warningAnomalies = useMemo(() => realtimeStatus.anomalies.filter((a: any) => a.level === "warning"), [realtimeStatus.anomalies]);
-  
   // 生成 AI 改善建議（使用後端 API）
   const fetchAISuggestions = async (wsName: string, wsId: number, status: string) => {
     // 如果已經有建議，不需要重新購取
@@ -283,9 +405,19 @@ export default function MonitoringDashboard() {
                 : "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30"
             }`}
           >
-            <RotateCw size={14} className="sm:w-4 sm:h-4" />
+            <RotateCw size={14} className={`sm:w-4 sm:h-4 ${autoRefresh ? "animate-spin" : ""}`} />
             <span className="hidden sm:inline">{autoRefresh ? "自動更新" : "手動模式"}</span>
             <span className="sm:hidden">{autoRefresh ? "自動" : "手動"}</span>
+          </button>
+          <button
+            onClick={() => void refreshMonitoring()}
+            className="rounded-lg bg-slate-700/70 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-slate-200 transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50 flex items-center gap-1 sm:gap-2"
+            disabled={refreshInFlightRef.current}
+            title="立即更新監控資料"
+          >
+            <RotateCw size={14} className="sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">立即刷新</span>
+            <span className="sm:hidden">刷新</span>
           </button>
           <button
             onClick={toggleFullscreen}
@@ -316,6 +448,7 @@ export default function MonitoringDashboard() {
           onChange={(e) => setRefreshInterval(parseInt(e.target.value))}
           className="rounded bg-slate-800 px-2 py-1 text-xs text-cyan-400 border border-cyan-500/20 w-full sm:w-auto"
         >
+          <option value={3}>3 秒</option>
           <option value={10}>10 秒</option>
           <option value={30}>30 秒</option>
           <option value={60}>1 分鐘</option>
@@ -368,15 +501,16 @@ export default function MonitoringDashboard() {
                 <button
                   key={ws.id}
                   onClick={() => setSelectedWs(selectedWs === ws.id ? null : ws.id)}
-                  className={`w-full rounded-lg border-2 p-3 text-left transition ${
+                  className={`w-full rounded-lg border-2 p-3 text-left transition-all duration-500 ${
                     selectedWs === ws.id
                       ? "border-cyan-400 bg-cyan-500/10"
                       : "border-cyan-500/20 bg-slate-800/50 hover:border-cyan-500/50"
-                  }`}
+                  } ${changedWsIds.has(ws.id) ? "ring-2 ring-cyan-300/70 bg-cyan-500/15" : ""}`}
                 >
                   <div className={`flex items-center gap-2`}>
-                    <div className={`h-2 w-2 rounded-full ${getStatusColor(ws.status)}`} />
+                    <div className={`h-2 w-2 rounded-full transition-all duration-500 ${getStatusColor(ws.status)} ${changedWsIds.has(ws.id) ? "scale-150 animate-pulse" : ""}`} />
                     <span className="flex-1 text-xs font-semibold">{ws.name}</span>
+                    <span className="rounded border border-white/10 bg-slate-950/30 px-1.5 py-0.5 text-[10px] text-slate-200">{getStatusLabel(ws.status)}</span>
                     {ws.id === realtimeStatus.bottleneckWsId && (
                       <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-xs font-bold text-orange-400">瓶頸</span>
                     )}
@@ -397,7 +531,7 @@ export default function MonitoringDashboard() {
               <div className="flex flex-wrap gap-2">
                 {realtimeStatus.workstations.map((ws: RealtimeWorkstation, idx: number) => (
                   <div key={ws.id} className="flex items-center">
-                    <div className={`rounded-full w-12 h-12 flex items-center justify-center font-bold text-xs ${getStatusColor(ws.status)}`}>
+                    <div className={`rounded-full w-12 h-12 flex items-center justify-center font-bold text-xs transition-all duration-500 ${getStatusColor(ws.status)} ${changedWsIds.has(ws.id) ? "ring-2 ring-cyan-200 ring-offset-2 ring-offset-slate-900" : ""}`}>
                       {ws.name}
                     </div>
                     {idx < realtimeStatus.workstations.length - 1 && (
@@ -426,6 +560,10 @@ export default function MonitoringDashboard() {
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="mb-6">
+          <RealtimeProductGantt records={productFlowRecords as MonitoringProductFlowRecord[]} />
         </div>
 
         {/* 警示面板 */}
