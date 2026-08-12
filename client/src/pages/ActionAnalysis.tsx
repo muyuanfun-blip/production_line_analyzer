@@ -881,9 +881,14 @@ export default function ActionAnalysis() {
             </Badge>
           )}
           {isAdmin && (
-            <Button variant="outline" size="sm" onClick={() => setReviewOpen(true)} className="text-xs h-8 gap-1.5 border-cyan-500/35 text-cyan-300 hover:bg-cyan-500/10">
-              <ClipboardCheck className="w-3.5 h-3.5" />覆核管理
-            </Button>
+            <>
+              <Button variant="outline" size="sm" onClick={() => navigate('/admin/action-review-quality')} className="text-xs h-8 gap-1.5 border-violet-500/35 text-violet-300 hover:bg-violet-500/10">
+                <BarChart3 className="w-3.5 h-3.5" />覆核品質
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setReviewOpen(true)} className="text-xs h-8 gap-1.5 border-cyan-500/35 text-cyan-300 hover:bg-cyan-500/10">
+                <ClipboardCheck className="w-3.5 h-3.5" />覆核管理
+              </Button>
+            </>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

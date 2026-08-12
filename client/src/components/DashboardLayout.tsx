@@ -38,6 +38,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   GitBranch,
+  ScanSearch,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -60,7 +61,9 @@ const navGroups = [
   },
 ];
 
-const adminNavItems: typeof navGroups[0]["items"] = [];
+const adminNavItems: typeof navGroups[0]["items"] = [
+  { icon: ScanSearch, label: "覆核品質儀表板", path: "/admin/action-review-quality" },
+];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 240;

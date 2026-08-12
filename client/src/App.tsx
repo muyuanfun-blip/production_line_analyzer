@@ -22,6 +22,7 @@ import FloorPlanSimulator from "./pages/FloorPlanSimulator";
 import ProductModels from "./pages/ProductModels";
 import ProductTracking from "./pages/ProductTracking";
 import GanttPage from "./pages/GanttPage";
+import ActionReviewDashboard from "./pages/ActionReviewDashboard";
 import { VSMPage } from "./pages/VSMPage";
 import { trpc } from "@/lib/trpc";
 import { useEffect } from "react";
@@ -75,6 +76,7 @@ function Router() {
               <Route path={"/lines/:id/snapshots"} component={SnapshotHistory} />
               <Route path={"/guide"} component={UserGuide} />
               <Route path={"/admin/users"} component={AdminUsers} />
+              <Route path={"/admin/action-review-quality"} component={ActionReviewDashboard} />
               <Route path={"/data-refinement"} component={DataRefinement} />
               <Route path={"/simulator"} component={SimulationPage} />
               <Route path={"/product-models"} component={ProductModels} />

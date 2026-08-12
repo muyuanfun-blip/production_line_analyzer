@@ -10,7 +10,7 @@ import {
   updateWorkstation, deleteWorkstation, bulkCreateWorkstations,
   getActionStepsByWorkstation, getActionStepsByWorkstationIds, createActionStep, updateActionStep,
   deleteActionStep, bulkCreateActionSteps, getActionReviewQueue, queueActionStepsForReview,
-  resolveActionStepReviews,
+  resolveActionStepReviews, getActionReviewQualityStats,
   getSnapshotsByLine, getSnapshotById, createSnapshot, deleteSnapshot, updateSnapshotData,
   getAllLinesLatestSnapshot,
   getAllLinesLatestSnapshotByDate,
@@ -183,7 +183,12 @@ export const appRouter = router({
         productionLineId: z.number().int().positive().optional(),
         entityType: z.enum(["production_line", "workstation"]).optional(),
         action: z.enum(["create", "update", "delete", "bulk_import"]).optional(),
-        limit: z.number().int().min(1).max(200).optional(),
+        entityId: z.number().int().positive().optional(),
+        operatorId: z.number().int().positive().optional(),
+        changedField: z.string().min(1).max(64).optional(),
+        from: z.date().optional(),
+        to: z.date().optional(),
+        limit: z.number().int().min(1).max(500).optional(),
       }))
       .query(async ({ input }) => listMasterDataAuditLogs(input)),
   }),
@@ -458,6 +463,10 @@ export const appRouter = router({
       .query(async ({ input }) => {
         return getActionReviewQueue(input.productionLineId, input.statuses);
       }),
+
+    getReviewQualityStats: adminProcedure
+      .input(z.object({ productionLineId: z.number().int().positive().optional() }).optional())
+      .query(async ({ input }) => getActionReviewQualityStats(input?.productionLineId)),
 
     queueReview: adminProcedure
       .input(z.object({

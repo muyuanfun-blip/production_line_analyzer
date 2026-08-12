@@ -20,6 +20,8 @@ import {
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { resolveActionTypeForReview } from "../shared/actionReview";
+import { summarizeActionReviewQuality } from "../shared/actionReviewQuality";
+import { hasMasterDataAuditChangedField } from "../shared/masterDataAudit";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -209,6 +211,11 @@ export async function listMasterDataAuditLogs(filters: {
   productionLineId?: number;
   entityType?: MasterDataEntityType;
   action?: MasterDataAuditAction;
+  entityId?: number;
+  operatorId?: number;
+  changedField?: string;
+  from?: Date;
+  to?: Date;
   limit?: number;
 }) {
   const db = await getDb();
@@ -217,6 +224,10 @@ export async function listMasterDataAuditLogs(filters: {
   if (filters.productionLineId !== undefined) conditions.push(eq(masterDataAuditLogs.productionLineId, filters.productionLineId));
   if (filters.entityType !== undefined) conditions.push(eq(masterDataAuditLogs.entityType, filters.entityType));
   if (filters.action !== undefined) conditions.push(eq(masterDataAuditLogs.action, filters.action));
+  if (filters.entityId !== undefined) conditions.push(eq(masterDataAuditLogs.entityId, filters.entityId));
+  if (filters.operatorId !== undefined) conditions.push(eq(masterDataAuditLogs.operatorId, filters.operatorId));
+  if (filters.from !== undefined) conditions.push(gte(masterDataAuditLogs.createdAt, filters.from));
+  if (filters.to !== undefined) conditions.push(lte(masterDataAuditLogs.createdAt, filters.to));
   const query = db.select({
     id: masterDataAuditLogs.id,
     entityType: masterDataAuditLogs.entityType,
@@ -231,10 +242,12 @@ export async function listMasterDataAuditLogs(filters: {
     createdAt: masterDataAuditLogs.createdAt,
   }).from(masterDataAuditLogs)
     .leftJoin(users, eq(masterDataAuditLogs.operatorId, users.id));
-  if (conditions.length > 0) {
-    return query.where(and(...conditions)).orderBy(desc(masterDataAuditLogs.createdAt)).limit(filters.limit ?? 100);
-  }
-  return query.orderBy(desc(masterDataAuditLogs.createdAt)).limit(filters.limit ?? 100);
+  const rows = conditions.length > 0
+    ? await query.where(and(...conditions)).orderBy(desc(masterDataAuditLogs.createdAt)).limit(filters.limit ?? 100)
+    : await query.orderBy(desc(masterDataAuditLogs.createdAt)).limit(filters.limit ?? 100);
+  return filters.changedField
+    ? rows.filter((row) => hasMasterDataAuditChangedField(row.beforeData, row.afterData, filters.changedField!))
+    : rows;
 }
 
 // ─── Workstations ────────────────────────────────────────────────────────────
@@ -404,6 +417,24 @@ export async function resolveActionStepReviews(
     };
     await db.update(actionSteps).set(updateData).where(eq(actionSteps.id, candidate.id));
   }
+}
+
+export async function getActionReviewQualityStats(productionLineId?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const query = db.select({
+    productionLineId: workstations.productionLineId,
+    workstationId: workstations.id,
+    workstationName: workstations.name,
+    duration: actionSteps.duration,
+    actionType: actionSteps.actionType,
+    reviewStatus: actionSteps.reviewStatus,
+  }).from(actionSteps)
+    .innerJoin(workstations, eq(actionSteps.workstationId, workstations.id));
+  const rows = productionLineId !== undefined
+    ? await query.where(eq(workstations.productionLineId, productionLineId))
+    : await query;
+  return summarizeActionReviewQuality(rows as any);
 }
 
 // ─── Hand Actions ──────────────────────────────────────────────────────────────────────────────────────
