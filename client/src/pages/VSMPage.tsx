@@ -20,6 +20,8 @@ import { parseMonitoringVsmContext } from '../../../shared/monitoringVsmContext'
 import { buildVsmComparisonPair } from '../../../shared/vsmVersionTimeline';
 import { buildVsmTrackingUrl } from '../../../shared/vsmTrackingContext';
 import { parseSimulationVsmContext } from '../../../shared/simulationVsmContext';
+import { buildVsmWorkstationImportPlan } from '../../../shared/vsmWorkstationImport';
+import { inspectVsmModel } from '../../../shared/vsmTrustedMetrics';
 
 interface VSMProcessDisplay {
   id: number;
@@ -75,6 +77,7 @@ export const VSMPage: React.FC = () => {
   const [compareVersions, setCompareVersions] = useState<[number, number] | null>(null);
   const [showCompareDialog, setShowCompareDialog] = useState(false);
   const [showVersionDialog, setShowVersionDialog] = useState(false);
+  const [isImportingWorkstations, setIsImportingWorkstations] = useState(false);
   const [timelineFocusedVersionId, setTimelineFocusedVersionId] = useState<number | null>(null);
   const [timelineCompareAnchorId, setTimelineCompareAnchorId] = useState<number | null>(null);
 
@@ -84,6 +87,10 @@ export const VSMPage: React.FC = () => {
 
   // 查詢圖表列表
   const { data: diagrams, isLoading: diagramsLoading } = trpc.vsm.listDiagrams.useQuery(
+    { productionLineId: lineIdNum },
+    { enabled: lineIdNum > 0 }
+  );
+  const { data: lineWorkstations } = trpc.workstation.listByLine.useQuery(
     { productionLineId: lineIdNum },
     { enabled: lineIdNum > 0 }
   );
@@ -133,6 +140,12 @@ export const VSMPage: React.FC = () => {
     { enabled: !!selectedDiagramId }
   );
   const diagram = diagramQuery.data;
+  const modelQualityIssues = React.useMemo(() => inspectVsmModel(
+    (processes || []).map((process: any) => ({ ...process, cycleTime: process.cycleTime == null ? null : Number(process.cycleTime), valueAddedRate: process.valueAddedRate == null ? null : Number(process.valueAddedRate) })),
+    (flows || []).map((flow: any) => ({ ...flow, cycleTime: flow.cycleTime == null ? null : Number(flow.cycleTime) })),
+    diagram?.taktTime == null ? null : Number(diagram.taktTime),
+  ), [processes, flows, diagram?.taktTime]);
+  const hasModelErrors = modelQualityIssues.some((issue) => issue.severity === 'error');
 
   // 查詢版本
   const versionsQuery = trpc.vsm.listVersions.useQuery(
@@ -300,6 +313,35 @@ export const VSMPage: React.FC = () => {
     });
   };
 
+  const handleImportWorkstations = async () => {
+    if (!selectedDiagramId || !lineWorkstations?.length || isImportingWorkstations) return;
+    if (processes?.length && !window.confirm('此操作會新增一組依工站排序的工序與流線；既有 VSM 工序將保留。是否繼續？')) return;
+    setIsImportingWorkstations(true);
+    try {
+      const plan = buildVsmWorkstationImportPlan(lineWorkstations as any);
+      const importedProcessIds = new Map<number, number>();
+      for (const process of plan.processes) {
+        const response = await createProcessMutation.mutateAsync({
+          vsmDiagramId: selectedDiagramId,
+          ...process,
+          type: 'process',
+          width: 150,
+          height: 90,
+        });
+        if (response.process?.id) importedProcessIds.set(process.workstationId, response.process.id);
+      }
+      for (const link of plan.links) {
+        const fromProcessId = importedProcessIds.get(link.fromWorkstationId);
+        const toProcessId = importedProcessIds.get(link.toWorkstationId);
+        if (fromProcessId && toProcessId) {
+          await createFlowMutation.mutateAsync({ vsmDiagramId: selectedDiagramId, fromProcessId, toProcessId, flowType: 'material' });
+        }
+      }
+    } finally {
+      setIsImportingWorkstations(false);
+    }
+  };
+
   const handleCreateVersion = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedDiagramId || !processes || !flows) return;
@@ -401,6 +443,9 @@ export const VSMPage: React.FC = () => {
             )}
             {/* 工具列 */}
             <div className="h-16 border-b border-slate-700 bg-slate-900 px-4 flex items-center gap-2">
+              <div className={`hidden rounded border px-2 py-1 text-[11px] lg:block ${hasModelErrors ? 'border-red-500/35 bg-red-500/10 text-red-200' : 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200'}`} title={modelQualityIssues.map((issue) => issue.message).join('\n') || '模型可儲存為版本'}>
+                {hasModelErrors ? `發布前檢查：${modelQualityIssues.filter((issue) => issue.severity === 'error').length} 項阻擋` : '發布前檢查：可建立版本'}
+              </div>
               <Dialog open={showNewProcessDialog} onOpenChange={setShowNewProcessDialog}>
                 <DialogTrigger asChild>
                   <Button size="sm" variant="outline">
@@ -447,6 +492,17 @@ export const VSMPage: React.FC = () => {
                   </form>
                 </DialogContent>
               </Dialog>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleImportWorkstations}
+                disabled={!lineWorkstations?.length || isImportingWorkstations}
+                title="依工站順序建立工序並自動串接物流流線"
+              >
+                <Activity className="w-4 h-4 mr-2" />
+                {isImportingWorkstations ? '建立中…' : '從工站建立流程'}
+              </Button>
 
               <Dialog open={showNewFlowDialog} onOpenChange={setShowNewFlowDialog}>
                 <DialogTrigger asChild>
@@ -510,7 +566,7 @@ export const VSMPage: React.FC = () => {
 
               <Dialog open={showVersionDialog} onOpenChange={setShowVersionDialog}>
                 <DialogTrigger asChild>
-                  <Button size="sm" variant="outline" disabled={!selectedDiagramId}>
+                  <Button size="sm" variant="outline" disabled={!selectedDiagramId || hasModelErrors} title={hasModelErrors ? '請先修正資料品質面板中的阻擋問題' : undefined}>
                     <Save className="w-4 h-4 mr-2" />
                     儲存版本
                   </Button>
