@@ -4,13 +4,15 @@ import { useState, useMemo } from "react";
 import { useLocation, useParams } from "wouter";
 import {
   ArrowLeft, ChevronRight, Brain, Sparkles, Download, RefreshCw,
-  BarChart3, AlertTriangle, TrendingUp, Clock, Users, FileText
+  BarChart3, AlertTriangle, TrendingUp, Clock, Users, FileText, MessageSquare, Send, ShieldCheck
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { buildAIProfessionalReport, buildAIProfessionalReportHtml } from "../../../shared/aiProfessionalReport";
 import type { ConsensusResult, RoleReview } from "../../../shared/aiConsensus";
+import { INTERACTIVE_QUICK_QUESTIONS } from "../../../shared/interactiveAnalysis";
 import { Streamdown } from "streamdown";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -38,6 +40,8 @@ export default function AISuggestions() {
   const [reportOpen, setReportOpen] = useState(false);
   const [roleReviews, setRoleReviews] = useState<RoleReview[]>([]);
   const [consensus, setConsensus] = useState<ConsensusResult | null>(null);
+  const [interactiveQuestion, setInteractiveQuestion] = useState("");
+  const [interactiveMessages, setInteractiveMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
 
   const aiMutation = trpc.analysis.aiSuggest.useMutation({
     onSuccess: (data) => {
@@ -49,6 +53,14 @@ export default function AISuggestions() {
       toast.success("五角色審查已達成共識，正式報告已就緒");
     },
     onError: () => toast.error("AI 分析失敗，請稍後再試"),
+  });
+
+  const interactiveMutation = trpc.analysis.interactiveAnalyze.useMutation({
+    onSuccess: (data) => setInteractiveMessages((messages) => [...messages, { role: "assistant", content: data.answer }]),
+    onError: (error) => {
+      setInteractiveMessages((messages) => messages.slice(0, -1));
+      toast.error(error.message || "互動分析失敗，請稍後再試");
+    },
   });
 
   const analysis = useMemo(() => {
@@ -104,6 +116,8 @@ export default function AISuggestions() {
     setSuggestion(null);
     setRoleReviews([]);
     setConsensus(null);
+    setInteractiveMessages([]);
+    setInteractiveQuestion("");
     
     // 為每個工站附加動作拆解資料
     const workstationsWithActions = workstations.map(w => {
@@ -164,6 +178,33 @@ export default function AISuggestions() {
     reportWindow.document.close();
     reportWindow.focus();
     window.setTimeout(() => reportWindow.print(), 250);
+  };
+
+  const handleInteractiveAnalyze = (question = interactiveQuestion) => {
+    const normalizedQuestion = question.trim();
+    if (!normalizedQuestion) { toast.error("請輸入想進一步分析的問題"); return; }
+    if (!consensus || roleReviews.length !== 5 || !analysis || !workstations?.length) {
+      toast.error("請先完成五角色共識分析後再進行互動追問");
+      return;
+    }
+    const history = interactiveMessages.slice(-6);
+    setInteractiveMessages((messages) => [...messages, { role: "user", content: normalizedQuestion }]);
+    setInteractiveQuestion("");
+    interactiveMutation.mutate({
+      productionLineName: line?.name ?? "未命名產線",
+      question: normalizedQuestion,
+      dataScope: [
+        `工站數量：${workstations.length} 個`,
+        `平衡率：${analysis.balanceRate.toFixed(1)}%`,
+        `瓶頸工站：${analysis.bottleneck?.name ?? "無"}（${analysis.maxTime.toFixed(1)} 秒）`,
+        `平均工序時間：${analysis.avgTime.toFixed(1)} 秒`,
+        line?.targetCycleTime ? `目標節拍：${line.targetCycleTime} 秒` : "目標節拍：未設定",
+      ],
+      workstationSummary: workstations.slice(0, 80).map((station) => `${station.name}：CT ${station.cycleTime} 秒，人力 ${station.manpower}`),
+      reviews: roleReviews,
+      consensus,
+      history,
+    });
   };
 
   const handleExportJSON = () => {
@@ -355,6 +396,17 @@ export default function AISuggestions() {
                   </ReactMarkdown>
                 </div>
               </div>
+              {consensus && (
+                <div className="not-prose rounded-xl border border-violet-400/25 bg-violet-400/5 p-4">
+                  <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
+                    <div><p className="flex items-center gap-2 font-medium text-violet-200"><MessageSquare className="h-4 w-4" />互動分析</p><p className="mt-1 text-xs text-muted-foreground">針對目前五角色共識、工站資料、優先行動與風險提出追問；回答不會修改已核准的正式報告。</p></div>
+                    <div className="flex items-center gap-1 text-[11px] text-emerald-300"><ShieldCheck className="h-3.5 w-3.5" />受共識脈絡約束</div>
+                  </div>
+                  {interactiveMessages.length > 0 && <div className="mt-4 max-h-80 space-y-3 overflow-y-auto pr-1">{interactiveMessages.map((message, index) => <div key={`${message.role}-${index}`} className={message.role === "user" ? "ml-6 rounded-lg bg-violet-400/10 p-3" : "mr-6 rounded-lg border border-border bg-background/50 p-3"}><p className="mb-1 text-[10px] font-medium text-muted-foreground">{message.role === "user" ? "你的問題" : "AI 互動分析"}</p><div className="prose prose-invert max-w-none text-xs"><ReactMarkdown>{message.content}</ReactMarkdown></div></div>)}{interactiveMutation.isPending && <div className="mr-6 rounded-lg border border-border bg-background/50 p-3 text-xs text-muted-foreground"><RefreshCw className="mr-2 inline h-3.5 w-3.5 animate-spin" />正在依五角色共識分析…</div>}</div>}
+                  <div className="mt-4 flex flex-wrap gap-2">{INTERACTIVE_QUICK_QUESTIONS.map((question) => <Button key={question} variant="outline" size="sm" className="h-auto whitespace-normal py-1.5 text-left text-xs" disabled={interactiveMutation.isPending} onClick={() => handleInteractiveAnalyze(question)}>{question}</Button>)}</div>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row"><Textarea value={interactiveQuestion} onChange={(event) => setInteractiveQuestion(event.target.value)} placeholder="例如：若瓶頸工站增加 0.5 人，先要驗證哪些條件？" className="min-h-20 text-sm" maxLength={800} disabled={interactiveMutation.isPending} /><Button className="self-end sm:self-stretch" disabled={interactiveMutation.isPending || !interactiveQuestion.trim()} onClick={() => handleInteractiveAnalyze()}><Send className="mr-2 h-4 w-4" />追問</Button></div>
+                </div>
+              )}
               <div className="not-prose flex flex-col gap-3 rounded-xl border border-cyan-400/25 bg-cyan-400/5 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div><p className="font-medium text-foreground">AI 專業圖文分析報告已就緒</p><p className="mt-1 text-xs text-muted-foreground">報告整合目前 KPI、動作分類圖、工站負荷與本次 AI 建議，可預覽、下載或列印為 PDF。</p></div>
                 <Button className="shrink-0" onClick={() => setReportOpen(true)}><FileText className="mr-2 h-4 w-4" />匯出專業報告</Button>
