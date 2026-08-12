@@ -10,6 +10,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { getChangedWorkstationIds, summarizeProductFlows } from "../../../shared/monitoringRealtime";
 import { buildMonitoringBalanceUrl } from "../../../shared/monitoringBalanceContext";
 import { buildMonitoringTrackingUrl } from "../../../shared/monitoringTrackingContext";
+import { buildMonitoringVsmUrl } from "../../../shared/monitoringVsmContext";
 
 interface RealtimeWorkstation {
   id: number;
@@ -500,6 +501,21 @@ export default function MonitoringDashboard() {
             <BarChart3 size={14} className="sm:w-4 sm:h-4" />
             <span className="hidden md:inline">平衡診斷</span>
             <span className="md:hidden">診斷</span>
+          </button>
+          <button
+            onClick={() => realtimeStatus && setLocation(buildMonitoringVsmUrl({
+              lineId: monitoringLineId,
+              bottleneckWsId: realtimeStatus.bottleneckWsId,
+              balanceRate: realtimeStatus.balanceRate,
+              criticalCount: criticalAnomalies.length,
+              warningCount: warningAnomalies.length,
+            }))}
+            className="rounded-lg bg-amber-500/15 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-amber-200 transition hover:bg-amber-500/25 flex items-center gap-1 sm:gap-2"
+            title="帶入瓶頸與警示狀態檢視 VSM"
+          >
+            <Activity size={14} className="sm:w-4 sm:h-4" />
+            <span className="hidden lg:inline">VSM 流程</span>
+            <span className="lg:hidden">VSM</span>
           </button>
           <button
             onClick={toggleFullscreen}

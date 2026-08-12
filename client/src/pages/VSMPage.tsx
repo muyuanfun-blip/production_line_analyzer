@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'wouter';
+import { useLocation, useParams } from 'wouter';
 import { trpc } from '@/lib/trpc';
 import { VSMCanvas } from '@/components/VSMCanvas';
 import { VSMAnalysis } from '@/components/VSMAnalysis';
@@ -12,9 +12,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Save, Download, RotateCcw, Clock, FileJson, FileSpreadsheet } from 'lucide-react';
+import { Plus, Save, Download, RotateCcw, Clock, FileJson, FileSpreadsheet, Activity } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { exportVSMAsJSON, exportVSMProcessesAsCSV, exportVSMFlowsAsCSV, exportVSMAsPNG } from '@/lib/vsmExport';
+import { parseMonitoringVsmContext } from '../../../shared/monitoringVsmContext';
 
 interface VSMProcessDisplay {
   id: number;
@@ -59,6 +60,7 @@ interface VSMDiagram {
 
 export const VSMPage: React.FC = () => {
   const { lineId } = useParams<{ lineId: string }>();
+  const [, setLocation] = useLocation();
   const [selectedDiagramId, setSelectedDiagramId] = useState<number | null>(null);
   const [selectedProcess, setSelectedProcess] = useState<VSMProcessDisplay | null>(null);
   const [selectedFlow, setSelectedFlow] = useState<VSMFlowDisplay | null>(null);
@@ -70,6 +72,7 @@ export const VSMPage: React.FC = () => {
   const [showCompareDialog, setShowCompareDialog] = useState(false);
 
   const lineIdNum = lineId ? parseInt(lineId) : 0;
+  const monitoringContext = parseMonitoringVsmContext(window.location.search, lineIdNum);
 
   // 查詢圖表列表
   const { data: diagrams, isLoading: diagramsLoading } = trpc.vsm.listDiagrams.useQuery(
@@ -102,6 +105,19 @@ export const VSMPage: React.FC = () => {
     { vsmDiagramId: selectedDiagramId || 0 },
     { enabled: (selectedDiagramId || 0) > 0 }
   );
+
+  useEffect(() => {
+    if (!monitoringContext || !processes?.length) return;
+    const bottleneckProcess = processes.find((process) => process.workstationId === monitoringContext.bottleneckWsId);
+    if (bottleneckProcess) {
+      setSelectedProcess({
+        ...bottleneckProcess,
+        cycleTime: bottleneckProcess.cycleTime == null ? null : Number(bottleneckProcess.cycleTime),
+        manpower: bottleneckProcess.manpower == null ? null : Number(bottleneckProcess.manpower),
+        valueAddedRate: bottleneckProcess.valueAddedRate == null ? null : Number(bottleneckProcess.valueAddedRate),
+      });
+    }
+  }, [monitoringContext?.bottleneckWsId, processes]);
 
   // 查詢圖表詳細資訊
   const diagramQuery = trpc.vsm.getDiagramById.useQuery(
@@ -311,6 +327,17 @@ export const VSMPage: React.FC = () => {
       <div className="flex-1 flex flex-col overflow-hidden">
         {selectedDiagramId ? (
           <>
+            {monitoringContext && (
+              <div className="border-b border-amber-500/25 bg-amber-500/[0.07] px-4 py-2.5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-200"><Activity className="h-3.5 w-3.5" />監控瓶頸情境</p>
+                    <p className="mt-1 text-[11px] text-amber-100/65">即時平衡率 {monitoringContext.balanceRate.toFixed(1)}%；瓶頸工站 #{monitoringContext.bottleneckWsId || '—'}；緊急警示 {monitoringContext.criticalCount}、預警 {monitoringContext.warningCount}。已對應的 VSM 工序會自動選取。</p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setLocation(`/lines/${lineIdNum}/monitoring`)} className="h-7 shrink-0 border-amber-400/35 text-xs text-amber-200 hover:bg-amber-400/10">返回戰情監控</Button>
+                </div>
+              </div>
+            )}
             {/* 工具列 */}
             <div className="h-16 border-b border-slate-700 bg-slate-900 px-4 flex items-center gap-2">
               <Dialog open={showNewProcessDialog} onOpenChange={setShowNewProcessDialog}>
