@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { getChangedWorkstationIds, summarizeProductFlows } from "../../../shared/monitoringRealtime";
 import { buildMonitoringBalanceUrl } from "../../../shared/monitoringBalanceContext";
+import { buildMonitoringTrackingUrl } from "../../../shared/monitoringTrackingContext";
 
 interface RealtimeWorkstation {
   id: number;
@@ -133,7 +134,7 @@ const KPICard = ({ label, value, unit, status, previousValue }: { label: string;
   );
 };
 
-function RealtimeProductGantt({ records }: { records: MonitoringProductFlowRecord[] }) {
+function RealtimeProductGantt({ records, onOpenTracking }: { records: MonitoringProductFlowRecord[]; onOpenTracking: () => void }) {
   const now = Date.now();
   const products = Array.from(new Set(records.map((record) => record.productId)));
   const rangeStart = Math.min(...records.map((record) => new Date(record.startTime).getTime()), now);
@@ -152,6 +153,7 @@ function RealtimeProductGantt({ records }: { records: MonitoringProductFlowRecor
           <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-emerald-300">完成 {flowSummary.completed}</span>
           <span className="rounded border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-cyan-300">加工中 {flowSummary.in_progress}</span>
           <span className={`rounded border px-2 py-1 ${flowSummary.waiting > 0 ? "border-red-500/40 bg-red-500/15 text-red-300" : "border-slate-500/30 bg-slate-500/10 text-slate-300"}`}>卡料 {flowSummary.waiting}</span>
+          <button type="button" onClick={onOpenTracking} className="rounded border border-violet-500/30 bg-violet-500/10 px-2 py-1 font-semibold text-violet-200 transition hover:bg-violet-500/20">追蹤歷程</button>
         </div>
       </div>
       {!records.length ? (
@@ -694,7 +696,15 @@ export default function MonitoringDashboard() {
         </div>
 
         <div className="mb-6">
-          <RealtimeProductGantt records={productFlowRecords as MonitoringProductFlowRecord[]} />
+          <RealtimeProductGantt
+            records={productFlowRecords as MonitoringProductFlowRecord[]}
+            onOpenTracking={() => setLocation(buildMonitoringTrackingUrl({
+              lineId: monitoringLineId,
+              waitingCount: productFlowRecords.filter((record) => record.status === "waiting").length,
+              activeCount: productFlowRecords.filter((record) => record.status === "in_progress").length,
+              productIds: Array.from(new Set(productFlowRecords.map((record) => record.productId))),
+            }))}
+          />
         </div>
 
         {/* 警示面板 */}
