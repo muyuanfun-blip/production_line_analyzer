@@ -113,6 +113,58 @@
   --status-neutral: oklch(0.520 0.010 220);
 }
 
+/* ── Light theme: operational clarity without flattening hierarchy ───────── */
+html:not(.dark) {
+  --background: oklch(0.975 0.006 220);
+  --card: oklch(1 0 0);
+  --popover: oklch(1 0 0);
+  --foreground: oklch(0.225 0.025 222);
+  --card-foreground: oklch(0.225 0.025 222);
+  --popover-foreground: oklch(0.225 0.025 222);
+  --primary: oklch(0.540 0.145 192);
+  --primary-foreground: oklch(0.99 0.002 220);
+  --secondary: oklch(0.930 0.012 220);
+  --secondary-foreground: oklch(0.300 0.026 222);
+  --muted: oklch(0.940 0.009 220);
+  --muted-foreground: oklch(0.475 0.018 222);
+  --accent: oklch(0.915 0.026 192);
+  --accent-foreground: oklch(0.265 0.040 222);
+  --destructive: oklch(0.560 0.205 25);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.860 0.015 220);
+  --input: oklch(0.990 0.003 220);
+  --ring: oklch(0.540 0.145 192);
+  --chart-1: oklch(0.540 0.145 192);
+  --chart-2: oklch(0.590 0.145 152);
+  --chart-3: oklch(0.570 0.135 268);
+  --chart-4: oklch(0.640 0.155 58);
+  --chart-5: oklch(0.560 0.205 25);
+  --sidebar: oklch(0.955 0.009 220);
+  --sidebar-foreground: oklch(0.280 0.026 222);
+  --sidebar-primary: oklch(0.540 0.145 192);
+  --sidebar-primary-foreground: oklch(0.99 0.002 220);
+  --sidebar-accent: oklch(0.900 0.030 192);
+  --sidebar-accent-foreground: oklch(0.245 0.034 222);
+  --sidebar-border: oklch(0.850 0.016 220);
+  --sidebar-ring: oklch(0.540 0.145 192);
+  --surface-raised: oklch(0.990 0.003 220);
+  --surface-overlay: oklch(0.965 0.008 220);
+  --topbar-bg: oklch(0.985 0.004 220);
+  --topbar-border: oklch(0.870 0.014 220);
+  --status-ok: oklch(0.570 0.140 152);
+  --status-warn: oklch(0.650 0.150 58);
+  --status-error: oklch(0.560 0.205 25);
+  --status-info: oklch(0.540 0.145 192);
+  --status-neutral: oklch(0.520 0.018 222);
+}
+
+html:not(.dark) .glass-card,
+html:not(.dark) .kpi-card { background: var(--card); border-color: var(--border); }
+html:not(.dark) .data-table th { color: var(--muted-foreground); background: var(--muted); border-color: var(--border); }
+html:not(.dark) .data-table td { border-color: var(--border); }
+html:not(.dark) .data-table tr:hover td { background: var(--accent); }
+html:not(.dark) ::-webkit-scrollbar-thumb { background: oklch(0.74 0.025 220); }
+
 /* ── Base layer ─────────────────────────────────────────────────────────── */
 @layer base {
   * {
