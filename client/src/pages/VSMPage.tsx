@@ -15,7 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Save, Download, RotateCcw, Clock, FileJson, FileSpreadsheet, Activity } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { exportVSMAsJSON, exportVSMProcessesAsCSV, exportVSMFlowsAsCSV, exportVSMAsPNG } from '@/lib/vsmExport';
+import { exportVSMAsJSON, exportVSMProcessesAsCSV, exportVSMFlowsAsCSV, exportVSMAsPNG, exportVSMAsPDF } from '@/lib/vsmExport';
 import { parseMonitoringVsmContext } from '../../../shared/monitoringVsmContext';
 import { buildVsmComparisonPair } from '../../../shared/vsmVersionTimeline';
 
@@ -201,6 +201,17 @@ export const VSMPage: React.FC = () => {
       } catch (error) {
         console.error('匯出 PNG 失敗:', error);
       }
+    }
+  };
+
+  const handleExportPDF = () => {
+    if (!selectedDiagramId) return;
+    const diagram = diagrams?.find(d => d.id === selectedDiagramId);
+    if (!diagram || !processes) return;
+    try {
+      exportVSMAsPDF(diagram, processes as any, (flows || []) as any);
+    } catch (error) {
+      console.error('匯出 PDF 失敗:', error);
     }
   };
 
@@ -463,6 +474,9 @@ export const VSMPage: React.FC = () => {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleExportPDF}>
+                    匯出 PDF 報告
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleExportPNG}>
                     匯出為 PNG
                   </DropdownMenuItem>
