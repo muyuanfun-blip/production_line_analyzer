@@ -162,6 +162,13 @@
       "when": 1786531302177,
       "tag": "0022_neat_adam_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1786544272617,
+      "tag": "0023_spicy_lord_hawal",
+      "breakpoints": true
     }
   ]
 }

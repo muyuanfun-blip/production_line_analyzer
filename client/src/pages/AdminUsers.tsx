@@ -102,13 +102,19 @@ export default function AdminUsers() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">帳號管理</h1>
-            <p className="text-sm text-muted-foreground mt-1">管理系統使用者帳號與權限</p>
+            <p className="text-sm text-muted-foreground mt-1">管理本機帳密、角色、帳號狀態與受保護操作</p>
           </div>
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             新增帳號
           </Button>
         </div>
+
+        <Card className="border-primary/25 bg-primary/5">
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">帳號安全控制：</span>本機密碼需至少 12 字元並包含英文大小寫與數字。重設密碼、停用帳號或調整角色會立即撤銷該帳號既有登入狀態；系統也會防止停用或降級最後一位有效管理員。
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
@@ -184,10 +190,12 @@ export default function AdminUsers() {
                             <Button
                               size="sm"
                               variant={u.isActive ? "destructive" : "outline"}
-                              onClick={() => toggleMutation.mutate({
-                                userId: u.id,
-                                isActive: !u.isActive,
-                              })}
+                              onClick={() => {
+                                const action = u.isActive ? "停用" : "啟用";
+                                if (window.confirm(`確定要${action}「${u.name ?? u.username}」嗎？${u.isActive ? "此操作會立即撤銷該帳號既有登入狀態。" : ""}`)) {
+                                  toggleMutation.mutate({ userId: u.id, isActive: !u.isActive });
+                                }
+                              }}
                             >
                               {u.isActive ? (
                                 <><UserX className="w-3 h-3 mr-1" />停用</>
@@ -217,7 +225,7 @@ export default function AdminUsers() {
             <div className="space-y-2">
               <Label>帳號名稱</Label>
               <Input
-                placeholder="英文字母或數字，至少 2 字元"
+                placeholder="英數字、點、底線或連字號，至少 2 字元"
                 value={newUsername}
                 onChange={(e) => setNewUsername(e.target.value)}
               />
@@ -231,10 +239,10 @@ export default function AdminUsers() {
               />
             </div>
             <div className="space-y-2">
-              <Label>初始密碼</Label>
+              <Label>初始密碼（至少 12 字元，含英文大小寫與數字）</Label>
               <Input
                 type="password"
-                placeholder="至少 6 個字元"
+                placeholder="例如 SecurePass2026"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
               />
@@ -277,10 +285,10 @@ export default function AdminUsers() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label>新密碼</Label>
+              <Label>新密碼（至少 12 字元，含英文大小寫與數字）</Label>
               <Input
                 type="password"
-                placeholder="至少 6 個字元"
+                placeholder="重設後會撤銷該帳號既有登入狀態"
                 value={newPwd}
                 onChange={(e) => setNewPwd(e.target.value)}
               />

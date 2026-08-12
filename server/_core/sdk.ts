@@ -22,6 +22,7 @@ export type SessionPayload = {
   openId: string;
   appId: string;
   name: string;
+  sessionVersion?: number;
 };
 
 const EXCHANGE_TOKEN_PATH = `/webdev.v1.WebDevAuthPublicService/ExchangeToken`;
@@ -191,6 +192,7 @@ class SDKServer {
       openId: payload.openId,
       appId: payload.appId,
       name: payload.name,
+      sessionVersion: payload.sessionVersion,
     })
       .setProtectedHeader({ alg: "HS256", typ: "JWT" })
       .setExpirationTime(expirationSeconds)
@@ -199,7 +201,7 @@ class SDKServer {
 
   async verifySession(
     cookieValue: string | undefined | null
-  ): Promise<{ openId: string; appId: string; name: string } | null> {
+  ): Promise<{ openId: string; appId: string; name: string; sessionVersion?: number } | null> {
     if (!cookieValue) {
       console.warn("[Auth] Missing session cookie");
       return null;
@@ -210,7 +212,7 @@ class SDKServer {
       const { payload } = await jwtVerify(cookieValue, secretKey, {
         algorithms: ["HS256"],
       });
-      const { openId, appId, name } = payload as Record<string, unknown>;
+      const { openId, appId, name, sessionVersion } = payload as Record<string, unknown>;
 
       if (!isNonEmptyString(openId)) {
         console.warn("[Auth] Session payload missing required fields");
@@ -221,6 +223,7 @@ class SDKServer {
         openId,
         appId: isNonEmptyString(appId) ? appId : "local",
         name: isNonEmptyString(name) ? name : "",
+        sessionVersion: typeof sessionVersion === "number" && Number.isInteger(sessionVersion) ? sessionVersion : undefined,
       };
     } catch (error) {
       console.warn("[Auth] Session verification failed", String(error));
@@ -268,6 +271,12 @@ class SDKServer {
     // If user not in DB, reject (no OAuth sync in local mode)
     if (!user) {
       throw ForbiddenError("User not found");
+    }
+    if (!user.isActive) {
+      throw ForbiddenError("Account is inactive");
+    }
+    if (session.openId.startsWith("local_") && session.sessionVersion !== user.sessionVersion) {
+      throw ForbiddenError("Session has been revoked");
     }
 
     await db.upsertUser({

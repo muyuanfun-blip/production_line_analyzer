@@ -17,7 +17,7 @@ import {
   getAllLinesSnapshotHistory,
   getHandActionsByStep, getHandActionsByStepIds,
   upsertHandAction, deleteHandAction, deleteHandActionsByStep,
-  getUserByUsername, getAllUsers, createLocalUser,
+  getUserByUsername, getAllUsers, createLocalUser, getUserById, countActiveAdministrators, createUserAccountAuditLog,
   updateUserPassword, toggleUserActive, updateUserRole, updateUserLastSignedIn,
   listSimulations, getSimulationById, createSimulation, updateSimulation, deleteSimulation,
   updateScenarioBackground,
@@ -49,6 +49,7 @@ import { AI_REVIEW_ROLES, buildConditionalSuggestionReport, buildStructuredConse
 import { buildInteractiveAnalysisContext, validateInteractiveQuestion } from "../shared/interactiveAnalysis";
 import { assessAnalysisDataReadiness, getReadinessLevel } from "../shared/analysisDataReadiness";
 import { calculateReportCompleteness } from "../shared/reportCompleteness";
+import { canResetLocalPassword, wouldLeaveNoActiveAdministrator } from "../shared/accountSecurity";
 
 // ─── Zod Schemas ─────────────────────────────────────────────────────────────
 
@@ -79,6 +80,9 @@ const actionStepInput = z.object({
   actionType: z.enum(["value_added", "non_value_added", "necessary_waste"]).optional(),
   description: z.string().optional(),
 });
+
+const localPasswordSchema = z.string().min(12, "密碼至少需 12 個字元").max(128).regex(/[a-z]/, "密碼需包含小寫英文字母").regex(/[A-Z]/, "密碼需包含大寫英文字母").regex(/[0-9]/, "密碼需包含數字");
+const localUsernameSchema = z.string().trim().min(2).max(64).regex(/^[A-Za-z0-9._-]+$/, "帳號僅能使用英數字、點、底線或連字號");
 
 const roleReviewResponseSchema = z.object({
   findings: z.array(z.string().min(1)),
@@ -172,7 +176,7 @@ export const appRouter = router({
         }
         await updateUserLastSignedIn(user.id);
         const token = await sdk.signSession(
-          { openId: user.openId, appId: ENV.appId, name: user.name ?? user.username ?? '' },
+          { openId: user.openId, appId: ENV.appId, name: user.name ?? user.username ?? '', sessionVersion: user.sessionVersion },
           { expiresInMs: 1000 * 60 * 60 * 24 * 30 } // 30 days
         );
         const cookieOptions = getSessionCookieOptions(ctx.req);
@@ -183,20 +187,16 @@ export const appRouter = router({
 
   // ─── Admin: 帳號管理 ─────────────────────────────────────────────────────────
   admin: router({
-    listUsers: protectedProcedure.query(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') throw new Error('無管理員權限');
-      return getAllUsers();
-    }),
+    listUsers: adminProcedure.query(async () => getAllUsers()),
 
-    createUser: protectedProcedure
+    createUser: adminProcedure
       .input(z.object({
-        username: z.string().min(2).max(64),
-        password: z.string().min(6),
+        username: localUsernameSchema,
+        password: localPasswordSchema,
         name: z.string().min(1),
         role: z.enum(['user', 'admin']).default('user'),
       }))
       .mutation(async ({ input, ctx }) => {
-        if (ctx.user.role !== 'admin') throw new Error('無管理員權限');
         const existing = await getUserByUsername(input.username);
         if (existing) throw new Error('帳號名稱已存在');
         const passwordHash = await bcrypt.hash(input.password, 12);
@@ -206,42 +206,52 @@ export const appRouter = router({
           name: input.name,
           role: input.role,
         });
+        if (user) await createUserAccountAuditLog({ targetUserId: user.id, actorUserId: ctx.user.id, action: "create", beforeData: null, afterData: { username: user.username, role: user.role, isActive: user.isActive } });
         return { success: true, userId: user?.id };
       }),
 
-    resetPassword: protectedProcedure
+    resetPassword: adminProcedure
       .input(z.object({
         userId: z.number().int().positive(),
-        newPassword: z.string().min(6),
+        newPassword: localPasswordSchema,
       }))
       .mutation(async ({ input, ctx }) => {
-        if (ctx.user.role !== 'admin') throw new Error('無管理員權限');
+        const target = await getUserById(input.userId);
+        if (!target) throw new Error('找不到目標帳號');
+        if (!canResetLocalPassword({ hasPasswordHash: Boolean(target.passwordHash), loginMethod: target.loginMethod })) throw new Error('僅本機帳密帳號可由系統重設密碼');
         const passwordHash = await bcrypt.hash(input.newPassword, 12);
         await updateUserPassword(input.userId, passwordHash);
+        await createUserAccountAuditLog({ targetUserId: target.id, actorUserId: ctx.user.id, action: "reset_password", beforeData: { sessionVersion: target.sessionVersion }, afterData: { sessionVersion: target.sessionVersion + 1 } });
         return { success: true };
       }),
 
-    toggleActive: protectedProcedure
+    toggleActive: adminProcedure
       .input(z.object({
         userId: z.number().int().positive(),
         isActive: z.boolean(),
       }))
       .mutation(async ({ input, ctx }) => {
-        if (ctx.user.role !== 'admin') throw new Error('無管理員權限');
         if (input.userId === ctx.user.id) throw new Error('不能停用自己的帳號');
+        const target = await getUserById(input.userId);
+        if (!target) throw new Error('找不到目標帳號');
+        if (wouldLeaveNoActiveAdministrator({ targetRole: target.role, targetIsActive: target.isActive === 1, activeAdministratorCount: await countActiveAdministrators(), removingAdministrator: !input.isActive })) throw new Error('不可停用系統最後一位有效管理員');
         await toggleUserActive(input.userId, input.isActive ? 1 : 0);
+        await createUserAccountAuditLog({ targetUserId: target.id, actorUserId: ctx.user.id, action: "set_active", beforeData: { isActive: target.isActive, sessionVersion: target.sessionVersion }, afterData: { isActive: input.isActive ? 1 : 0, sessionVersion: target.sessionVersion + 1 } });
         return { success: true };
       }),
 
-    updateRole: protectedProcedure
+    updateRole: adminProcedure
       .input(z.object({
         userId: z.number().int().positive(),
         role: z.enum(['user', 'admin']),
       }))
       .mutation(async ({ input, ctx }) => {
-        if (ctx.user.role !== 'admin') throw new Error('無管理員權限');
         if (input.userId === ctx.user.id) throw new Error('不能修改自己的角色');
+        const target = await getUserById(input.userId);
+        if (!target) throw new Error('找不到目標帳號');
+        if (wouldLeaveNoActiveAdministrator({ targetRole: target.role, targetIsActive: target.isActive === 1, activeAdministratorCount: await countActiveAdministrators(), removingAdministrator: input.role === 'user' })) throw new Error('不可降級系統最後一位有效管理員');
         await updateUserRole(input.userId, input.role);
+        await createUserAccountAuditLog({ targetUserId: target.id, actorUserId: ctx.user.id, action: "set_role", beforeData: { role: target.role, sessionVersion: target.sessionVersion }, afterData: { role: input.role, sessionVersion: target.sessionVersion + 1 } });
         return { success: true };
       }),
   }),
@@ -603,7 +613,7 @@ export const appRouter = router({
         return { success: true, count: input.ids.length };
       }),
 
-    create: publicProcedure
+    create: protectedProcedure
       .input(actionStepInput)
       .mutation(async ({ input }) => {
         const result = await createActionStep({
@@ -617,7 +627,7 @@ export const appRouter = router({
         return { success: true, insertId: (result as any).insertId };
       }),
 
-    update: publicProcedure
+    update: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }).merge(actionStepInput.omit({ workstationId: true }).partial()))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -631,14 +641,14 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    delete: publicProcedure
+    delete: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input }) => {
         await deleteActionStep(input.id);
         return { success: true };
       }),
 
-    bulkCreate: publicProcedure
+    bulkCreate: protectedProcedure
       .input(z.object({
         workstationId: z.number().int().positive(),
         steps: z.array(z.object({
@@ -704,7 +714,7 @@ export const appRouter = router({
 
   // ─── AI Analysis ─────────────────────────────────────────────────────────
   analysis: router({
-    aiSuggest: publicProcedure
+    aiSuggest: protectedProcedure
       .input(z.object({
         productionLineId: z.number().int().positive(),
         productionLineName: z.string(),
@@ -1048,7 +1058,7 @@ export const appRouter = router({
         };
       }),
 
-    create: publicProcedure
+    create: protectedProcedure
       .input(z.object({
         productionLineId: z.number().int().positive(),
         name: z.string().min(1).max(255),
@@ -1127,7 +1137,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    delete: publicProcedure
+    delete: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input }) => {
         await deleteSnapshot(input.id);
@@ -1231,7 +1241,7 @@ export const appRouter = router({
       }),
 
     // 新增或更新一筆手部動作記錄
-    upsert: publicProcedure
+    upsert: protectedProcedure
       .input(z.object({
         id: z.number().int().positive().optional(),
         actionStepId: z.number().int().positive(),
@@ -1257,7 +1267,7 @@ export const appRouter = router({
       }),
 
     // 刪除單筆手部動作記錄
-    delete: publicProcedure
+    delete: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input }) => {
         await deleteHandAction(input.id);
@@ -1265,7 +1275,7 @@ export const appRouter = router({
       }),
 
     // 刪除某動作步驟的所有手部記錄（删除步驟時一並清除）
-    deleteByStep: publicProcedure
+    deleteByStep: protectedProcedure
       .input(z.object({ actionStepId: z.number().int().positive() }))
       .mutation(async ({ input }) => {
         await deleteHandActionsByStep(input.actionStepId);
@@ -1296,7 +1306,7 @@ export const appRouter = router({
       }),
 
     // 建立新情境（從產線工站或快照載入基準數據）
-    create: publicProcedure
+    create: protectedProcedure
       .input(z.object({
         productionLineId: z.number().int().positive(),
         name: z.string().min(1).max(255),
@@ -1325,7 +1335,7 @@ export const appRouter = router({
       }),
 
     // 更新情境（工站數據、名稱、備註）
-    update: publicProcedure
+    update: protectedProcedure
       .input(z.object({
         id: z.number().int().positive(),
         name: z.string().min(1).max(255).optional(),
@@ -1350,7 +1360,7 @@ export const appRouter = router({
       }),
 
     // 删除情境
-    delete: publicProcedure
+    delete: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input }) => {
         await deleteSimulation(input.id);
@@ -1358,7 +1368,7 @@ export const appRouter = router({
       }),
 
     // 複製情境
-    duplicate: publicProcedure
+    duplicate: protectedProcedure
       .input(z.object({
         id: z.number().int().positive(),
         newName: z.string().min(1).max(255),

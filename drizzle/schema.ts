@@ -20,6 +20,7 @@ export const users = mysqlTable("users", {
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
   isActive: tinyint("isActive").default(1).notNull(),
+  sessionVersion: int("sessionVersion").default(1).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -27,6 +28,18 @@ export const users = mysqlTable("users", {
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+
+export const userAccountAuditLogs = mysqlTable("user_account_audit_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  targetUserId: int("targetUserId").notNull(),
+  actorUserId: int("actorUserId").notNull(),
+  action: mysqlEnum("action", ["create", "reset_password", "set_active", "set_role"]).notNull(),
+  beforeData: json("beforeData"),
+  afterData: json("afterData"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type UserAccountAuditLog = typeof userAccountAuditLogs.$inferSelect;
+export type InsertUserAccountAuditLog = typeof userAccountAuditLogs.$inferInsert;
 
 // 生產線資料表
 export const productionLines = mysqlTable("production_lines", {

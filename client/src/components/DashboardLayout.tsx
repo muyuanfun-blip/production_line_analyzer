@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
-import { Activity, BarChart3, ChevronRight, ClipboardCheck, Factory, GitBranch, Home, LogOut, PanelLeftClose, PanelLeftOpen, ScanSearch, Settings, ShieldCheck } from "lucide-react";
+import { Activity, BarChart3, ChevronRight, ClipboardCheck, Factory, GitBranch, Home, LogOut, PanelLeftClose, PanelLeftOpen, ScanSearch, Settings, ShieldCheck, Users } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
@@ -13,6 +13,7 @@ const navIcons = {
   "/data-completion-inbox": ClipboardCheck,
   "/lines": Factory,
   "/lines/1/vsm": GitBranch,
+  "/admin/users": Users,
   "/admin/action-review-quality": ScanSearch,
   "/admin/ai-consensus-governance": BarChart3,
 } as const;

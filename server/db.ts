@@ -1,4 +1,4 @@
-import { eq, asc, desc, inArray, and, gte, lte } from "drizzle-orm";
+import { eq, asc, desc, inArray, and, gte, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser, users,
@@ -20,6 +20,7 @@ import {
   vsmFlows, InsertVSMFlow, VSMFlow,
   vsmVersions, InsertVSMVersion, VSMVersion,
   vsmImprovementActions, InsertVSMImprovementAction,
+  userAccountAuditLogs, InsertUserAccountAuditLog,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { resolveActionTypeForReview } from "../shared/actionReview";
@@ -181,6 +182,26 @@ export async function getUserByUsername(username: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+export async function getUserById(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  return result[0] ?? undefined;
+}
+
+export async function countActiveAdministrators() {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.select({ count: sql<number>`count(*)` }).from(users).where(and(eq(users.role, "admin"), eq(users.isActive, 1)));
+  return Number(result[0]?.count ?? 0);
+}
+
+export async function createUserAccountAuditLog(data: InsertUserAccountAuditLog) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(userAccountAuditLogs).values(data);
+}
+
 export async function getAllUsers() {
   const db = await getDb();
   if (!db) return [];
@@ -222,19 +243,19 @@ export async function createLocalUser(data: {
 export async function updateUserPassword(userId: number, passwordHash: string) {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
-  await db.update(users).set({ passwordHash }).where(eq(users.id, userId));
+  await db.update(users).set({ passwordHash, sessionVersion: sql`${users.sessionVersion} + 1` }).where(eq(users.id, userId));
 }
 
 export async function toggleUserActive(userId: number, isActive: number) {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
-  await db.update(users).set({ isActive }).where(eq(users.id, userId));
+  await db.update(users).set({ isActive, sessionVersion: sql`${users.sessionVersion} + 1` }).where(eq(users.id, userId));
 }
 
 export async function updateUserRole(userId: number, role: 'user' | 'admin') {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
-  await db.update(users).set({ role }).where(eq(users.id, userId));
+  await db.update(users).set({ role, sessionVersion: sql`${users.sessionVersion} + 1` }).where(eq(users.id, userId));
 }
 
 export async function updateUserLastSignedIn(userId: number) {
