@@ -45,6 +45,7 @@ export default function AISuggestions() {
   const [analysisStatus, setAnalysisStatus] = useState<"idle" | "approved" | "needs_clarification">("idle");
   const [approvalReason, setApprovalReason] = useState<string | null>(null);
   const [analysisCompleteness, setAnalysisCompleteness] = useState<ReportCompleteness | null>(null);
+  const [analysisMetadata, setAnalysisMetadata] = useState<{ executorName: string; executedAt: Date } | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [roleReviews, setRoleReviews] = useState<RoleReview[]>([]);
   const [consensus, setConsensus] = useState<ConsensusResult | null>(null);
@@ -66,6 +67,7 @@ export default function AISuggestions() {
       setAnalysisStatus(data.status);
       setApprovalReason(data.approvalReason);
       setAnalysisCompleteness(data.completeness);
+      setAnalysisMetadata(data.analysisMetadata);
       setHasAnalyzed(true);
       if (data.status === "approved") toast.success("五角色審查已達成共識，正式報告已就緒");
       else toast.warning("五角色審查尚未達成共識，請先補充資料或釐清分歧");
@@ -130,6 +132,7 @@ export default function AISuggestions() {
     return buildAIProfessionalReport({
       productionLineName: line?.name ?? "未命名產線",
       generatedAt: new Date(),
+      analysisMetadata: analysisMetadata ?? undefined,
       targetCycleTime: line?.targetCycleTime,
       workstations: workstations.map((station) => ({
         id: station.id,
@@ -154,7 +157,7 @@ export default function AISuggestions() {
         dataGaps: readinessPreview.gaps,
       } : undefined,
     });
-  }, [suggestion, analysisStatus, approvalReason, consensus?.agreementScore, consensus?.unresolvedItems, readinessPreview.gaps, workstations, allActionSteps, line?.name, line?.targetCycleTime]);
+  }, [suggestion, analysisStatus, approvalReason, consensus?.agreementScore, consensus?.unresolvedItems, readinessPreview.gaps, workstations, allActionSteps, line?.name, line?.targetCycleTime, analysisMetadata]);
 
   const professionalReportHtml = useMemo(
     () => professionalReport ? buildAIProfessionalReportHtml(professionalReport) : "",
@@ -169,6 +172,7 @@ export default function AISuggestions() {
     setAnalysisStatus("idle");
     setApprovalReason(null);
     setAnalysisCompleteness(null);
+    setAnalysisMetadata(null);
     setInteractiveMessages([]);
     setInteractiveQuestion("");
     
@@ -323,6 +327,7 @@ export default function AISuggestions() {
         description: w.description,
       })),
       aiSuggestion: suggestion,
+      analysisMetadata: analysisMetadata ? { executorName: analysisMetadata.executorName, executedAt: analysisMetadata.executedAt.toISOString() } : null,
       exportedAt: new Date().toISOString(),
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -494,6 +499,12 @@ export default function AISuggestions() {
                 <div className="status-info not-prose rounded-xl border p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">資訊完整度：{analysisCompleteness.score} / 100</p><p className="status-detail mt-1 text-xs">{analysisCompleteness.label}。評分衡量節拍、CT、人力、動作拆解與資料對齊的覆蓋程度，不代表改善效益或正式核准結論。</p></div><Gauge className="status-icon h-7 w-7" /></div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{analysisCompleteness.components.map((component) => <div key={component.key} className="rounded-lg border border-border/70 bg-background/30 p-2"><p className="text-[11px] text-muted-foreground">{component.label}</p><p className="mt-1 text-sm font-semibold text-cyan-100">{component.score} / {component.maxScore}</p><p className="mt-1 text-[10px] text-muted-foreground">{component.detail}</p></div>)}</div>
+                </div>
+              )}
+              {analysisMetadata && (
+                <div className="not-prose flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border border-border bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5 text-cyan-400" />分析執行者：<strong className="text-foreground">{analysisMetadata.executorName}</strong></span>
+                  <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-cyan-400" />分析時間：<strong className="text-foreground">{analysisMetadata.executedAt.toLocaleString("zh-TW")}</strong></span>
                 </div>
               )}
               <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-5">

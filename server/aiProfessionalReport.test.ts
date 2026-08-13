@@ -5,6 +5,7 @@ describe("AI 專業圖文報告", () => {
   const report = buildAIProfessionalReport({
     productionLineName: "示範產線",
     generatedAt: new Date("2026-08-12T00:00:00.000Z"),
+    analysisMetadata: { executorName: "王小明", executedAt: new Date("2026-08-11T16:30:00.000Z") },
     targetCycleTime: 20,
     workstations: [
       { id: 1, name: "組裝", sequenceOrder: 2, cycleTime: "20", manpower: "1" },
@@ -30,6 +31,8 @@ describe("AI 專業圖文報告", () => {
     expect(html).toContain("AI 產線優化分析報告");
     expect(html).toContain("示範產線");
     expect(html).toContain("資訊完整度與可採信範圍");
+    expect(html).toContain("分析執行者：王小明");
+    expect(html).toContain("分析時間：");
     expect(html).toContain("不代表改善成效、成本效益或正式核准結論");
     expect(html).toContain("&lt;script&gt;");
     expect(html).not.toContain("<script>alert");

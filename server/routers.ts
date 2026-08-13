@@ -817,6 +817,8 @@ export const appRouter = router({
         })).min(1),
       }))
       .mutation(async ({ input, ctx }) => {
+        const analysisExecutedAt = new Date();
+        const analysisExecutorName = ctx.user.name?.trim() || ctx.user.username?.trim() || `使用者 #${ctx.user.id}`;
         // 本地部署：若未設定 OLLAMA_API_KEY，回傳友善錯誤訊息
         if (!ENV.ollamaApiKey) {
           throw new Error('AI 分析功能需要設定 OLLAMA_API_KEY 環境變數。請在 .env 檔案中設定 OLLAMA_API_KEY，並確認本地 Ollama 服務已啟動（預設 http://localhost:11434）。');
@@ -938,7 +940,7 @@ export const appRouter = router({
         const suggestion = approved
           ? buildStructuredConsensusReport(reportInput)
           : buildConditionalSuggestionReport(reportInput, approvalReason ?? "尚未形成可核准共識");
-        return { status: approved ? "approved" as const : "needs_clarification" as const, approvalReason, suggestion, reviews, consensus, dataGaps, readinessLevel, completeness };
+        return { status: approved ? "approved" as const : "needs_clarification" as const, approvalReason, suggestion, reviews, consensus, dataGaps, readinessLevel, completeness, analysisMetadata: { executorName: analysisExecutorName, executedAt: analysisExecutedAt } };
       }),
 
     interactiveAnalyze: featureProcedure("ai.analyze")
