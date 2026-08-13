@@ -16,4 +16,10 @@ describe("淺色主題可讀性覆蓋", () => {
       expect(stylesheet).toContain(`html:not(.dark) ${selector}`);
     });
   });
+
+  it("保護首頁深色決策橫幅的標題、說明、標籤與次要操作文字", () => {
+    [".decision-hero-title", ".decision-hero-copy", ".decision-hero-eyebrow", ".decision-hero-secondary-action"].forEach((selector) => {
+      expect(stylesheet).toContain(`html:not(.dark) ${selector}`);
+    });
+  });
 });

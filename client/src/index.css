@@ -198,6 +198,14 @@ html:not(.dark) .text-red-300,
 html:not(.dark) .text-red-400 { color: oklch(0.490 0.175 27) !important; }
 html:not(.dark) .text-orange-400 { color: oklch(0.520 0.160 52) !important; }
 
+/* Keep intentional dark decision surfaces legible while the overall app is light. */
+html:not(.dark) .decision-hero { color: oklch(0.980 0.006 220); }
+html:not(.dark) .decision-hero-title { color: oklch(0.990 0.003 220) !important; }
+html:not(.dark) .decision-hero-copy { color: oklch(0.840 0.020 220) !important; }
+html:not(.dark) .decision-hero-eyebrow { color: oklch(0.800 0.125 208) !important; }
+html:not(.dark) .decision-hero-secondary-action { color: oklch(0.940 0.012 220) !important; border-color: oklch(0.720 0.060 205) !important; background-color: transparent !important; }
+html:not(.dark) .decision-hero-secondary-action:hover { background-color: oklch(0.930 0.025 205 / 0.14) !important; color: oklch(0.990 0.003 220) !important; }
+
 /* ── Base layer ─────────────────────────────────────────────────────────── */
 @layer base {
   * {
