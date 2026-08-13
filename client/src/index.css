@@ -649,3 +649,10 @@ html:not(.dark) .status-text-risk { color:oklch(0.38 0.14 20); }
 @keyframes home-panel-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
 @media (max-width: 760px) { .workspace-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); } .workspace-tab small { white-space:normal; line-height:1.25; } }
 @media (prefers-reduced-motion: reduce) { .home-reveal,.home-workspace-panel { animation:none !important; } .decision-metric-card,.decision-priority-card,.workspace-tab,.decision-workspace-card,.decision-list-row { transition:none !important; } .decision-metric-card:hover,.decision-priority-card:hover,.decision-workspace-card:hover,.decision-list-row:hover { transform:none; } }
+
+@keyframes mobile-route-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.mobile-route-content { animation: mobile-route-enter .22s cubic-bezier(.2,.8,.2,1) both; }
+.mobile-route-loading { position:absolute; inset:0; z-index:20; display:flex; align-items:flex-start; justify-content:center; padding-top:1rem; pointer-events:none; background:linear-gradient(to bottom,oklch(0.13 0.011 222 / .82),oklch(0.13 0.011 222 / 0)); animation:mobile-route-loading-in .16s ease both; }
+@keyframes mobile-route-loading-in { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+html:not(.dark) .mobile-route-loading { background:linear-gradient(to bottom,oklch(0.98 0.006 220 / .86),oklch(0.98 0.006 220 / 0)); }
+@media (prefers-reduced-motion: reduce) { .mobile-route-content,.mobile-route-loading { animation:none !important; } }

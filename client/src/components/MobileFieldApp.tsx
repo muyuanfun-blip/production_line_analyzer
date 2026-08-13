@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Route, Switch, useLocation, useParams } from "wouter";
-import { Activity, ArrowLeft, BarChart3, Brain, CheckCircle2, ChevronRight, ClipboardCheck, Factory, Gauge, ListChecks, Menu, Monitor, MoreHorizontal, Settings2 } from "lucide-react";
+import { Activity, ArrowLeft, BarChart3, Brain, CheckCircle2, ChevronRight, ClipboardCheck, Factory, ListChecks, LoaderCircle, Menu, Monitor, MoreHorizontal, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
@@ -8,14 +8,56 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import TimeStudy from "@/pages/TimeStudy";
 import AISuggestions from "@/pages/AISuggestions";
 import { DESKTOP_ENTRY_PATH, MOBILE_ENTRY_PATH } from "../../../shared/mobileEntry";
+import { getMobileRouteLoadingLabel, isMobileDeepRoute, MOBILE_ROUTE_TRANSITION_MS } from "../../../shared/mobileRouteTransition";
 
 const mobileTitle = (path: string) => path.includes("/time-study") ? "工時觀測" : path.includes("/ai") ? "AI 分析" : path.includes("/balance") ? "平衡摘要" : path.includes("/lines/") ? "工站概覽" : path.includes("/lines") ? "產線" : path.includes("/tasks") ? "任務" : path.includes("/more") ? "更多" : "現場首頁";
 
 export default function MobileFieldApp() {
   const [location, setLocation] = useLocation();
   const { user } = useAuth();
+  const [isRouteLoading, setIsRouteLoading] = useState(false);
   const title = mobileTitle(location);
-  return <div className="min-h-dvh bg-background text-foreground"><header className="sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-border/80 bg-background/95 px-4 backdrop-blur"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-400/15"><Activity className="h-4 w-4 text-cyan-400" /></div><div className="min-w-0 flex-1"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-400">PLA Field</p><p className="truncate text-sm font-semibold">{title}</p></div><button className="flex h-10 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-muted-foreground" onClick={() => setLocation(DESKTOP_ENTRY_PATH)} aria-label="切換至桌面管理版"><Monitor className="h-4 w-4" /><span>桌面</span></button><button className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-muted-foreground" onClick={() => setLocation(`${MOBILE_ENTRY_PATH}/more`)} aria-label="開啟更多功能"><Menu className="h-5 w-5" /></button></header><main className="mx-auto max-w-lg px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-4"><Switch><Route path={MOBILE_ENTRY_PATH} component={MobileFieldHome} /><Route path={`${MOBILE_ENTRY_PATH}/lines`} component={MobileLineList} /><Route path={`${MOBILE_ENTRY_PATH}/lines/:id/time-study`}><TimeStudy mobileMode /></Route><Route path={`${MOBILE_ENTRY_PATH}/lines/:id/balance`} component={MobileBalance} /><Route path={`${MOBILE_ENTRY_PATH}/lines/:id/ai`}><AISuggestions mobileMode /></Route><Route path={`${MOBILE_ENTRY_PATH}/lines/:id`} component={MobileLineOverview} /><Route path={`${MOBILE_ENTRY_PATH}/tasks`} component={MobileTasks} /><Route path={`${MOBILE_ENTRY_PATH}/more`} component={MobileMore} /><Route component={MobileFieldHome} /></Switch></main><MobileFieldBottomNavigation location={location} navigate={setLocation} userName={user?.name} /></div>;
+  const isDeepRoute = isMobileDeepRoute(location);
+
+  useEffect(() => {
+    if (!isDeepRoute) {
+      setIsRouteLoading(false);
+      return;
+    }
+    setIsRouteLoading(true);
+    const timer = window.setTimeout(() => setIsRouteLoading(false), MOBILE_ROUTE_TRANSITION_MS);
+    return () => window.clearTimeout(timer);
+  }, [isDeepRoute, location]);
+
+  return (
+    <div className="min-h-dvh bg-background text-foreground">
+      <header className="sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-border/80 bg-background/95 px-4 backdrop-blur">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-400/15"><Activity className="h-4 w-4 text-cyan-400" /></div>
+        <div className="min-w-0 flex-1"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-400">PLA Field</p><p className="truncate text-sm font-semibold">{title}</p></div>
+        <button className="flex h-10 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-muted-foreground" onClick={() => setLocation(DESKTOP_ENTRY_PATH)} aria-label="切換至桌面管理版"><Monitor className="h-4 w-4" /><span>桌面</span></button>
+        <button className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-muted-foreground" onClick={() => setLocation(`${MOBILE_ENTRY_PATH}/more`)} aria-label="開啟更多功能"><Menu className="h-5 w-5" /></button>
+      </header>
+      <main className="relative mx-auto max-w-lg px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-4" aria-busy={isRouteLoading}>
+        {isRouteLoading && <MobileRouteLoading label={getMobileRouteLoadingLabel(location)} />}
+        <div key={location} className="mobile-route-content"><Switch>
+          <Route path={MOBILE_ENTRY_PATH} component={MobileFieldHome} />
+          <Route path={`${MOBILE_ENTRY_PATH}/lines`} component={MobileLineList} />
+          <Route path={`${MOBILE_ENTRY_PATH}/lines/:id/time-study`}><TimeStudy mobileMode /></Route>
+          <Route path={`${MOBILE_ENTRY_PATH}/lines/:id/balance`} component={MobileBalance} />
+          <Route path={`${MOBILE_ENTRY_PATH}/lines/:id/ai`}><AISuggestions mobileMode /></Route>
+          <Route path={`${MOBILE_ENTRY_PATH}/lines/:id`} component={MobileLineOverview} />
+          <Route path={`${MOBILE_ENTRY_PATH}/tasks`} component={MobileTasks} />
+          <Route path={`${MOBILE_ENTRY_PATH}/more`} component={MobileMore} />
+          <Route component={MobileFieldHome} />
+        </Switch></div>
+      </main>
+      <MobileFieldBottomNavigation location={location} navigate={setLocation} userName={user?.name} />
+    </div>
+  );
+}
+
+function MobileRouteLoading({ label }: { label: string }) {
+  return <div className="mobile-route-loading" role="status" aria-live="polite"><div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-lg"><LoaderCircle className="h-5 w-5 animate-spin text-primary" /><span className="text-sm font-medium">{label}</span></div></div>;
 }
 
 function MobileFieldBottomNavigation({ location, navigate, userName }: { location: string; navigate: (path: string) => void; userName?: string | null }) {
@@ -38,28 +80,34 @@ function MobileFieldHome() {
 function MobileLineList() {
   const [, setLocation] = useLocation();
   const { data: lines = [], isLoading } = trpc.productionLine.list.useQuery();
-  return <div className="space-y-3"><div><h1 className="text-xl font-bold">選擇產線</h1><p className="mt-1 text-sm text-muted-foreground">選取後進入工站、工時與分析現場流程。</p></div>{isLoading ? <p className="py-12 text-center text-sm text-muted-foreground">載入產線中…</p> : lines.length === 0 ? <EmptyMobile title="尚無產線資料" detail="請先於桌面管理版建立產線與工站。" /> : lines.map((line: any) => <button key={line.id} onClick={() => setLocation(`/mobile/lines/${line.id}`)} className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-4 text-left active:scale-[0.99]"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10"><Factory className="h-5 w-5 text-primary" /></div><span className="min-w-0 flex-1"><b className="block truncate">{line.name}</b><small className="mt-1 block text-muted-foreground">{line.targetCycleTime ? `Takt ${Number(line.targetCycleTime).toFixed(1)} 秒` : "尚未設定 Takt"}</small></span><ChevronRight className="h-5 w-5 text-muted-foreground" /></button>)}</div>;
+  return <div className="space-y-3"><div><h1 className="text-xl font-bold">選擇產線</h1><p className="mt-1 text-sm text-muted-foreground">選取後進入工站、工時與分析現場流程。</p></div>{isLoading ? <MobileSectionLoading label="載入產線資料…" /> : lines.length === 0 ? <EmptyMobile title="尚無產線資料" detail="請先於桌面管理版建立產線與工站。" /> : lines.map((line: any) => <button key={line.id} onClick={() => setLocation(`/mobile/lines/${line.id}`)} className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-4 text-left active:scale-[0.99]"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10"><Factory className="h-5 w-5 text-primary" /></div><span className="min-w-0 flex-1"><b className="block truncate">{line.name}</b><small className="mt-1 block text-muted-foreground">{line.targetCycleTime ? `Takt ${Number(line.targetCycleTime).toFixed(1)} 秒` : "尚未設定 Takt"}</small></span><ChevronRight className="h-5 w-5 text-muted-foreground" /></button>)}</div>;
 }
 
 function MobileLineOverview() {
   const { id } = useParams<{ id: string }>();
   const lineId = Number(id ?? 0); const [, setLocation] = useLocation();
-  const { data: line } = trpc.productionLine.getById.useQuery({ id: lineId });
-  const { data: workstations = [] } = trpc.workstation.listByLine.useQuery({ productionLineId: lineId });
-  const { data: standards = [] } = trpc.timeStudy.publishedByLine.useQuery({ productionLineId: lineId });
+  const lineQuery = trpc.productionLine.getById.useQuery({ id: lineId });
+  const workstationQuery = trpc.workstation.listByLine.useQuery({ productionLineId: lineId });
+  const standardQuery = trpc.timeStudy.publishedByLine.useQuery({ productionLineId: lineId });
+  if (lineQuery.isLoading || workstationQuery.isLoading || standardQuery.isLoading) return <MobileSectionLoading label="載入工站與標準工時…" />;
+  const line = lineQuery.data; const workstations = workstationQuery.data ?? []; const standards = standardQuery.data ?? [];
   const standardMap = new Map(standards.map((study) => [study.workstationId, study]));
   return <div className="space-y-4"><BackButton onClick={() => setLocation("/mobile/lines")} label="所有產線" /><section><h1 className="text-xl font-bold">{line?.name ?? "產線"}</h1><p className="mt-1 text-sm text-muted-foreground">{workstations.length} 個工站 · {line?.targetCycleTime ? `Takt ${Number(line.targetCycleTime).toFixed(1)} 秒` : "未設定 Takt"}</p></section><div className="grid grid-cols-2 gap-3"><ActionButton icon={Activity} label="工時觀測" onClick={() => setLocation(`/mobile/lines/${lineId}/time-study`)} /><ActionButton icon={BarChart3} label="平衡摘要" onClick={() => setLocation(`/mobile/lines/${lineId}/balance`)} /><ActionButton icon={Brain} label="AI 分析" onClick={() => setLocation(`/mobile/lines/${lineId}/ai`)} /></div><section><h2 className="font-semibold">工站概覽</h2><div className="mt-3 space-y-2">{workstations.map((station) => { const standard = standardMap.get(station.id); return <Card key={station.id}><CardContent className="flex items-center justify-between p-4"><span><b className="block text-sm">{station.sequenceOrder}. {station.name}</b><small className="mt-1 block text-muted-foreground">CT {Number(station.cycleTime).toFixed(2)} 秒 · {Number(station.manpower).toFixed(1)} 人</small></span><span className="text-right"><small className="block text-muted-foreground">標準工時</small><b className="text-sm text-emerald-400">{standard?.standardTime ? `${Number(standard.standardTime).toFixed(2)} 秒` : "—"}</b></span></CardContent></Card>; })}{workstations.length === 0 && <EmptyMobile title="尚無工站" detail="請於桌面管理版建立工站資料。" />}</div></section></div>;
 }
 
 function MobileBalance() {
   const { id } = useParams<{ id: string }>(); const lineId = Number(id ?? 0); const [, setLocation] = useLocation();
-  const { data: line } = trpc.productionLine.getById.useQuery({ id: lineId }); const { data: workstations = [] } = trpc.workstation.listByLine.useQuery({ productionLineId: lineId });
+  const lineQuery = trpc.productionLine.getById.useQuery({ id: lineId });
+  const workstationQuery = trpc.workstation.listByLine.useQuery({ productionLineId: lineId });
+  if (lineQuery.isLoading || workstationQuery.isLoading) return <MobileSectionLoading label="計算工站平衡摘要…" />;
+  const line = lineQuery.data; const workstations = workstationQuery.data ?? [];
   const summary = useMemo(() => { const times = workstations.map((station) => Number(station.cycleTime)).filter((value) => value > 0); if (!times.length) return null; const max = Math.max(...times); const total = times.reduce((sum, value) => sum + value, 0); return { max, average: total / times.length, balance: total / (max * times.length), bottleneck: workstations.find((station) => Number(station.cycleTime) === max) }; }, [workstations]);
   return <div className="space-y-4"><BackButton onClick={() => setLocation(`/mobile/lines/${lineId}`)} label="返回產線" /><h1 className="text-xl font-bold">{line?.name ?? "產線"} 平衡摘要</h1>{!summary ? <EmptyMobile title="尚無可分析工站" detail="請先建立工站與週期時間。" /> : <><div className="grid grid-cols-2 gap-3"><Metric label="平衡率" value={`${(summary.balance * 100).toFixed(1)}%`} color="text-emerald-400" /><Metric label="瓶頸 CT" value={`${summary.max.toFixed(2)} 秒`} color="text-amber-400" /><Metric label="平均 CT" value={`${summary.average.toFixed(2)} 秒`} color="text-cyan-400" /><Metric label="瓶頸工站" value={summary.bottleneck?.name ?? "—"} color="text-violet-400" /></div><Button className="min-h-11 w-full" onClick={() => setLocation(`/mobile/lines/${lineId}/ai`)}><Brain className="mr-2 h-4 w-4" />以此產線進行 AI 分析</Button></>}</div>;
 }
 
 function MobileTasks() { const [, setLocation] = useLocation(); return <div className="space-y-4"><h1 className="text-xl font-bold">我的補件任務</h1><Card><CardContent className="p-5"><ClipboardCheck className="h-8 w-8 text-violet-400" /><p className="mt-3 font-semibold">前往任務工作區</p><p className="mt-1 text-sm leading-6 text-muted-foreground">補件任務會依您的權限與指派狀態呈現。</p><Button className="mt-4 min-h-11 w-full" onClick={() => setLocation("/data-completion-inbox")}>開啟任務</Button></CardContent></Card></div>; }
 function MobileMore() { const [, setLocation] = useLocation(); return <div className="space-y-4"><h1 className="text-xl font-bold">更多功能</h1><Card><CardContent className="space-y-3 p-5"><p className="text-sm text-muted-foreground">完整的產線設定、VSM、治理、使用者與權限管理保留於桌面管理版。</p><Button variant="outline" className="min-h-11 w-full" onClick={() => setLocation(DESKTOP_ENTRY_PATH)}><Settings2 className="mr-2 h-4 w-4" />開啟桌面管理版</Button></CardContent></Card></div>; }
+function MobileSectionLoading({ label }: { label: string }) { return <div className="flex min-h-52 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-card/60 text-center"><LoaderCircle className="h-7 w-7 animate-spin text-primary" /><p className="text-sm font-medium">{label}</p><p className="text-xs text-muted-foreground">資料準備完成後將自動顯示。</p></div>; }
 function Metric({ label, value, color }: { label: string; value: string; color: string }) { return <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className={`mt-1 truncate text-xl font-bold ${color}`}>{value}</p></CardContent></Card>; }
 function ActionButton({ icon: Icon, label, onClick }: { icon: typeof Activity; label: string; onClick: () => void }) { return <button onClick={onClick} className="min-h-20 rounded-xl border border-border bg-card p-3 text-left active:scale-[0.98]"><Icon className="h-5 w-5 text-primary" /><span className="mt-2 block text-xs font-semibold">{label}</span></button>; }
 function BackButton({ onClick, label }: { onClick: () => void; label: string }) { return <Button variant="ghost" className="-ml-2 min-h-10" onClick={onClick}><ArrowLeft className="mr-1 h-4 w-4" />{label}</Button>; }
