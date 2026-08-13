@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Plus, KeyRound, UserCheck, UserX, ShieldCheck, User } from "lucide-react";
+import { Plus, KeyRound, UserCheck, UserX, ShieldCheck, User, Trash2 } from "lucide-react";
 
 type UserRow = {
   id: number;
@@ -29,6 +29,10 @@ type UserRow = {
   isActive: number;
   createdAt: Date;
   lastSignedIn: Date;
+  businessRecordSummary: {
+    total: number;
+    records: Array<{ key: string; label: string; count: number }>;
+  };
 };
 
 export default function AdminUsers() {
@@ -50,6 +54,7 @@ export default function AdminUsers() {
   const [resetOpen, setResetOpen] = useState(false);
   const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
   const [newPwd, setNewPwd] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
 
   const createMutation = trpc.admin.createUser.useMutation({
     onSuccess: () => {
@@ -85,6 +90,17 @@ export default function AdminUsers() {
     },
     onError: (e) => toast.error("更新失敗：" + e.message),
   });
+
+  const deleteMutation = trpc.admin.deleteUser.useMutation({
+    onSuccess: () => {
+      toast.success("帳號已永久刪除");
+      utils.admin.listUsers.invalidate();
+      setDeleteTarget(null);
+    },
+    onError: (e) => toast.error("無法刪除帳號：" + e.message),
+  });
+
+  const activeAdminCount = userList.filter((account) => account.role === "admin" && account.isActive).length;
 
   if (user?.role !== "admin") {
     return (
@@ -131,13 +147,24 @@ export default function AdminUsers() {
                     <TableHead>顯示名稱</TableHead>
                     <TableHead>角色</TableHead>
                     <TableHead>狀態</TableHead>
+                    <TableHead>刪除資格</TableHead>
                     <TableHead>最後登入</TableHead>
                     <TableHead className="text-right">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {userList.map((u) => (
-                    <TableRow key={u.id}>
+                  {userList.map((u) => {
+                    const isSelf = u.id === user.id;
+                    const isLastActiveAdmin = u.role === "admin" && Boolean(u.isActive) && activeAdminCount <= 1;
+                    const deletionBlocked = isSelf || isLastActiveAdmin || u.businessRecordSummary.total > 0;
+                    const deletionReason = isSelf
+                      ? "目前登入帳號不可刪除"
+                      : isLastActiveAdmin
+                        ? "最後一位有效管理員不可刪除"
+                        : u.businessRecordSummary.total > 0
+                          ? `已有 ${u.businessRecordSummary.total} 筆業務紀錄：${u.businessRecordSummary.records.map((record) => record.label).join("、")}`
+                          : "無業務紀錄，可永久刪除";
+                    return <TableRow key={u.id}>
                       <TableCell className="font-mono text-sm">
                         {u.username ?? <span className="text-muted-foreground italic">（外部登入帳號）</span>}
                       </TableCell>
@@ -156,6 +183,11 @@ export default function AdminUsers() {
                           {u.isActive ? "啟用中" : "已停用"}
                         </Badge>
                       </TableCell>
+                      <TableCell>
+                        <span className={deletionBlocked ? "text-xs text-muted-foreground" : "text-xs font-medium text-emerald-600 dark:text-emerald-300"}>
+                          {deletionReason}
+                        </span>
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {new Date(u.lastSignedIn).toLocaleString()}
                       </TableCell>
@@ -173,7 +205,7 @@ export default function AdminUsers() {
                             </Button>
                           )}
                           {/* 切換角色 */}
-                          {u.id !== user.id && (
+                          {!isSelf && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -186,7 +218,7 @@ export default function AdminUsers() {
                             </Button>
                           )}
                           {/* 啟用/停用 */}
-                          {u.id !== user.id && (
+                          {!isSelf && (
                             <Button
                               size="sm"
                               variant={u.isActive ? "destructive" : "outline"}
@@ -204,10 +236,19 @@ export default function AdminUsers() {
                               )}
                             </Button>
                           )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={deletionBlocked}
+                            title={deletionBlocked ? `${deletionReason}，請改用停用帳號。` : "永久刪除且不可復原"}
+                            onClick={() => setDeleteTarget(u as UserRow)}
+                          >
+                            <Trash2 className="w-3 h-3 mr-1" />刪除
+                          </Button>
                         </div>
                       </TableCell>
-                    </TableRow>
-                  ))}
+                    </TableRow>;
+                  })}
                 </TableBody>
               </Table>
             )}
@@ -304,6 +345,24 @@ export default function AdminUsers() {
               disabled={resetMutation.isPending}
             >
               {resetMutation.isPending ? "重設中..." : "確認重設"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>永久刪除帳號</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-sm">
+            <p>您即將永久刪除「<span className="font-semibold">{deleteTarget?.name ?? deleteTarget?.username}</span>」。此操作不可復原。</p>
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-destructive">系統已確認此帳號沒有可追溯的業務紀錄。若帳號已有建立、覆核、裁決、指派或處理資料，請改用「停用」以保留歷程。</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>取消</Button>
+            <Button variant="destructive" onClick={() => deleteTarget && deleteMutation.mutate({ userId: deleteTarget.id })} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? "刪除中..." : "確認永久刪除"}
             </Button>
           </DialogFooter>
         </DialogContent>

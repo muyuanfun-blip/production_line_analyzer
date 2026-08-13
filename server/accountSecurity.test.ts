@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canResetLocalPassword, meetsLocalPasswordPolicy, wouldLeaveNoActiveAdministrator } from "../shared/accountSecurity";
+import { canPermanentlyDeleteAccount, canResetLocalPassword, meetsLocalPasswordPolicy, wouldLeaveNoActiveAdministrator } from "../shared/accountSecurity";
 
 describe("帳號安全規則", () => {
   it("只接受符合長度與英數大小寫組合的本機密碼", () => {
@@ -15,5 +15,12 @@ describe("帳號安全規則", () => {
   it("只允許重設本機帳密帳號的密碼", () => {
     expect(canResetLocalPassword({ hasPasswordHash: true, loginMethod: "local" })).toBe(true);
     expect(canResetLocalPassword({ hasPasswordHash: false, loginMethod: "google" })).toBe(false);
+  });
+
+  it("僅允許非目前使用者、非最後管理員且無業務紀錄的帳號永久刪除", () => {
+    expect(canPermanentlyDeleteAccount({ isCurrentUser: false, wouldLeaveNoActiveAdministrator: false, businessRecordCount: 0 })).toBe(true);
+    expect(canPermanentlyDeleteAccount({ isCurrentUser: true, wouldLeaveNoActiveAdministrator: false, businessRecordCount: 0 })).toBe(false);
+    expect(canPermanentlyDeleteAccount({ isCurrentUser: false, wouldLeaveNoActiveAdministrator: true, businessRecordCount: 0 })).toBe(false);
+    expect(canPermanentlyDeleteAccount({ isCurrentUser: false, wouldLeaveNoActiveAdministrator: false, businessRecordCount: 1 })).toBe(false);
   });
 });

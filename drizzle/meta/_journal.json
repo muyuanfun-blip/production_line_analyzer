@@ -169,6 +169,13 @@
       "when": 1786544272617,
       "tag": "0023_spicy_lord_hawal",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1786582982691,
+      "tag": "0024_misty_blur",
+      "breakpoints": true
     }
   ]
 }

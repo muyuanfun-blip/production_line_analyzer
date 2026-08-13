@@ -17,7 +17,7 @@ import {
   getAllLinesSnapshotHistory,
   getHandActionsByStep, getHandActionsByStepIds,
   upsertHandAction, deleteHandAction, deleteHandActionsByStep,
-  getUserByUsername, getAllUsers, createLocalUser, getUserById, countActiveAdministrators, createUserAccountAuditLog,
+  getUserByUsername, getAllUsers, createLocalUser, getUserById, countActiveAdministrators, createUserAccountAuditLog, getUserBusinessRecordSummary, deleteUserAccount,
   updateUserPassword, toggleUserActive, updateUserRole, updateUserLastSignedIn,
   listSimulations, getSimulationById, createSimulation, updateSimulation, deleteSimulation,
   updateScenarioBackground,
@@ -49,7 +49,7 @@ import { AI_REVIEW_ROLES, buildConditionalSuggestionReport, buildStructuredConse
 import { buildInteractiveAnalysisContext, validateInteractiveQuestion } from "../shared/interactiveAnalysis";
 import { assessAnalysisDataReadiness, getReadinessLevel } from "../shared/analysisDataReadiness";
 import { calculateReportCompleteness } from "../shared/reportCompleteness";
-import { canResetLocalPassword, wouldLeaveNoActiveAdministrator } from "../shared/accountSecurity";
+import { canPermanentlyDeleteAccount, canResetLocalPassword, wouldLeaveNoActiveAdministrator } from "../shared/accountSecurity";
 
 // ─── Zod Schemas ─────────────────────────────────────────────────────────────
 
@@ -252,6 +252,24 @@ export const appRouter = router({
         if (wouldLeaveNoActiveAdministrator({ targetRole: target.role, targetIsActive: target.isActive === 1, activeAdministratorCount: await countActiveAdministrators(), removingAdministrator: input.role === 'user' })) throw new Error('不可降級系統最後一位有效管理員');
         await updateUserRole(input.userId, input.role);
         await createUserAccountAuditLog({ targetUserId: target.id, actorUserId: ctx.user.id, action: "set_role", beforeData: { role: target.role, sessionVersion: target.sessionVersion }, afterData: { role: input.role, sessionVersion: target.sessionVersion + 1 } });
+        return { success: true };
+      }),
+
+    deleteUser: adminProcedure
+      .input(z.object({ userId: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        const target = await getUserById(input.userId);
+        if (!target) throw new Error("找不到目標帳號");
+        const lastAdmin = wouldLeaveNoActiveAdministrator({ targetRole: target.role, targetIsActive: target.isActive === 1, activeAdministratorCount: await countActiveAdministrators(), removingAdministrator: true });
+        const businessRecordSummary = await getUserBusinessRecordSummary(target.id);
+        if (!canPermanentlyDeleteAccount({ isCurrentUser: target.id === ctx.user.id, wouldLeaveNoActiveAdministrator: lastAdmin, businessRecordCount: businessRecordSummary.total })) {
+          if (target.id === ctx.user.id) throw new Error("不可刪除目前登入的帳號");
+          if (lastAdmin) throw new Error("不可刪除系統最後一位有效管理員");
+          throw new Error(`此帳號已有 ${businessRecordSummary.total} 筆業務紀錄，請改用停用帳號以保留追溯性`);
+        }
+        const beforeData = { username: target.username, name: target.name, role: target.role, isActive: target.isActive };
+        await deleteUserAccount(target.id);
+        await createUserAccountAuditLog({ targetUserId: target.id, actorUserId: ctx.user.id, action: "delete", beforeData, afterData: null });
         return { success: true };
       }),
   }),

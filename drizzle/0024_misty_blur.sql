@@ -1,0 +1,1 @@
+ALTER TABLE `user_account_audit_logs` MODIFY COLUMN `action` enum('create','reset_password','set_active','set_role','delete') NOT NULL;

@@ -1,5 +1,6 @@
 import { eq, asc, desc, inArray, and, gte, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import { or } from "drizzle-orm";
 import {
   InsertUser, users,
   productionLines, InsertProductionLine,
@@ -205,7 +206,7 @@ export async function createUserAccountAuditLog(data: InsertUserAccountAuditLog)
 export async function getAllUsers() {
   const db = await getDb();
   if (!db) return [];
-  return db.select({
+  const rows = await db.select({
     id: users.id,
     openId: users.openId,
     username: users.username,
@@ -216,6 +217,7 @@ export async function getAllUsers() {
     createdAt: users.createdAt,
     lastSignedIn: users.lastSignedIn,
   }).from(users).orderBy(desc(users.createdAt));
+  return Promise.all(rows.map(async (user) => ({ ...user, businessRecordSummary: await getUserBusinessRecordSummary(user.id) })));
 }
 
 export async function createLocalUser(data: {
@@ -256,6 +258,45 @@ export async function updateUserRole(userId: number, role: 'user' | 'admin') {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
   await db.update(users).set({ role, sessionVersion: sql`${users.sessionVersion} + 1` }).where(eq(users.id, userId));
+}
+
+export type UserBusinessRecordSummary = {
+  total: number;
+  records: Array<{ key: string; label: string; count: number }>;
+};
+
+async function countUserLinkedRecords(table: any, condition: any) {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db.select({ count: sql<number>`count(*)` }).from(table).where(condition);
+  return Number(rows[0]?.count ?? 0);
+}
+
+export async function getUserBusinessRecordSummary(userId: number): Promise<UserBusinessRecordSummary> {
+  const counts = await Promise.all([
+    countUserLinkedRecords(masterDataAuditLogs, eq(masterDataAuditLogs.operatorId, userId)),
+    countUserLinkedRecords(actionSteps, eq(actionSteps.reviewedBy, userId)),
+    countUserLinkedRecords(aiConsensusReviewEvents, or(eq(aiConsensusReviewEvents.createdBy, userId), eq(aiConsensusReviewEvents.decidedBy, userId))),
+    countUserLinkedRecords(governanceDataCompletionTasks, or(eq(governanceDataCompletionTasks.createdBy, userId), eq(governanceDataCompletionTasks.assigneeId, userId))),
+    countUserLinkedRecords(simulationScenarios, eq(simulationScenarios.createdBy, userId)),
+    countUserLinkedRecords(vsmImprovementActions, eq(vsmImprovementActions.createdBy, userId)),
+  ]);
+  const templates = [
+    ["master_data", "主資料異動"],
+    ["action_review", "動作覆核"],
+    ["ai_governance", "AI 審查或裁決"],
+    ["completion_task", "補件任務建立或指派"],
+    ["simulation", "配置模擬"],
+    ["improvement_action", "改善行動"],
+  ] as const;
+  const records = templates.map(([key, label], index) => ({ key, label, count: counts[index] })).filter(record => record.count > 0);
+  return { total: records.reduce((sum, record) => sum + record.count, 0), records };
+}
+
+export async function deleteUserAccount(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(users).where(eq(users.id, userId));
 }
 
 export async function updateUserLastSignedIn(userId: number) {

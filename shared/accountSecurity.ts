@@ -9,3 +9,7 @@ export function wouldLeaveNoActiveAdministrator(input: { targetRole: "admin" | "
 export function canResetLocalPassword(input: { hasPasswordHash: boolean; loginMethod: string | null }) {
   return input.hasPasswordHash && input.loginMethod === "local";
 }
+
+export function canPermanentlyDeleteAccount(input: { isCurrentUser: boolean; wouldLeaveNoActiveAdministrator: boolean; businessRecordCount: number }) {
+  return !input.isCurrentUser && !input.wouldLeaveNoActiveAdministrator && input.businessRecordCount === 0;
+}

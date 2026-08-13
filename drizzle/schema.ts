@@ -33,7 +33,7 @@ export const userAccountAuditLogs = mysqlTable("user_account_audit_logs", {
   id: int("id").autoincrement().primaryKey(),
   targetUserId: int("targetUserId").notNull(),
   actorUserId: int("actorUserId").notNull(),
-  action: mysqlEnum("action", ["create", "reset_password", "set_active", "set_role"]).notNull(),
+  action: mysqlEnum("action", ["create", "reset_password", "set_active", "set_role", "delete"]).notNull(),
   beforeData: json("beforeData"),
   afterData: json("afterData"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
