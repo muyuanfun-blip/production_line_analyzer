@@ -16,6 +16,7 @@ import { INTERACTIVE_QUICK_QUESTIONS } from "../../../shared/interactiveAnalysis
 import { assessAnalysisDataReadiness, getReadinessLevel } from "../../../shared/analysisDataReadiness";
 import { deriveInteractiveActionDraft, type InteractiveActionDraft } from "../../../shared/interactiveActionPlan";
 import type { ReportCompleteness } from "../../../shared/reportCompleteness";
+import { getFriendlyAIAnalysisError } from "../../../shared/aiAnalysisReliability";
 import { Streamdown } from "streamdown";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -69,7 +70,7 @@ export default function AISuggestions() {
       if (data.status === "approved") toast.success("五角色審查已達成共識，正式報告已就緒");
       else toast.warning("五角色審查尚未達成共識，請先補充資料或釐清分歧");
     },
-    onError: () => toast.error("AI 分析失敗，請稍後再試"),
+    onError: (error) => toast.error(getFriendlyAIAnalysisError(error)),
   });
 
   const interactiveMutation = trpc.analysis.interactiveAnalyze.useMutation({
@@ -465,6 +466,15 @@ export default function AISuggestions() {
               </div>
               <p className="text-base font-medium mb-1">AI 正在分析產線數據...</p>
               <p className="text-sm text-muted-foreground">正在執行五角色審查與共識整合，請稍候</p>
+            </div>
+          ) : aiMutation.isError ? (
+            <div className="status-risk py-8 text-center">
+              <AlertTriangle className="status-icon mx-auto mb-3 h-8 w-8" />
+              <h3 className="font-semibold">AI 分析暫時無法完成</h3>
+              <p className="status-detail mx-auto mt-2 max-w-xl text-sm">{getFriendlyAIAnalysisError(aiMutation.error)}</p>
+              <Button variant="outline" className="mt-4" onClick={handleAnalyze}>
+                <RefreshCw className="mr-2 h-4 w-4" />重新嘗試分析
+              </Button>
             </div>
           ) : suggestion ? (
             <div className="prose prose-invert max-w-none space-y-4">

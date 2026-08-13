@@ -51,6 +51,7 @@ import { assessAnalysisDataReadiness, getReadinessLevel } from "../shared/analys
 import { calculateReportCompleteness } from "../shared/reportCompleteness";
 import { canPermanentlyDeleteAccount, canResetLocalPassword, wouldLeaveNoActiveAdministrator } from "../shared/accountSecurity";
 import { ACCESS_PROFILES, FEATURE_PERMISSION_CATALOG, getEffectivePermissions, getValidPermissionOverrides, type FeaturePermission } from "../shared/featurePermissions";
+import { AI_ANALYSIS_TIMEOUT_MS, retryAIRequest } from "../shared/aiAnalysisReliability";
 
 // ─── Zod Schemas ─────────────────────────────────────────────────────────────
 
@@ -117,36 +118,60 @@ function parseOllamaJson(content: string): unknown {
 }
 
 async function requestOllamaJson(system: string, user: string) {
-  const response = await fetch(`${ENV.ollamaBaseUrl}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ENV.ollamaApiKey}` },
-    body: JSON.stringify({ model: ENV.ollamaModel, messages: [{ role: "system", content: system }, { role: "user", content: user }], format: "json", stream: false }),
+  return retryAIRequest(async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AI_ANALYSIS_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${ENV.ollamaBaseUrl}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ENV.ollamaApiKey}` },
+        body: JSON.stringify({ model: ENV.ollamaModel, messages: [{ role: "system", content: system }, { role: "user", content: user }], format: "json", stream: false }),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Ollama API 錯誤 (${response.status}): ${errText}`);
+      }
+      const data = await response.json() as { message?: { content?: string } };
+      if (!data.message?.content) throw new Error("五角色 AI 審查未回傳有效內容，請稍後再試。");
+      try {
+        return parseOllamaJson(data.message.content);
+      } catch {
+        throw new Error("五角色 AI 審查回傳格式無法驗證，正在重試。");
+      }
+    } catch (error) {
+      if (controller.signal.aborted) throw new Error("AI 模型回應逾時");
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   });
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Ollama API 錯誤 (${response.status}): ${errText}`);
-  }
-  const data = await response.json() as { message?: { content?: string } };
-  if (!data.message?.content) throw new Error("五角色 AI 審查未回傳有效內容，請稍後再試。");
-  try {
-    return parseOllamaJson(data.message.content);
-  } catch {
-    throw new Error("五角色 AI 審查回傳格式無法驗證；本次不產出未經共識的報告，請重新分析。");
-  }
 }
 
 async function requestOllamaText(system: string, user: string): Promise<string> {
-  const response = await fetch(`${ENV.ollamaBaseUrl}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ENV.ollamaApiKey}` },
-    body: JSON.stringify({ model: ENV.ollamaModel, messages: [{ role: "system", content: system }, { role: "user", content: user }], stream: false }),
+  return retryAIRequest(async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AI_ANALYSIS_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${ENV.ollamaBaseUrl}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ENV.ollamaApiKey}` },
+        body: JSON.stringify({ model: ENV.ollamaModel, messages: [{ role: "system", content: system }, { role: "user", content: user }], stream: false }),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Ollama API 錯誤 (${response.status}): ${errText}`);
+      }
+      const data = await response.json() as { message?: { content?: string } };
+      return data.message?.content?.trim() || "目前無法根據既有資料提供互動分析，請稍後再試。";
+    } catch (error) {
+      if (controller.signal.aborted) throw new Error("AI 模型回應逾時");
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   });
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Ollama API 錯誤 (${response.status}): ${errText}`);
-  }
-  const data = await response.json() as { message?: { content?: string } };
-  return data.message?.content?.trim() || "目前無法根據既有資料提供互動分析，請稍後再試。";
 }
 
 // ─── Router ──────────────────────────────────────────────────────────────────
@@ -860,15 +885,14 @@ export const appRouter = router({
         if (dataGaps.length > 0) dataScope.push(`已識別資料缺口：${dataGaps.map((gap) => gap.title).join("；")}`);
         const dataContext = `產線名稱：${input.productionLineName}\n${dataScope.join("\n")}${taktSummary}\n\n各工站資料：\n${workstationList}`;
         const reviewSystem = "你是製造現場審查團隊的一員。請以繁體中文、僅依提供資料判斷，禁止捏造數字、設備能力、成本、品質缺陷或已完成結果。你必須只輸出有效 JSON。";
-        const reviews: RoleReview[] = [];
-        for (const role of AI_REVIEW_ROLES) {
+        const reviews: RoleReview[] = await Promise.all(AI_REVIEW_ROLES.map(async (role) => {
           const rawReview = await requestOllamaJson(
             reviewSystem,
             `你的角色：${role.name}\n審查焦點：${role.focus}\n\n請審查下列產線資料。僅輸出 JSON：{"findings":["最多 3 項依據資料的發現"],"recommendations":["最多 3 項可執行建議"],"risks":["最多 3 項風險或資料限制"],"confidence":"high|medium|low"}\n\n${dataContext}`,
           );
           const parsed = roleReviewResponseSchema.parse(rawReview);
-          reviews.push({ roleId: role.id, roleName: role.name, ...parsed });
-        }
+          return { roleId: role.id, roleName: role.name, ...parsed };
+        }));
         const rawConsensus = await requestOllamaJson(
           "你是製造改善審查委員會主席。請比較五份審查意見，僅採用可由提供資料支持的共識。不可捏造效益數字；若有重大分歧、資料不足或行動無法驗證，必須將 consensusAchieved 設為 false。只輸出有效 JSON。",
           `產線資料：\n${dataContext}\n\n五角色審查意見：\n${JSON.stringify(reviews)}\n\n輸出 JSON：{"consensusAchieved":true,"agreementScore":0-100,"managementSummary":"摘要","agreedFindings":["共同發現"],"actions":[{"priority":"P1|P2|P3","title":"行動","rationale":"理由","ownerRole":"責任角色","validationMetric":"驗證指標","targetHorizon":"時程"}],"risksAndValidation":["風險與驗證"],"unresolvedItems":["未決事項"]}`,

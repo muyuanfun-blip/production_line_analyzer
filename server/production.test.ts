@@ -410,12 +410,15 @@ describe("Ollama API 整合", () => {
   it("Ollama API 端點可訪問（本地開發環境）", async () => {
     // 本地開發環境測試：嘗試連接本地 Ollama 服務
     // 如果本地 Ollama 未運行，測試會跳過
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1_500);
     try {
       const res = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
         },
+        signal: controller.signal,
       });
       // 如果本地 Ollama 運行，應該回傳 200
       if (res.ok) {
@@ -428,8 +431,10 @@ describe("Ollama API 整合", () => {
     } catch (err) {
       // 連接失敗（本地 Ollama 未運行），跳過測試
       console.warn("無法連接本地 Ollama 服務，跳過 API 測試");
+    } finally {
+      clearTimeout(timeout);
     }
-  }, 10000);
+  }, 3000);
 });
 
 // ─── 動作拆解分析測試 ────────────────────────────────────────────────────────
