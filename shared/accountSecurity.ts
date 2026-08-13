@@ -1,5 +1,15 @@
+export function getLocalPasswordPolicyIssues(password: string) {
+  const issues: string[] = [];
+  if (password.length < 12) issues.push("至少 12 個字元");
+  if (password.length > 128) issues.push("不可超過 128 個字元");
+  if (!/[a-z]/.test(password)) issues.push("至少一個小寫英文");
+  if (!/[A-Z]/.test(password)) issues.push("至少一個大寫英文");
+  if (!/[0-9]/.test(password)) issues.push("至少一個數字");
+  return issues;
+}
+
 export function meetsLocalPasswordPolicy(password: string) {
-  return password.length >= 12 && password.length <= 128 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /[0-9]/.test(password);
+  return getLocalPasswordPolicyIssues(password).length === 0;
 }
 
 export function wouldLeaveNoActiveAdministrator(input: { targetRole: "admin" | "user"; targetIsActive: boolean; activeAdministratorCount: number; removingAdministrator: boolean }) {

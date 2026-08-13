@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { canPermanentlyDeleteAccount, canResetLocalPassword, meetsLocalPasswordPolicy, wouldLeaveNoActiveAdministrator } from "../shared/accountSecurity";
+import { canPermanentlyDeleteAccount, canResetLocalPassword, getLocalPasswordPolicyIssues, meetsLocalPasswordPolicy, wouldLeaveNoActiveAdministrator } from "../shared/accountSecurity";
 
 describe("帳號安全規則", () => {
   it("只接受符合長度與英數大小寫組合的本機密碼", () => {
     expect(meetsLocalPasswordPolicy("weakpassword")).toBe(false);
     expect(meetsLocalPasswordPolicy("SecurePass2026")).toBe(true);
+    expect(getLocalPasswordPolicyIssues("short")).toEqual(expect.arrayContaining(["至少 12 個字元", "至少一個大寫英文", "至少一個數字"]));
+    expect(getLocalPasswordPolicyIssues("SecurePass2026")).toEqual([]);
   });
 
   it("不可移除系統最後一位有效管理員，但可操作仍有其他管理員的帳號", () => {

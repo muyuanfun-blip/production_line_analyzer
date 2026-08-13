@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Plus, KeyRound, UserCheck, UserX, ShieldCheck, User, Trash2 } from "lucide-react";
+import { getLocalPasswordPolicyIssues } from "../../../shared/accountSecurity";
 
 type UserRow = {
   id: number;
@@ -34,6 +35,17 @@ type UserRow = {
     records: Array<{ key: string; label: string; count: number }>;
   };
 };
+
+function passwordValidationMessage(password: string) {
+  const issues = getLocalPasswordPolicyIssues(password);
+  return issues.length === 0 ? "密碼符合安全規則" : `尚需符合：${issues.join("、")}`;
+}
+
+function friendlyPasswordError(message: string) {
+  return message.includes("newPassword") || message.includes("密碼至少") || message.includes("密碼需包含")
+    ? "密碼不符合安全規則：至少 12 個字元，且需包含英文大小寫與數字。"
+    : message;
+}
 
 export default function AdminUsers() {
   const { user } = useAuth();
@@ -55,6 +67,8 @@ export default function AdminUsers() {
   const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
   const [newPwd, setNewPwd] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
+  const newPasswordIssues = getLocalPasswordPolicyIssues(newPassword);
+  const resetPasswordIssues = getLocalPasswordPolicyIssues(newPwd);
 
   const createMutation = trpc.admin.createUser.useMutation({
     onSuccess: () => {
@@ -63,7 +77,7 @@ export default function AdminUsers() {
       setCreateOpen(false);
       setNewUsername(""); setNewPassword(""); setNewName(""); setNewRole("user");
     },
-    onError: (e) => toast.error("建立失敗：" + e.message),
+    onError: (e) => toast.error("建立失敗：" + friendlyPasswordError(e.message)),
   });
 
   const resetMutation = trpc.admin.resetPassword.useMutation({
@@ -72,7 +86,7 @@ export default function AdminUsers() {
       setResetOpen(false);
       setNewPwd("");
     },
-    onError: (e) => toast.error("重設失敗：" + e.message),
+    onError: (e) => toast.error("重設失敗：" + friendlyPasswordError(e.message)),
   });
 
   const toggleMutation = trpc.admin.toggleActive.useMutation({
@@ -286,7 +300,10 @@ export default function AdminUsers() {
                 placeholder="例如 SecurePass2026"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
+                minLength={12}
+                aria-invalid={newPassword.length > 0 && newPasswordIssues.length > 0}
               />
+              <p className={newPassword.length === 0 || newPasswordIssues.length > 0 ? "text-xs text-muted-foreground" : "text-xs text-emerald-600 dark:text-emerald-300"}>{newPassword.length === 0 ? "至少 12 個字元，含英文大小寫與數字" : passwordValidationMessage(newPassword)}</p>
             </div>
             <div className="space-y-2">
               <Label>角色</Label>
@@ -310,7 +327,7 @@ export default function AdminUsers() {
                 name: newName,
                 role: newRole,
               })}
-              disabled={createMutation.isPending}
+              disabled={createMutation.isPending || newPasswordIssues.length > 0 || !newUsername.trim() || !newName.trim()}
             >
               {createMutation.isPending ? "建立中..." : "建立帳號"}
             </Button>
@@ -332,7 +349,10 @@ export default function AdminUsers() {
                 placeholder="重設後會撤銷該帳號既有登入狀態"
                 value={newPwd}
                 onChange={(e) => setNewPwd(e.target.value)}
+                minLength={12}
+                aria-invalid={newPwd.length > 0 && resetPasswordIssues.length > 0}
               />
+              <p className={newPwd.length === 0 || resetPasswordIssues.length > 0 ? "text-xs text-muted-foreground" : "text-xs text-emerald-600 dark:text-emerald-300"}>{newPwd.length === 0 ? "至少 12 個字元，含英文大小寫與數字" : passwordValidationMessage(newPwd)}</p>
             </div>
           </div>
           <DialogFooter>
@@ -342,7 +362,7 @@ export default function AdminUsers() {
                 userId: resetTarget.id,
                 newPassword: newPwd,
               })}
-              disabled={resetMutation.isPending}
+              disabled={resetMutation.isPending || resetPasswordIssues.length > 0 || newPwd.length === 0}
             >
               {resetMutation.isPending ? "重設中..." : "確認重設"}
             </Button>
