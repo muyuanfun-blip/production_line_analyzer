@@ -32,8 +32,8 @@ export const ACCESS_PROFILES = [
 export type AccessProfile = (typeof ACCESS_PROFILES)[number]["key"];
 
 const PROFILE_PERMISSIONS: Record<AccessProfile, FeaturePermission[]> = {
-  viewer: ["dashboard.view", "production.view", "actions.view", "analysis.view", "vsm.view", "reports.export"],
-  operator: ["dashboard.view", "tasks.view", "tasks.update_own", "production.view", "actions.view", "actions.manage", "analysis.view", "vsm.view"],
+  viewer: ["dashboard.view", "production.view", "actions.view", "analysis.view", "vsm.view", "ai.analyze", "reports.export"],
+  operator: ["dashboard.view", "tasks.view", "tasks.update_own", "production.view", "actions.view", "actions.manage", "analysis.view", "vsm.view", "ai.analyze", "reports.export"],
   engineer: ["dashboard.view", "tasks.view", "tasks.update_own", "production.view", "production.manage", "master_data.manage", "actions.view", "actions.manage", "analysis.view", "snapshots.manage", "simulation.manage", "vsm.view", "vsm.manage", "ai.analyze", "reports.export"],
   manager: ["dashboard.view", "tasks.view", "tasks.update_own", "production.view", "production.manage", "master_data.manage", "actions.view", "actions.manage", "actions.review", "analysis.view", "snapshots.manage", "simulation.manage", "vsm.view", "vsm.manage", "ai.analyze", "reports.export", "governance.view", "governance.resolve"],
 };

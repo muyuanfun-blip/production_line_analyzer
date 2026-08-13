@@ -3,12 +3,22 @@ import { getEffectivePermissions, getValidPermissionOverrides, hasFeaturePermiss
 import { getSidebarGroups } from "../shared/sidebarNavigation";
 
 describe("功能導向 RBAC 權限矩陣", () => {
-  it("檢視者只能使用檢視與匯出功能", () => {
+  it("一般使用者可執行 AI 分析與匯出，但無治理或帳號管理權限", () => {
     const permissions = getEffectivePermissions({ role: "user", accessProfile: "viewer", permissionOverrides: [] });
     expect(permissions).toContain("production.view");
+    expect(permissions).toContain("ai.analyze");
     expect(permissions).toContain("reports.export");
     expect(permissions).not.toContain("master_data.manage");
-    expect(permissions).not.toContain("ai.analyze");
+    expect(permissions).not.toContain("governance.resolve");
+    expect(permissions).not.toContain("users.manage");
+  });
+
+  it("預設現場資料員也可執行 AI 分析與匯出報告", () => {
+    const permissions = getEffectivePermissions({ role: "user", accessProfile: "operator", permissionOverrides: [] });
+    expect(permissions).toContain("ai.analyze");
+    expect(permissions).toContain("reports.export");
+    expect(permissions).not.toContain("governance.view");
+    expect(permissions).not.toContain("users.manage");
   });
 
   it("個別覆寫只接受已知權限並可額外開放功能", () => {
