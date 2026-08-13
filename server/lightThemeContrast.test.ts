@@ -34,4 +34,19 @@ describe("淺色主題可讀性覆蓋", () => {
       expect(stylesheet).toContain(`html:not(.dark) ${selector}`);
     });
   });
+
+  it("為完整成功、資訊、中性、警示與風險狀態色系提供淺色模式高對比前景", () => {
+    [".status-success", ".status-info", ".status-neutral", ".status-warning", ".status-risk"].forEach((selector) => {
+      expect(stylesheet).toContain(`html:not(.dark) ${selector}`);
+    });
+    [".status-text-success", ".status-text-info", ".status-text-neutral", ".status-text-warning", ".status-text-risk"].forEach((selector) => {
+      expect(stylesheet).toContain(`html:not(.dark) ${selector}`);
+    });
+  });
+
+  it("為其他頁面常用的淡色狀態文字類別提供全域淺色映射", () => {
+    [".text-red-100", ".text-emerald-100", ".text-cyan-100", ".text-amber-100", ".text-violet-100", ".text-rose-100", ".text-sky-100", ".text-yellow-100"].forEach((selector) => {
+      expect(stylesheet).toContain(`html:not(.dark) ${selector}`);
+    });
+  });
 });

@@ -14,10 +14,10 @@ type ActionFilter = "all" | "create" | "update" | "delete" | "bulk_import";
 type ChangedFieldFilter = "all" | "name" | "description" | "targetCycleTime" | "status" | "sequenceOrder" | "cycleTime" | "manpower" | "morningManpower" | "eveningManpower" | "notes";
 
 const actionMeta = {
-  create: { label: "新增", icon: Plus, className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/25" },
-  update: { label: "修改", icon: Pencil, className: "bg-cyan-500/10 text-cyan-400 border-cyan-500/25" },
-  delete: { label: "刪除", icon: Trash2, className: "bg-red-500/10 text-red-400 border-red-500/25" },
-  bulk_import: { label: "批次匯入", icon: Upload, className: "bg-violet-500/10 text-violet-400 border-violet-500/25" },
+  create: { label: "新增", icon: Plus, className: "status-success", iconClassName: "status-text-success" },
+  update: { label: "修改", icon: Pencil, className: "status-info", iconClassName: "status-text-info" },
+  delete: { label: "刪除", icon: Trash2, className: "status-risk", iconClassName: "status-text-risk" },
+  bulk_import: { label: "批次匯入", icon: Upload, className: "status-neutral", iconClassName: "status-text-neutral" },
 } as const;
 
 const fieldLabel: Record<string, string> = {
@@ -65,7 +65,7 @@ export function MasterDataAuditLog({ productionLineId, title = "資料異動歷�
     <Card className="border-border bg-card">
       <CardHeader className="pb-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="flex items-center gap-2 text-base"><History className="h-4 w-4 text-cyan-400" />{title}</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base"><History className="status-text-info h-4 w-4" />{title}</CardTitle>
           <div className="flex flex-wrap gap-2">
             <Select value={entityFilter} onValueChange={(value) => setEntityFilter(value as EntityFilter)}>
               <SelectTrigger className="h-8 w-[132px] text-xs"><SelectValue /></SelectTrigger>
@@ -101,8 +101,20 @@ export function MasterDataAuditLog({ productionLineId, title = "資料異動歷�
               const changes = getMasterDataAuditChanges(log.beforeData, log.afterData);
               const importCount = log.action === "bulk_import" && log.afterData && typeof log.afterData === "object" ? (log.afterData as any).count : null;
               return <div key={log.id} className="p-3">
-                <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-2"><Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" /><div className="min-w-0"><p className="text-sm font-medium">{log.entityType === "production_line" ? "生產線" : "工站"}{log.entityId ? ` #${log.entityId}` : ""} <Badge variant="outline" className={`ml-1.5 text-[10px] ${meta.className}`}>{meta.label}</Badge></p><p className="mt-1 text-xs text-muted-foreground">{log.operatorName || log.operatorUsername || `使用者 #${log.operatorId}`} · {new Date(log.createdAt).toLocaleString()}</p></div></div>{importCount !== null && <span className="text-xs text-violet-400">{importCount} 筆</span>}</div>
-                {changes.length > 0 && <div className="mt-2 grid gap-1 text-xs text-muted-foreground">{changes.slice(0, 4).map((change) => <p key={change.field}><span className="text-foreground/80">{fieldLabel[change.field] || change.field}</span>：<span className="text-red-300/80">{formatMasterDataAuditValue(change.beforeValue)}</span> <span className="mx-1">→</span><span className="text-emerald-300/90">{formatMasterDataAuditValue(change.afterValue)}</span></p>)}{changes.length > 4 && <p>另有 {changes.length - 4} 項欄位變更</p>}</div>}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-2">
+                    <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${meta.iconClassName}`} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">
+                        {log.entityType === "production_line" ? "生產線" : "工站"}{log.entityId ? ` #${log.entityId}` : ""}
+                        <Badge variant="outline" className={`ml-1.5 border text-[10px] ${meta.className}`}>{meta.label}</Badge>
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">{log.operatorName || log.operatorUsername || `使用者 #${log.operatorId}`} · {new Date(log.createdAt).toLocaleString()}</p>
+                    </div>
+                  </div>
+                  {importCount !== null && <span className="status-text-neutral text-xs">{importCount} 筆</span>}
+                </div>
+                {changes.length > 0 && <div className="mt-2 grid gap-1 text-xs text-muted-foreground">{changes.slice(0, 4).map((change) => <p key={change.field}><span className="text-foreground/80">{fieldLabel[change.field] || change.field}</span>：<span className="status-text-risk">{formatMasterDataAuditValue(change.beforeValue)}</span> <span className="mx-1">→</span><span className="status-text-success">{formatMasterDataAuditValue(change.afterValue)}</span></p>)}{changes.length > 4 && <p>另有 {changes.length - 4} 項欄位變更</p>}</div>}
               </div>;
             })}
           </div>

@@ -1350,12 +1350,12 @@ export default function ActionAnalysis() {
 
           {/* 改善提示卡片 */}
           {steps.length > 0 && stats.byType.non_value_added > 0 && (
-            <Card className="border-red-500/20 bg-red-500/5">
+            <Card className="status-risk border">
               <CardContent className="p-3 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                <AlertTriangle className="status-icon w-4 h-4 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-xs font-medium text-red-400">改善機會</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                  <p className="text-xs font-medium">改善機會</p>
+                  <p className="status-detail text-xs mt-0.5">
                     非增值動作 {stats.byType.non_value_added.toFixed(1)}s
                     （佔 {((stats.byType.non_value_added / stats.totalSec) * 100).toFixed(0)}%），建議優先消除。
                   </p>
@@ -1364,12 +1364,12 @@ export default function ActionAnalysis() {
             </Card>
           )}
           {steps.length > 0 && stats.valueAddedRate >= 80 && (
-            <Card className="border-emerald-500/20 bg-emerald-500/5">
+            <Card className="status-success border">
               <CardContent className="p-3 flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                <CheckCircle2 className="status-icon w-4 h-4 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-xs font-medium text-emerald-400">優良工站</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                  <p className="text-xs font-medium">優良工站</p>
+                  <p className="status-detail text-xs mt-0.5">
                     增值率達 {stats.valueAddedRate.toFixed(0)}%，動作效率良好。
                   </p>
                 </div>

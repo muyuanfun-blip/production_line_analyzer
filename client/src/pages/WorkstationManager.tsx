@@ -275,12 +275,12 @@ export default function WorkstationManager() {
       </div>
 
       {manpowerQuality && manpowerQuality.inconsistentCount > 0 && (
-        <Card className="border-amber-500/35 bg-amber-500/5">
+        <Card className="status-warning border">
           <CardContent className="flex items-start gap-3 p-4">
-            <Activity className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+            <Activity className="status-icon mt-0.5 h-5 w-5 shrink-0" />
             <div>
-              <p className="font-medium text-amber-200">發現 {manpowerQuality.inconsistentCount} 個工站的人力資料需要修復</p>
-              <p className="mt-1 text-sm text-muted-foreground">合計人力現以早班加晚班為準。請開啟工站編輯，確認班別人力後重新儲存。</p>
+              <p className="font-medium">發現 {manpowerQuality.inconsistentCount} 個工站的人力資料需要修復</p>
+              <p className="status-detail mt-1 text-sm">合計人力現以早班加晚班為準。請開啟工站編輯，確認班別人力後重新儲存。</p>
             </div>
           </CardContent>
         </Card>
@@ -316,10 +316,10 @@ export default function WorkstationManager() {
       )}
 
           {/* 總人力統計區塊 */}
-          <Card className="border-amber-500/30 bg-amber-500/5">
+          <Card className="status-neutral border">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <Users className="h-5 w-5 text-amber-400" />
+                <Users className="status-icon h-5 w-5" />
                 總人力統計
               </CardTitle>
             </CardHeader>
@@ -349,10 +349,10 @@ export default function WorkstationManager() {
           {/* 人力分佈圖表 */}
           <div className="grid grid-cols-2 gap-4">
             {/* 長條圖：各工站人力分佈 */}
-            <Card className="border-cyan-500/30 bg-cyan-500/5">
+            <Card className="status-info border">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Activity className="h-5 w-5 text-cyan-400" />
+                  <Activity className="status-icon h-5 w-5" />
                   各工站人力分佈
                 </CardTitle>
               </CardHeader>
@@ -381,10 +381,10 @@ export default function WorkstationManager() {
             </Card>
 
             {/* 圓餅圖：早晚班人力比例 */}
-            <Card className="border-violet-500/30 bg-violet-500/5">
+            <Card className="status-neutral border">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Activity className="h-5 w-5 text-violet-400" />
+                  <Activity className="status-icon h-5 w-5" />
                   早晚班人力比例
                 </CardTitle>
               </CardHeader>

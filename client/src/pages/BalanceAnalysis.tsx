@@ -408,16 +408,16 @@ export default function BalanceAnalysis() {
                 </div>
                 <div className="mt-2 pt-2 border-t border-border/50 space-y-1.5">
                   <div className="flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                    <span className="text-xs text-emerald-400">將自動同步各工站動作拆解增値率（即時快取最新資料）</span>
+                    <div className="status-text-success w-1.5 h-1.5 rounded-full bg-current shrink-0" />
+                    <span className="status-text-success text-xs">將自動同步各工站動作拆解增値率（即時快取最新資料）</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
-                    <span className="text-xs text-cyan-400">快照儲存後首頁儀表板圖表將即時同步更新</span>
+                    <div className="status-text-info w-1.5 h-1.5 rounded-full bg-current shrink-0" />
+                    <span className="status-text-info text-xs">快照儲存後首頁儀表板圖表將即時同步更新</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                    <span className="text-xs text-amber-400">建議：儲存快照前請確認工站 CT 與動作拆解已完成最新更新</span>
+                    <div className="status-text-warning w-1.5 h-1.5 rounded-full bg-current shrink-0" />
+                    <span className="status-text-warning text-xs">建議：儲存快照前請確認工站 CT 與動作拆解已完成最新更新</span>
                   </div>
                 </div>
               </div>
@@ -438,22 +438,22 @@ export default function BalanceAnalysis() {
 
       {/* Takt Time Banner */}
       {taktTime && (
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-violet-400/30 bg-violet-400/8">
-          <div className="h-10 w-10 rounded-lg bg-violet-400/20 flex items-center justify-center shrink-0">
-            <Target className="h-5 w-5 text-violet-400" />
+        <div className="status-neutral flex items-center gap-3 rounded-xl border p-4">
+          <div className="h-10 w-10 rounded-lg bg-black/10 flex items-center justify-center shrink-0">
+            <Target className="status-icon h-5 w-5" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
-              <p className="text-sm font-semibold text-violet-400">
+              <p className="text-sm font-semibold">
                 目標節拍時間（Takt Time）：{taktTime.toFixed(1)} 秒
               </p>
               {analysis?.taktStats && (
                 <>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-400/15 text-emerald-400 border border-emerald-400/30">
+                  <span className="status-success rounded-full border px-2 py-0.5 text-xs">
                     ✓ 達標 {analysis.taktStats.passCount} 站
                   </span>
                   {analysis.taktStats.exceedCount > 0 && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-red-400/15 text-red-400 border border-red-400/30">
+                    <span className="status-risk rounded-full border px-2 py-0.5 text-xs">
                       ✗ 超出 {analysis.taktStats.exceedCount} 站
                     </span>
                   )}

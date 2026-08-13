@@ -208,11 +208,11 @@ export default function ProductionLines() {
                     <p className="text-sm text-muted-foreground line-clamp-2">{line.description}</p>
                   )}
                   {line.targetCycleTime ? (
-                    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-violet-400/8 border border-violet-400/20">
-                      <Target className="h-4 w-4 text-violet-400 shrink-0" />
+                    <div className="status-neutral flex items-center gap-2 rounded-lg border p-2.5">
+                      <Target className="status-icon h-4 w-4 shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs text-muted-foreground">目標節拍時間（Takt Time）</p>
-                        <p className="text-sm font-bold text-violet-400">{parseFloat(line.targetCycleTime).toFixed(1)} 秒</p>
+                        <p className="status-detail text-xs">目標節拍時間（Takt Time）</p>
+                        <p className="text-sm font-bold">{parseFloat(line.targetCycleTime).toFixed(1)} 秒</p>
                       </div>
                     </div>
                   ) : (

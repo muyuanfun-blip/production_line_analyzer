@@ -481,13 +481,13 @@ export const VSMPage: React.FC = () => {
         {selectedDiagramId ? (
           <>
             {simulationContext && (
-              <div className="border-b border-amber-500/25 bg-amber-500/[0.07] px-4 py-2.5 text-xs text-amber-100/75">
+              <div className="status-warning border-b px-4 py-2.5 text-xs">
                 模擬情境「{simulationContext.scenarioName}」：平衡率 {simulationContext.balanceRate.toFixed(1)}%，UPPH {simulationContext.upph.toFixed(2)}。可在此檢視或調整對應流程。
               </div>
             )}
             {/* 工具列 */}
             <div className="h-16 border-b border-slate-700 bg-slate-900 px-4 flex items-center gap-2">
-              <div className={`hidden rounded border px-2 py-1 text-[11px] lg:block ${hasModelErrors ? 'border-red-500/35 bg-red-500/10 text-red-200' : 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200'}`} title={modelQualityIssues.map((issue) => issue.message).join('\n') || '模型可儲存為版本'}>
+              <div className={`hidden rounded border px-2 py-1 text-[11px] lg:block ${hasModelErrors ? 'status-risk' : 'status-success'}`} title={modelQualityIssues.map((issue) => issue.message).join('\n') || '模型可儲存為版本'}>
                 {hasModelErrors ? `發布前檢查：${modelQualityIssues.filter((issue) => issue.severity === 'error').length} 項阻擋` : '發布前檢查：可建立版本'}
               </div>
               <Dialog open={showNewProcessDialog} onOpenChange={setShowNewProcessDialog}>
@@ -868,11 +868,11 @@ export const VSMPage: React.FC = () => {
       }}>
         <DialogContent className="max-w-lg bg-slate-900 border-slate-700">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><ClipboardCheck className="h-4 w-4 text-cyan-300" />建立改善行動</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><ClipboardCheck className="status-text-info h-4 w-4" />建立改善行動</DialogTitle>
           </DialogHeader>
           {improvementActionProcess && (
             <form onSubmit={handleCreateImprovementAction} className="space-y-4">
-              <div className="rounded border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-100">
+              <div className="status-warning rounded border p-3 text-sm">
                 目標工序：<span className="font-semibold">{improvementActionProcess.name}</span>
               </div>
               <div><Label htmlFor="improvementTitle">行動標題</Label><Input id="improvementTitle" name="title" required maxLength={255} placeholder={`例如：縮短 ${improvementActionProcess.name} 的換線時間`} /></div>
@@ -882,7 +882,7 @@ export const VSMPage: React.FC = () => {
                 <div><Label htmlFor="improvementDueDate">完成期限</Label><Input id="improvementDueDate" name="dueDate" type="date" /></div>
               </div>
               <div><Label htmlFor="sourceSnapshotId">關聯快照 ID（選填）</Label><Input id="sourceSnapshotId" name="sourceSnapshotId" type="number" min="1" step="1" placeholder="改善前基準快照" /></div>
-              <p className="text-xs text-slate-400">建立後可在分析面板更新為「進行中」或「已完成」，系統會彙整閉環完成率與逾期數。</p>
+              <p className="text-xs text-muted-foreground">建立後可在分析面板更新為「進行中」或「已完成」，系統會彙整閉環完成率與逾期數。</p>
               <Button type="submit" className="w-full bg-cyan-600 hover:bg-cyan-500" disabled={createImprovementActionMutation.isPending}>{createImprovementActionMutation.isPending ? '建立中…' : '建立並納入閉環追蹤'}</Button>
             </form>
           )}

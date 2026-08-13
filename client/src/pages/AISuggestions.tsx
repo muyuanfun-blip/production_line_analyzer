@@ -409,9 +409,9 @@ export default function AISuggestions() {
       )}
 
       {workstations && workstations.length > 0 && readinessPreview.gaps.length > 0 && (
-        <Card className={readinessPreview.level === "blocked" ? "border-orange-400/40 bg-orange-400/5" : "border-amber-400/35 bg-amber-400/5"}>
+        <Card className={readinessPreview.level === "blocked" ? "status-risk" : "status-warning"}>
           <CardContent className="p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="flex items-center gap-2 font-medium text-foreground"><AlertTriangle className={readinessPreview.level === "blocked" ? "h-4 w-4 text-orange-400" : "h-4 w-4 text-amber-400"} />AI 分析前的資料缺口</p><p className="mt-1 text-xs text-muted-foreground">目前資料就緒度為「{readinessPreview.level === "blocked" ? "不足" : "受限"}」。補充下列資料後，可提高五角色結論與改善方案的準確度。</p></div><span className="rounded-full border border-current/20 px-2 py-1 text-xs text-muted-foreground">{readinessPreview.gaps.length} 項待補充</span></div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="flex items-center gap-2 font-medium"><AlertTriangle className="status-icon h-4 w-4" />AI 分析前的資料缺口</p><p className="status-detail mt-1 text-xs">目前資料就緒度為「{readinessPreview.level === "blocked" ? "不足" : "受限"}」。補充下列資料後，可提高五角色結論與改善方案的準確度。</p></div><span className="rounded-full border border-current/20 px-2 py-1 text-xs opacity-80">{readinessPreview.gaps.length} 項待補充</span></div>
             <div className="mt-3 grid gap-2 lg:grid-cols-2">{readinessPreview.gaps.map((gap) => <div key={gap.key} className="rounded-lg border border-border/70 bg-background/30 p-3"><div className="flex items-start justify-between gap-3"><p className="text-sm font-medium text-foreground">{gap.title}</p><span className={gap.severity === "critical" ? "text-[10px] text-orange-300" : "text-[10px] text-amber-300"}>{gap.severity === "critical" ? "影響較高" : "建議補充"}</span></div><p className="mt-1 text-xs text-muted-foreground">影響：{gap.impact}</p><p className="mt-1 text-xs text-muted-foreground">請提供：{gap.requestedData}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-[11px] text-muted-foreground">建議提供者：{gap.recommendedProvider}</span><Button variant="outline" size="sm" onClick={() => setLocation(gap.collectionLocation === "production_line" ? "/lines" : gap.collectionLocation === "workstation" ? `/lines/${lineId}/workstations` : `/lines/${lineId}/actions`)}>前往補充</Button></div></div>)}</div>
           </CardContent>
         </Card>
@@ -469,20 +469,20 @@ export default function AISuggestions() {
           ) : suggestion ? (
             <div className="prose prose-invert max-w-none space-y-4">
               {consensus && analysisStatus === "approved" && (
-                <div className="not-prose rounded-xl border border-emerald-400/30 bg-emerald-400/5 p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-emerald-300">五角色審查已達成共識</p><p className="mt-1 text-xs text-muted-foreground">精實與工業工程、製造營運、品質與可靠度、製程與設備、風險與治理皆已完成審查。</p></div><div className="rounded-lg bg-emerald-400/10 px-3 py-2 text-center"><p className="text-[10px] text-muted-foreground">共識分數</p><p className="text-lg font-bold text-emerald-300">{consensus.agreementScore.toFixed(0)} / 100</p></div></div>
+                <div className="status-success not-prose rounded-xl border p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">五角色審查已達成共識</p><p className="status-detail mt-1 text-xs">精實與工業工程、製造營運、品質與可靠度、製程與設備、風險與治理皆已完成審查。</p></div><div className="rounded-lg bg-black/10 px-3 py-2 text-center"><p className="text-[10px] opacity-70">共識分數</p><p className="text-lg font-bold">{consensus.agreementScore.toFixed(0)} / 100</p></div></div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{roleReviews.map((review) => <div key={review.roleId} className="rounded-lg border border-border/70 bg-background/30 p-2"><p className="text-xs font-medium text-foreground">{review.roleName}</p><p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">{review.findings[0] ?? "已完成審查"}</p></div>)}</div>
                 </div>
               )}
               {consensus && analysisStatus === "needs_clarification" && (
-                <div className="not-prose rounded-xl border border-orange-400/35 bg-orange-400/5 p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-orange-200">五角色審查尚未形成正式共識</p><p className="mt-1 text-xs text-muted-foreground">原因：{approvalReason ?? "尚待補充資料或釐清角色分歧"}。本次內容僅作補充資料與現場確認用途，尚不可建立改善行動或匯出正式報告。</p></div><div className="rounded-lg bg-orange-400/10 px-3 py-2 text-center"><p className="text-[10px] text-muted-foreground">目前共識分數</p><p className="text-lg font-bold text-orange-300">{consensus.agreementScore.toFixed(0)} / 100</p></div></div>
+                <div className="status-warning not-prose rounded-xl border p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">五角色審查尚未形成正式共識</p><p className="status-detail mt-1 text-xs">原因：{approvalReason ?? "尚待補充資料或釐清角色分歧"}。本次內容僅作補充資料與現場確認用途，尚不可建立改善行動或匯出正式報告。</p></div><div className="rounded-lg bg-black/10 px-3 py-2 text-center"><p className="text-[10px] opacity-70">目前共識分數</p><p className="text-lg font-bold">{consensus.agreementScore.toFixed(0)} / 100</p></div></div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{roleReviews.map((review) => <div key={review.roleId} className="rounded-lg border border-border/70 bg-background/30 p-2"><p className="text-xs font-medium text-foreground">{review.roleName}</p><p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">{review.risks[0] ?? review.findings[0] ?? "請現場確認審查前提"}</p></div>)}</div>
                 </div>
               )}
               {analysisCompleteness && (
-                <div className="not-prose rounded-xl border border-cyan-400/25 bg-cyan-400/5 p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-cyan-100">資訊完整度：{analysisCompleteness.score} / 100</p><p className="mt-1 text-xs text-muted-foreground">{analysisCompleteness.label}。評分衡量節拍、CT、人力、動作拆解與資料對齊的覆蓋程度，不代表改善效益或正式核准結論。</p></div><Gauge className="h-7 w-7 text-cyan-300" /></div>
+                <div className="status-info not-prose rounded-xl border p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">資訊完整度：{analysisCompleteness.score} / 100</p><p className="status-detail mt-1 text-xs">{analysisCompleteness.label}。評分衡量節拍、CT、人力、動作拆解與資料對齊的覆蓋程度，不代表改善效益或正式核准結論。</p></div><Gauge className="status-icon h-7 w-7" /></div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{analysisCompleteness.components.map((component) => <div key={component.key} className="rounded-lg border border-border/70 bg-background/30 p-2"><p className="text-[11px] text-muted-foreground">{component.label}</p><p className="mt-1 text-sm font-semibold text-cyan-100">{component.score} / {component.maxScore}</p><p className="mt-1 text-[10px] text-muted-foreground">{component.detail}</p></div>)}</div>
                 </div>
               )}

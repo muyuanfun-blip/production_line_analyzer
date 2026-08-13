@@ -140,9 +140,9 @@ export default function AdminUsers() {
           </Button>
         </div>
 
-        <Card className="border-primary/25 bg-primary/5">
-          <CardContent className="p-4 text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">帳號安全控制：</span>本機密碼需至少 12 字元並包含英文大小寫與數字。重設密碼、停用帳號或調整角色會立即撤銷該帳號既有登入狀態；系統也會防止停用或降級最後一位有效管理員。
+        <Card className="status-info border">
+          <CardContent className="status-detail p-4 text-sm">
+            <span className="font-medium">帳號安全控制：</span>本機密碼需至少 12 字元並包含英文大小寫與數字。重設密碼、停用帳號或調整角色會立即撤銷該帳號既有登入狀態；系統也會防止停用或降級最後一位有效管理員。
           </CardContent>
         </Card>
 
@@ -193,12 +193,12 @@ export default function AdminUsers() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={u.isActive ? "outline" : "destructive"}>
+                        <Badge className={`border ${u.isActive ? "status-success" : "status-risk"}`} variant="outline">
                           {u.isActive ? "啟用中" : "已停用"}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <span className={deletionBlocked ? "text-xs text-muted-foreground" : "text-xs font-medium text-emerald-600 dark:text-emerald-300"}>
+                        <span className={deletionBlocked ? "text-xs text-muted-foreground" : "status-text-success text-xs font-medium"}>
                           {deletionReason}
                         </span>
                       </TableCell>
@@ -303,7 +303,7 @@ export default function AdminUsers() {
                 minLength={12}
                 aria-invalid={newPassword.length > 0 && newPasswordIssues.length > 0}
               />
-              <p className={newPassword.length === 0 || newPasswordIssues.length > 0 ? "text-xs text-muted-foreground" : "text-xs text-emerald-600 dark:text-emerald-300"}>{newPassword.length === 0 ? "至少 12 個字元，含英文大小寫與數字" : passwordValidationMessage(newPassword)}</p>
+              <p className={newPassword.length === 0 || newPasswordIssues.length > 0 ? "text-xs text-muted-foreground" : "status-text-success text-xs"}>{newPassword.length === 0 ? "至少 12 個字元，含英文大小寫與數字" : passwordValidationMessage(newPassword)}</p>
             </div>
             <div className="space-y-2">
               <Label>角色</Label>
@@ -352,7 +352,7 @@ export default function AdminUsers() {
                 minLength={12}
                 aria-invalid={newPwd.length > 0 && resetPasswordIssues.length > 0}
               />
-              <p className={newPwd.length === 0 || resetPasswordIssues.length > 0 ? "text-xs text-muted-foreground" : "text-xs text-emerald-600 dark:text-emerald-300"}>{newPwd.length === 0 ? "至少 12 個字元，含英文大小寫與數字" : passwordValidationMessage(newPwd)}</p>
+              <p className={newPwd.length === 0 || resetPasswordIssues.length > 0 ? "text-xs text-muted-foreground" : "status-text-success text-xs"}>{newPwd.length === 0 ? "至少 12 個字元，含英文大小寫與數字" : passwordValidationMessage(newPwd)}</p>
             </div>
           </div>
           <DialogFooter>
