@@ -38,6 +38,10 @@ import {
   createAIConsensusReviewEvent, getAIConsensusGovernanceStats, resolveAIConsensusReviewEvent,
   listGovernanceDataCompletionTasks, updateGovernanceDataCompletionTask,
   createGovernanceTaskNotification, listGovernanceTaskNotifications, createHighFrequencyDataCompletionTasks,
+  listTimeStudiesByLine, getTimeStudyById, createTimeStudy, updateTimeStudy, deleteTimeStudy,
+  listTimeStudyObservations, getTimeStudyObservationById, createTimeStudyObservation,
+  updateTimeStudyObservation, deleteTimeStudyObservation, refreshTimeStudyCalculation,
+  publishTimeStudy, getPublishedTimeStudiesByLine,
 } from "./db";
 import bcrypt from "bcryptjs";
 import { sdk } from "./_core/sdk";
@@ -52,6 +56,7 @@ import { calculateReportCompleteness } from "../shared/reportCompleteness";
 import { canPermanentlyDeleteAccount, canResetLocalPassword, wouldLeaveNoActiveAdministrator } from "../shared/accountSecurity";
 import { ACCESS_PROFILES, FEATURE_PERMISSION_CATALOG, getEffectivePermissions, getValidPermissionOverrides, type FeaturePermission } from "../shared/featurePermissions";
 import { AI_ANALYSIS_TIMEOUT_MS, retryAIRequest } from "../shared/aiAnalysisReliability";
+import { canPublishTimeStudy } from "../shared/timeStudy";
 
 // ─── Zod Schemas ─────────────────────────────────────────────────────────────
 
@@ -81,6 +86,25 @@ const actionStepInput = z.object({
   duration: z.number().positive(),
   actionType: z.enum(["value_added", "non_value_added", "necessary_waste"]).optional(),
   description: z.string().optional(),
+});
+
+const timeStudyInput = z.object({
+  productionLineId: z.number().int().positive(),
+  workstationId: z.number().int().positive(),
+  name: z.string().trim().min(1).max(255),
+  productVariant: z.string().trim().max(255).optional(),
+  defaultPerformanceRating: z.number().min(0.5).max(1.5).default(1),
+  allowancePercent: z.number().min(0).max(50).default(15),
+  notes: z.string().trim().max(4000).optional(),
+});
+
+const timeStudyObservationInput = z.object({
+  observedCycleTime: z.number().positive().max(36000),
+  performanceRating: z.number().min(0.5).max(1.5).optional(),
+  isIncluded: z.boolean().optional(),
+  exclusionReason: z.string().trim().max(1000).optional(),
+  notes: z.string().trim().max(1000).optional(),
+  observedAt: z.coerce.date().optional(),
 });
 
 const localPasswordSchema = z.string().min(12, "密碼至少需 12 個字元").max(128).regex(/[a-z]/, "密碼需包含小寫英文字母").regex(/[A-Z]/, "密碼需包含大寫英文字母").regex(/[0-9]/, "密碼需包含數字");
@@ -631,6 +655,121 @@ export const appRouter = router({
           rows,
           inconsistentCount: rows.filter(row => !row.isValid).length,
         };
+      }),
+  }),
+
+  // ─── Digital Time Study & Standard Time ──────────────────────────────────
+  timeStudy: router({
+    listByLine: featureProcedure("time_study.view")
+      .input(z.object({ productionLineId: z.number().int().positive() }))
+      .query(({ input }) => listTimeStudiesByLine(input.productionLineId)),
+
+    listObservations: featureProcedure("time_study.view")
+      .input(z.object({ timeStudyId: z.number().int().positive() }))
+      .query(({ input }) => listTimeStudyObservations(input.timeStudyId)),
+
+    publishedByLine: featureProcedure("time_study.view")
+      .input(z.object({ productionLineId: z.number().int().positive() }))
+      .query(({ input }) => getPublishedTimeStudiesByLine(input.productionLineId)),
+
+    create: featureProcedure("time_study.manage")
+      .input(timeStudyInput)
+      .mutation(async ({ input, ctx }) => {
+        const workstation = await getWorkstationById(input.workstationId);
+        if (!workstation || workstation.productionLineId !== input.productionLineId) throw new Error("工站不屬於指定產線");
+        const existing = await listTimeStudiesByLine(input.productionLineId);
+        const versionNumber = existing.filter((study) => study.workstationId === input.workstationId).reduce((max, study) => Math.max(max, study.versionNumber), 0) + 1;
+        const study = await createTimeStudy({ productionLineId: input.productionLineId, workstationId: input.workstationId, name: input.name, productVariant: input.productVariant || null, versionNumber, status: "draft", defaultPerformanceRating: String(input.defaultPerformanceRating), allowancePercent: String(input.allowancePercent), sampleCount: 0, notes: input.notes || null, createdBy: ctx.user.id });
+        return { study };
+      }),
+
+    update: featureProcedure("time_study.manage")
+      .input(z.object({ id: z.number().int().positive() }).merge(timeStudyInput.omit({ productionLineId: true, workstationId: true }).partial()))
+      .mutation(async ({ input }) => {
+        const before = await getTimeStudyById(input.id);
+        if (!before) throw new Error("找不到工時研究");
+        if (before.status === "published") throw new Error("已發布版本不可直接修改，請建立新版本");
+        const { id, ...data } = input;
+        const updateData: Record<string, unknown> = {};
+        if (data.name !== undefined) updateData.name = data.name;
+        if (data.productVariant !== undefined) updateData.productVariant = data.productVariant || null;
+        if (data.defaultPerformanceRating !== undefined) updateData.defaultPerformanceRating = String(data.defaultPerformanceRating);
+        if (data.allowancePercent !== undefined) updateData.allowancePercent = String(data.allowancePercent);
+        if (data.notes !== undefined) updateData.notes = data.notes || null;
+        const study = await updateTimeStudy(id, updateData as any);
+        const refreshed = await refreshTimeStudyCalculation(id);
+        return { study: refreshed?.study ?? study, calculation: refreshed?.calculation ?? null };
+      }),
+
+    delete: featureProcedure("time_study.manage")
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        const study = await getTimeStudyById(input.id);
+        if (!study) throw new Error("找不到工時研究");
+        if (study.status === "published") throw new Error("已發布版本不可刪除，請先發布新的標準工時版本");
+        await deleteTimeStudy(input.id);
+        return { success: true };
+      }),
+
+    addObservation: featureProcedure("time_study.manage")
+      .input(z.object({ timeStudyId: z.number().int().positive() }).merge(timeStudyObservationInput))
+      .mutation(async ({ input, ctx }) => {
+        const study = await getTimeStudyById(input.timeStudyId);
+        if (!study) throw new Error("找不到工時研究");
+        if (study.status === "published") throw new Error("已發布版本不可修改，請建立新版本");
+        const observations = await listTimeStudyObservations(input.timeStudyId);
+        const observation = await createTimeStudyObservation({ timeStudyId: input.timeStudyId, observationNumber: observations.reduce((max, item) => Math.max(max, item.observationNumber), 0) + 1, observedCycleTime: String(input.observedCycleTime), performanceRating: input.performanceRating === undefined ? null : String(input.performanceRating), isIncluded: input.isIncluded === false ? 0 : 1, exclusionReason: input.exclusionReason || null, notes: input.notes || null, observedAt: input.observedAt ?? new Date(), createdBy: ctx.user.id });
+        const refreshed = await refreshTimeStudyCalculation(input.timeStudyId);
+        return { observation, calculation: refreshed?.calculation ?? null };
+      }),
+
+    updateObservation: featureProcedure("time_study.manage")
+      .input(z.object({ id: z.number().int().positive() }).merge(timeStudyObservationInput.partial()))
+      .mutation(async ({ input }) => {
+        const before = await getTimeStudyObservationById(input.id);
+        if (!before) throw new Error("找不到觀測樣本");
+        const study = await getTimeStudyById(before.timeStudyId);
+        if (!study || study.status === "published") throw new Error("已發布版本不可修改，請建立新版本");
+        const { id, ...data } = input;
+        const updateData: Record<string, unknown> = {};
+        if (data.observedCycleTime !== undefined) updateData.observedCycleTime = String(data.observedCycleTime);
+        if (data.performanceRating !== undefined) updateData.performanceRating = String(data.performanceRating);
+        if (data.isIncluded !== undefined) updateData.isIncluded = data.isIncluded ? 1 : 0;
+        if (data.exclusionReason !== undefined) updateData.exclusionReason = data.exclusionReason || null;
+        if (data.notes !== undefined) updateData.notes = data.notes || null;
+        if (data.observedAt !== undefined) updateData.observedAt = data.observedAt;
+        const observation = await updateTimeStudyObservation(id, updateData as any);
+        const refreshed = await refreshTimeStudyCalculation(before.timeStudyId);
+        return { observation, calculation: refreshed?.calculation ?? null };
+      }),
+
+    deleteObservation: featureProcedure("time_study.manage")
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        const observation = await getTimeStudyObservationById(input.id);
+        if (!observation) throw new Error("找不到觀測樣本");
+        const study = await getTimeStudyById(observation.timeStudyId);
+        if (!study || study.status === "published") throw new Error("已發布版本不可修改，請建立新版本");
+        await deleteTimeStudyObservation(input.id);
+        const refreshed = await refreshTimeStudyCalculation(observation.timeStudyId);
+        return { success: true, calculation: refreshed?.calculation ?? null };
+      }),
+
+    recalculate: featureProcedure("time_study.manage")
+      .input(z.object({ timeStudyId: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        const refreshed = await refreshTimeStudyCalculation(input.timeStudyId);
+        if (!refreshed) throw new Error("找不到工時研究");
+        return refreshed;
+      }),
+
+    publish: featureProcedure("time_study.manage")
+      .input(z.object({ timeStudyId: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        const refreshed = await refreshTimeStudyCalculation(input.timeStudyId);
+        if (!refreshed || !canPublishTimeStudy(refreshed.calculation)) throw new Error("至少需 3 筆有效觀測樣本才可發布標準工時");
+        const study = await publishTimeStudy(input.timeStudyId, ctx.user.id);
+        return { study };
       }),
   }),
 

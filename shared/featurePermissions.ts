@@ -8,6 +8,8 @@ export const FEATURE_PERMISSION_CATALOG = [
   { key: "actions.view", group: "動作分析", label: "檢視動作拆解" },
   { key: "actions.manage", group: "動作分析", label: "建立與修改動作拆解" },
   { key: "actions.review", group: "動作分析", label: "覆核動作分類" },
+  { key: "time_study.view", group: "工時研究", label: "檢視工時研究與已發布標準工時" },
+  { key: "time_study.manage", group: "工時研究", label: "記錄觀測、管理與發布標準工時" },
   { key: "analysis.view", group: "分析與快照", label: "檢視平衡分析與快照" },
   { key: "snapshots.manage", group: "分析與快照", label: "建立與管理分析快照" },
   { key: "simulation.manage", group: "分析與快照", label: "管理配置模擬" },
@@ -32,10 +34,10 @@ export const ACCESS_PROFILES = [
 export type AccessProfile = (typeof ACCESS_PROFILES)[number]["key"];
 
 const PROFILE_PERMISSIONS: Record<AccessProfile, FeaturePermission[]> = {
-  viewer: ["dashboard.view", "production.view", "actions.view", "analysis.view", "vsm.view", "ai.analyze", "reports.export"],
-  operator: ["dashboard.view", "tasks.view", "tasks.update_own", "production.view", "actions.view", "actions.manage", "analysis.view", "vsm.view", "ai.analyze", "reports.export"],
-  engineer: ["dashboard.view", "tasks.view", "tasks.update_own", "production.view", "production.manage", "master_data.manage", "actions.view", "actions.manage", "analysis.view", "snapshots.manage", "simulation.manage", "vsm.view", "vsm.manage", "ai.analyze", "reports.export"],
-  manager: ["dashboard.view", "tasks.view", "tasks.update_own", "production.view", "production.manage", "master_data.manage", "actions.view", "actions.manage", "actions.review", "analysis.view", "snapshots.manage", "simulation.manage", "vsm.view", "vsm.manage", "ai.analyze", "reports.export", "governance.view", "governance.resolve"],
+  viewer: ["dashboard.view", "production.view", "actions.view", "time_study.view", "analysis.view", "vsm.view", "ai.analyze", "reports.export"],
+  operator: ["dashboard.view", "tasks.view", "tasks.update_own", "production.view", "actions.view", "actions.manage", "time_study.view", "time_study.manage", "analysis.view", "vsm.view", "ai.analyze", "reports.export"],
+  engineer: ["dashboard.view", "tasks.view", "tasks.update_own", "production.view", "production.manage", "master_data.manage", "actions.view", "actions.manage", "time_study.view", "time_study.manage", "analysis.view", "snapshots.manage", "simulation.manage", "vsm.view", "vsm.manage", "ai.analyze", "reports.export"],
+  manager: ["dashboard.view", "tasks.view", "tasks.update_own", "production.view", "production.manage", "master_data.manage", "actions.view", "actions.manage", "actions.review", "time_study.view", "time_study.manage", "analysis.view", "snapshots.manage", "simulation.manage", "vsm.view", "vsm.manage", "ai.analyze", "reports.export", "governance.view", "governance.resolve"],
 };
 
 export function getValidPermissionOverrides(value: unknown): FeaturePermission[] {

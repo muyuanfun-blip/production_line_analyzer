@@ -259,6 +259,10 @@ export default function WorkstationManager() {
           <h1 className="text-2xl font-bold tracking-tight">工站管理</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setLocation(`/lines/${lineId}/time-study`)}>
+            <Clock className="h-4 w-4 mr-2" />
+            工時研究
+          </Button>
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="h-4 w-4 mr-2" />
             導出 CSV

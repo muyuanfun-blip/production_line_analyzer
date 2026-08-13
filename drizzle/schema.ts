@@ -182,6 +182,51 @@ export const actionSteps = mysqlTable("action_steps", {
 export type ActionStep = typeof actionSteps.$inferSelect;
 export type InsertActionStep = typeof actionSteps.$inferInsert;
 
+// 數位工時研究主檔：以有效觀測樣本、評比係數與寬放率管理工站標準工時版本。
+export const timeStudies = mysqlTable("time_studies", {
+  id: int("id").autoincrement().primaryKey(),
+  productionLineId: int("productionLineId").notNull(),
+  workstationId: int("workstationId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  productVariant: varchar("productVariant", { length: 255 }),
+  versionNumber: int("versionNumber").notNull().default(1),
+  status: mysqlEnum("status", ["draft", "published", "archived"]).notNull().default("draft"),
+  defaultPerformanceRating: decimal("defaultPerformanceRating", { precision: 6, scale: 3 }).notNull().default("1.000"),
+  allowancePercent: decimal("allowancePercent", { precision: 6, scale: 2 }).notNull().default("15.00"),
+  observedAverageTime: decimal("observedAverageTime", { precision: 10, scale: 2 }),
+  normalTime: decimal("normalTime", { precision: 10, scale: 2 }),
+  standardTime: decimal("standardTime", { precision: 10, scale: 2 }),
+  sampleCount: int("sampleCount").notNull().default(0),
+  notes: text("notes"),
+  createdBy: int("createdBy").notNull(),
+  publishedBy: int("publishedBy"),
+  publishedAt: timestamp("publishedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TimeStudy = typeof timeStudies.$inferSelect;
+export type InsertTimeStudy = typeof timeStudies.$inferInsert;
+
+// 工時研究觀測樣本：保留排除理由與個別評比係數，讓標準工時計算可以稽核與重現。
+export const timeStudyObservations = mysqlTable("time_study_observations", {
+  id: int("id").autoincrement().primaryKey(),
+  timeStudyId: int("timeStudyId").notNull(),
+  observationNumber: int("observationNumber").notNull(),
+  observedCycleTime: decimal("observedCycleTime", { precision: 10, scale: 2 }).notNull(),
+  performanceRating: decimal("performanceRating", { precision: 6, scale: 3 }),
+  isIncluded: tinyint("isIncluded").notNull().default(1),
+  exclusionReason: text("exclusionReason"),
+  notes: text("notes"),
+  observedAt: timestamp("observedAt").defaultNow().notNull(),
+  createdBy: int("createdBy").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TimeStudyObservation = typeof timeStudyObservations.$inferSelect;
+export type InsertTimeStudyObservation = typeof timeStudyObservations.$inferInsert;
+
 // 雙手作業子表（方案 B）
 export const handActions = mysqlTable("hand_actions", {
   id: int("id").autoincrement().primaryKey(),

@@ -10,6 +10,8 @@ import {
   governanceDataCompletionTasks, InsertGovernanceDataCompletionTask,
   governanceTaskNotifications, InsertGovernanceTaskNotification,
   actionSteps, InsertActionStep,
+  timeStudies, InsertTimeStudy,
+  timeStudyObservations, InsertTimeStudyObservation,
   handActions, InsertHandAction,
   analysisSnapshots, InsertAnalysisSnapshot,
   simulationScenarios, InsertSimulationScenario,
@@ -30,6 +32,7 @@ import { hasMasterDataAuditChangedField } from "../shared/masterDataAudit";
 import { summarizeAIConsensusGovernanceEvents } from "../shared/aiGovernance";
 import { shouldCreateHighFrequencyCompletionTask } from "../shared/governanceCompletionTasks";
 import { getEffectivePermissions, getValidPermissionOverrides, type AccessProfile, type FeaturePermission } from "../shared/featurePermissions";
+import { calculateTimeStudy, canPublishTimeStudy } from "../shared/timeStudy";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -511,6 +514,150 @@ export async function bulkCreateActionSteps(data: InsertActionStep[]) {
   if (!db) throw new Error("Database not available");
   if (data.length === 0) return;
   return db.insert(actionSteps).values(data);
+}
+
+// ─── Time Studies & Standard Times ──────────────────────────────────────────
+
+export async function listTimeStudiesByLine(productionLineId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: timeStudies.id,
+    productionLineId: timeStudies.productionLineId,
+    workstationId: timeStudies.workstationId,
+    workstationName: workstations.name,
+    workstationCycleTime: workstations.cycleTime,
+    name: timeStudies.name,
+    productVariant: timeStudies.productVariant,
+    versionNumber: timeStudies.versionNumber,
+    status: timeStudies.status,
+    defaultPerformanceRating: timeStudies.defaultPerformanceRating,
+    allowancePercent: timeStudies.allowancePercent,
+    observedAverageTime: timeStudies.observedAverageTime,
+    normalTime: timeStudies.normalTime,
+    standardTime: timeStudies.standardTime,
+    sampleCount: timeStudies.sampleCount,
+    notes: timeStudies.notes,
+    createdBy: timeStudies.createdBy,
+    publishedBy: timeStudies.publishedBy,
+    publishedAt: timeStudies.publishedAt,
+    createdAt: timeStudies.createdAt,
+    updatedAt: timeStudies.updatedAt,
+  }).from(timeStudies)
+    .innerJoin(workstations, eq(timeStudies.workstationId, workstations.id))
+    .where(eq(timeStudies.productionLineId, productionLineId))
+    .orderBy(asc(workstations.sequenceOrder), desc(timeStudies.versionNumber), desc(timeStudies.updatedAt));
+}
+
+export async function getTimeStudyById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(timeStudies).where(eq(timeStudies.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function createTimeStudy(data: InsertTimeStudy) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(timeStudies).values(data);
+  const insertId = (result as any).insertId ?? (result as any)[0]?.insertId;
+  return insertId ? getTimeStudyById(Number(insertId)) : undefined;
+}
+
+export async function updateTimeStudy(id: number, data: Partial<InsertTimeStudy>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(timeStudies).set(data).where(eq(timeStudies.id, id));
+  return getTimeStudyById(id);
+}
+
+export async function deleteTimeStudy(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(timeStudyObservations).where(eq(timeStudyObservations.timeStudyId, id));
+  return db.delete(timeStudies).where(eq(timeStudies.id, id));
+}
+
+export async function listTimeStudyObservations(timeStudyId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(timeStudyObservations)
+    .where(eq(timeStudyObservations.timeStudyId, timeStudyId))
+    .orderBy(asc(timeStudyObservations.observationNumber), asc(timeStudyObservations.createdAt));
+}
+
+export async function createTimeStudyObservation(data: InsertTimeStudyObservation) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(timeStudyObservations).values(data);
+  const insertId = (result as any).insertId ?? (result as any)[0]?.insertId;
+  if (!insertId) return undefined;
+  const rows = await db.select().from(timeStudyObservations).where(eq(timeStudyObservations.id, Number(insertId))).limit(1);
+  return rows[0];
+}
+
+export async function getTimeStudyObservationById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(timeStudyObservations).where(eq(timeStudyObservations.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function updateTimeStudyObservation(id: number, data: Partial<InsertTimeStudyObservation>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(timeStudyObservations).set(data).where(eq(timeStudyObservations.id, id));
+  const rows = await db.select().from(timeStudyObservations).where(eq(timeStudyObservations.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function deleteTimeStudyObservation(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(timeStudyObservations).where(eq(timeStudyObservations.id, id));
+}
+
+export async function refreshTimeStudyCalculation(timeStudyId: number) {
+  const study = await getTimeStudyById(timeStudyId);
+  if (!study) return undefined;
+  const observations = await listTimeStudyObservations(timeStudyId);
+  const calculation = calculateTimeStudy(
+    observations.map((item) => ({
+      observedCycleTime: Number(item.observedCycleTime),
+      performanceRating: item.performanceRating === null ? null : Number(item.performanceRating),
+      isIncluded: item.isIncluded,
+    })),
+    Number(study.defaultPerformanceRating),
+    Number(study.allowancePercent),
+  );
+  const updated = await updateTimeStudy(timeStudyId, {
+    sampleCount: calculation.sampleCount,
+    observedAverageTime: calculation.observedAverageTime === null ? null : String(calculation.observedAverageTime),
+    normalTime: calculation.normalTime === null ? null : String(calculation.normalTime),
+    standardTime: calculation.standardTime === null ? null : String(calculation.standardTime),
+  });
+  return { study: updated, calculation };
+}
+
+export async function publishTimeStudy(timeStudyId: number, publishedBy: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const recalculated = await refreshTimeStudyCalculation(timeStudyId);
+  if (!recalculated?.study || !canPublishTimeStudy(recalculated.calculation)) {
+    throw new Error("至少需 3 筆有效觀測樣本才可發布標準工時");
+  }
+  await db.update(timeStudies).set({ status: "archived" }).where(and(
+    eq(timeStudies.workstationId, recalculated.study.workstationId),
+    eq(timeStudies.status, "published"),
+  ));
+  await db.update(timeStudies).set({ status: "published", publishedBy, publishedAt: new Date() })
+    .where(eq(timeStudies.id, timeStudyId));
+  return getTimeStudyById(timeStudyId);
+}
+
+export async function getPublishedTimeStudiesByLine(productionLineId: number) {
+  const studies = await listTimeStudiesByLine(productionLineId);
+  return studies.filter((study) => study.status === "published");
 }
 
 export async function getActionStepsByWorkstationIds(workstationIds: number[]) {

@@ -183,6 +183,13 @@
       "when": 1786585669473,
       "tag": "0025_illegal_franklin_richards",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1786600185924,
+      "tag": "0026_curvy_miss_america",
+      "breakpoints": true
     }
   ]
 }

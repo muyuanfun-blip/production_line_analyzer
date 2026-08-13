@@ -138,6 +138,8 @@ export default function BalanceAnalysis() {
   const utils = trpc.useUtils();
   const { data: line } = trpc.productionLine.getById.useQuery({ id: lineId });
   const { data: workstations, isLoading } = trpc.workstation.listByLine.useQuery({ productionLineId: lineId });
+  const { data: publishedTimeStudies = [] } = trpc.timeStudy.publishedByLine.useQuery({ productionLineId: lineId });
+  const standardTimeByWorkstation = useMemo(() => new Map(publishedTimeStudies.map((study) => [study.workstationId, study])), [publishedTimeStudies]);
 
   const saveSnapshotMutation = trpc.snapshot.create.useMutation({
     onSuccess: () => {
@@ -477,6 +479,13 @@ export default function BalanceAnalysis() {
             修改
           </Button>
         </div>
+      )}
+
+      {publishedTimeStudies.length > 0 && workstations && (
+        <Card className="border-border bg-card">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3"><div><CardTitle className="flex items-center gap-2 text-base"><Clock className="h-4 w-4 text-emerald-400" />標準工時與現行 CT 對照</CardTitle><p className="mt-1 text-xs text-muted-foreground">已發布標準工時作為改善比較基準；平衡率與產能仍以目前工站 CT 計算，避免未驗證基準直接改寫實績。</p></div><Button variant="outline" size="sm" onClick={() => setLocation(`/lines/${lineId}/time-study`)}>管理工時研究</Button></CardHeader>
+          <CardContent><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{workstations.map((station) => { const study = standardTimeByWorkstation.get(station.id); if (!study) return null; const current = Number(station.cycleTime); const standard = Number(study.standardTime); const difference = current - standard; return <div key={station.id} className="rounded-lg border border-border bg-background/30 p-3"><div className="flex items-center justify-between gap-3"><span className="font-medium text-foreground">{station.name}</span><span className={difference > 0.01 ? "text-amber-400" : "text-emerald-400"}>{difference > 0.01 ? `目前慢 ${difference.toFixed(2)}s` : `符合／快 ${(Math.abs(difference)).toFixed(2)}s`}</span></div><div className="mt-2 grid grid-cols-2 gap-2 text-xs"><div><p className="text-muted-foreground">目前 CT</p><p className="mt-1 font-semibold">{current.toFixed(2)}s</p></div><div><p className="text-muted-foreground">標準工時</p><p className="mt-1 font-semibold text-emerald-400">{standard.toFixed(2)}s</p></div></div></div>; })}</div></CardContent>
+        </Card>
       )}
 
       {isLoading ? (

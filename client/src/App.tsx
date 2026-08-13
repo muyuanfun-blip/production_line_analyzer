@@ -8,6 +8,7 @@ import DashboardLayout from "./components/DashboardLayout";
 import Home from "./pages/Home";
 import ProductionLines from "./pages/ProductionLines";
 import WorkstationManager from "./pages/WorkstationManager";
+import TimeStudy from "./pages/TimeStudy";
 import BalanceAnalysis from "./pages/BalanceAnalysis";
 import ActionAnalysis from "./pages/ActionAnalysis";
 import AISuggestions from "./pages/AISuggestions";
@@ -71,6 +72,7 @@ function Router() {
               <Route path={"/"} component={Home} />
               <Route path={"/lines"} component={ProductionLines} />
               <Route path={"/lines/:id/workstations"} component={WorkstationManager} />
+              <Route path={"/lines/:id/time-study"} component={TimeStudy} />
               <Route path={"/lines/:id/balance"} component={BalanceAnalysis} />
               <Route path={"/lines/:id/actions"} component={ActionAnalysis} />
               <Route path={"/lines/:id/ai"} component={AISuggestions} />

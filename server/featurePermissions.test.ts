@@ -8,6 +8,8 @@ describe("功能導向 RBAC 權限矩陣", () => {
     expect(permissions).toContain("production.view");
     expect(permissions).toContain("ai.analyze");
     expect(permissions).toContain("reports.export");
+    expect(permissions).toContain("time_study.view");
+    expect(permissions).not.toContain("time_study.manage");
     expect(permissions).not.toContain("master_data.manage");
     expect(permissions).not.toContain("governance.resolve");
     expect(permissions).not.toContain("users.manage");
@@ -17,6 +19,7 @@ describe("功能導向 RBAC 權限矩陣", () => {
     const permissions = getEffectivePermissions({ role: "user", accessProfile: "operator", permissionOverrides: [] });
     expect(permissions).toContain("ai.analyze");
     expect(permissions).toContain("reports.export");
+    expect(permissions).toContain("time_study.manage");
     expect(permissions).not.toContain("governance.view");
     expect(permissions).not.toContain("users.manage");
   });
