@@ -253,6 +253,20 @@ html:not(.dark) .decision-hero-eyebrow { color: oklch(0.800 0.125 208) !importan
 html:not(.dark) .decision-hero-secondary-action { color: oklch(0.940 0.012 220) !important; border-color: oklch(0.720 0.060 205) !important; background-color: transparent !important; }
 html:not(.dark) .decision-hero-secondary-action:hover { background-color: oklch(0.930 0.025 205 / 0.14) !important; color: oklch(0.990 0.003 220) !important; }
 
+/* The decision workspace is a dark-only composition in the default theme.
+ * In light mode, promote it to a bright surface instead of applying dark text
+ * over its original dark panels. */
+html:not(.dark) .workspace-tabs { border-color: oklch(0.84 0.012 222); background: oklch(0.95 0.010 222); box-shadow: inset 0 1px 0 oklch(1 0 0 / .7); }
+html:not(.dark) .workspace-tab { color: oklch(0.30 0.018 222); }
+html:not(.dark) .workspace-tab small { color: oklch(0.47 0.014 222); }
+html:not(.dark) .workspace-tab:hover { background: oklch(0.90 0.018 222); color: oklch(0.22 0.022 222); }
+html:not(.dark) .workspace-tab-active { background: linear-gradient(135deg, oklch(0.86 0.070 192), oklch(0.90 0.060 152)); color: oklch(0.25 0.080 192); box-shadow: inset 0 0 0 1px oklch(0.62 0.115 192 / .55); }
+html:not(.dark) .workspace-tab-active small { color: oklch(0.34 0.055 192); }
+html:not(.dark) .decision-workspace-card { border-color: oklch(0.82 0.014 222); background: linear-gradient(145deg, oklch(0.995 0.002 222), oklch(0.965 0.008 222)); box-shadow: 0 1px 2px oklch(0.20 0.012 222 / .06); }
+html:not(.dark) .decision-workspace-card:hover { border-color: oklch(0.57 0.115 192 / .68); }
+html:not(.dark) .decision-workspace-card .text-muted-foreground { color: oklch(0.43 0.014 222); }
+html:not(.dark) .decision-workspace-card .text-primary { color: oklch(0.42 0.125 192); }
+
 /* Applied only to explicit user-driven theme changes, never during first paint. */
 html.theme-transitioning,
 html.theme-transitioning *,

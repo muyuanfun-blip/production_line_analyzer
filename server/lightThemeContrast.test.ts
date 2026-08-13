@@ -23,6 +23,13 @@ describe("淺色主題可讀性覆蓋", () => {
     });
   });
 
+  it("將首頁第二層工作區的深色分頁與內容卡改為淺色高對比表面", () => {
+    [".workspace-tabs", ".workspace-tab", ".workspace-tab-active", ".decision-workspace-card"].forEach((selector) => {
+      expect(stylesheet).toContain(`html:not(.dark) ${selector}`);
+    });
+    expect(stylesheet).toContain(".decision-workspace-card .text-muted-foreground");
+  });
+
   it("保護同一元件中 slate 背景與白色文字的表單控制，並提供主題切換過渡與減少動態效果條件", () => {
     expect(stylesheet).toContain(".bg-slate-700.text-white");
     expect(stylesheet).toContain("html.theme-transitioning");
