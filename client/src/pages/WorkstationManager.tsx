@@ -244,9 +244,9 @@ export default function WorkstationManager() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-5 p-4 sm:p-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
         <Button variant="ghost" size="icon" onClick={() => setLocation("/lines")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -258,7 +258,7 @@ export default function WorkstationManager() {
           </div>
           <h1 className="text-2xl font-bold tracking-tight">工站管理</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <Button variant="outline" size="sm" onClick={() => setLocation(`/lines/${lineId}/time-study`)}>
             <Clock className="h-4 w-4 mr-2" />
             工時研究

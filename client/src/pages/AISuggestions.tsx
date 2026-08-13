@@ -341,9 +341,9 @@ export default function AISuggestions() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-5 p-4 sm:p-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
         <Button variant="ghost" size="icon" onClick={() => setLocation("/lines")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -355,11 +355,11 @@ export default function AISuggestions() {
           </div>
           <h1 className="text-2xl font-bold tracking-tight">AI 優化建議</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportJSON}>
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+          <Button variant="outline" size="sm" className="min-h-11" onClick={handleExportJSON}>
             <Download className="h-4 w-4 mr-2" />JSON
           </Button>
-          <Button variant={professionalReport ? "default" : "outline"} size="sm" onClick={() => professionalReport ? setReportOpen(true) : toast.info("請先完成 AI 分析後，再開啟專業報告") }>
+          <Button variant={professionalReport ? "default" : "outline"} size="sm" className="min-h-11" onClick={() => professionalReport ? setReportOpen(true) : toast.info("請先完成 AI 分析後，再開啟專業報告") }>
             <FileText className="h-4 w-4 mr-2" />專業報告
           </Button>
         </div>
@@ -367,7 +367,7 @@ export default function AISuggestions() {
 
       {/* Current Status Summary */}
       {analysis && workstations && workstations.length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {[
             {
               label: "工站數量", value: workstations.length, unit: "個",
@@ -395,7 +395,7 @@ export default function AISuggestions() {
             },
           ].map(kpi => (
             <Card key={kpi.label} className="border-border bg-card">
-              <CardContent className="p-4 flex items-center gap-3">
+              <CardContent className="flex items-center gap-3 p-3 sm:p-4">
                 <div className={`h-10 w-10 rounded-lg ${kpi.bg} flex items-center justify-center shrink-0`}>
                   <kpi.icon className={`h-5 w-5 ${kpi.color}`} />
                 </div>
@@ -426,7 +426,7 @@ export default function AISuggestions() {
       {/* AI Analysis Panel */}
       <Card className="border-border bg-card overflow-hidden">
         <CardHeader className="pb-4 border-b border-border">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
             <CardTitle className="flex items-center gap-2">
               <div className="h-8 w-8 rounded-lg bg-amber-400/10 flex items-center justify-center">
                 <Brain className="h-4 w-4 text-amber-400" />
@@ -436,7 +436,7 @@ export default function AISuggestions() {
             <Button
               onClick={handleAnalyze}
               disabled={aiMutation.isPending || !workstations?.length}
-              className="glow-primary"
+              className="glow-primary min-h-11 w-full sm:w-auto"
             >
               {aiMutation.isPending ? (
                 <>
@@ -452,7 +452,7 @@ export default function AISuggestions() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           {!workstations?.length ? (
             <div className="py-12 text-center">
               <Brain className="h-16 w-16 text-muted-foreground/30 mx-auto mb-4" />

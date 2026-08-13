@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
-import { Activity, BarChart3, ChevronRight, ClipboardCheck, Factory, GitBranch, Home, LogOut, Moon, PanelLeftClose, PanelLeftOpen, ScanSearch, Settings, ShieldCheck, Sun, Users } from "lucide-react";
+import { Activity, BarChart3, ChevronRight, ClipboardCheck, Factory, GitBranch, Home, ListChecks, LogOut, Moon, PanelLeftClose, PanelLeftOpen, ScanSearch, Settings, ShieldCheck, Sun, Users } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
@@ -9,6 +9,7 @@ import { getSidebarGroups, shouldCloseNavigationAfterSelect } from "../../../sha
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useTheme } from "@/contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
+import { getMobileNavigationItems, isMobileNavigationActive } from "../../../shared/mobileNavigation";
 
 const navIcons = {
   "/": Home,
@@ -49,6 +50,7 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
   const isCollapsed = state === "collapsed";
   const navGroups = getSidebarGroups(user?.role, access?.permissions ?? []);
   const allItems = navGroups.flatMap((group) => group.items);
+  const mobileNavItems = getMobileNavigationItems(user?.role, access?.permissions ?? []);
   const activeItem = allItems.find((item) => location === item.path || (item.path !== "/" && location.startsWith(`${item.path}/`)));
 
   useEffect(() => { if (!isMobile) setOpen(isPinned); }, [isPinned, isMobile, setOpen]);
@@ -85,8 +87,13 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
       </Sidebar>
       {!isCollapsed && isPinned && <div className="absolute right-0 top-0 z-50 h-full w-1 cursor-col-resize transition-colors hover:bg-primary/25" onMouseDown={() => setIsResizing(true)} />}
     </div>
-    <SidebarInset><div className="topbar">{isMobile && <button onClick={() => setOpenMobile(true)} className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none" aria-label="開啟導覽選單"><PanelLeftOpen className="h-4 w-4" /></button>}<div className="flex items-center gap-1 text-[0.75rem]"><span className="font-mono text-muted-foreground/40">PLA</span><ChevronRight className="h-3 w-3 text-muted-foreground/25" /><span className="font-medium text-foreground/80">{activeItem?.label ?? "決策中心"}</span></div><div className="flex-1" /><SystemClock /><button onClick={toggleTheme} className="flex h-7 w-7 items-center justify-center rounded border border-border/50 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none" aria-label={theme === "dark" ? "切換為淺色主題" : "切換為深色主題"} title={theme === "dark" ? "切換為淺色主題" : "切換為深色主題"}>{theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}</button><div className="flex items-center gap-1.5 rounded border border-border/40 px-2 py-1 font-mono text-[0.625rem] text-muted-foreground"><span className="status-dot status-dot-ok" />系統正常</div></div><main className="flex-1 p-4 sm:p-5">{children}</main></SidebarInset>
+    <SidebarInset><div className="topbar">{isMobile && <button onClick={() => setOpenMobile(true)} className="flex h-10 w-10 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none" aria-label="開啟導覽選單"><PanelLeftOpen className="h-5 w-5" /></button>}<div className="flex items-center gap-1 text-[0.75rem]"><span className="font-mono text-muted-foreground/40">PLA</span><ChevronRight className="h-3 w-3 text-muted-foreground/25" /><span className="font-medium text-foreground/80">{activeItem?.label ?? "決策中心"}</span></div><div className="flex-1" /><div className="hidden sm:block"><SystemClock /></div><button onClick={toggleTheme} className="flex h-10 w-10 items-center justify-center rounded border border-border/50 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none" aria-label={theme === "dark" ? "切換為淺色主題" : "切換為深色主題"} title={theme === "dark" ? "切換為淺色主題" : "切換為深色主題"}>{theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button><div className="hidden sm:flex items-center gap-1.5 rounded border border-border/40 px-2 py-1 font-mono text-[0.625rem] text-muted-foreground"><span className="status-dot status-dot-ok" />系統正常</div></div><main className="flex-1 px-3 py-4 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:p-5 md:pb-5">{children}</main><MobileBottomNavigation items={mobileNavItems} location={location} navigate={navigate} openMore={() => setOpenMobile(true)} /></SidebarInset>
   </>;
+}
+
+function MobileBottomNavigation({ items, location, navigate, openMore }: { items: ReturnType<typeof getMobileNavigationItems>; location: string; navigate: (path: string) => void; openMore: () => void }) {
+  const iconByKey = { home: Home, lines: Factory, tasks: ListChecks } as const;
+  return <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border/80 bg-background/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_22px_rgba(0,0,0,0.14)] backdrop-blur md:hidden" aria-label="手機主要導覽">{items.map((item) => { const Icon = iconByKey[item.key]; const active = isMobileNavigationActive(location, item.path); return <button key={item.key} onClick={() => navigate(item.path)} className={`flex min-h-14 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-medium transition-colors ${active ? "bg-primary/12 text-primary" : "text-muted-foreground"}`} aria-current={active ? "page" : undefined}><Icon className="h-5 w-5" /><span>{item.label}</span></button>; })}<button onClick={openMore} className="flex min-h-14 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-medium text-muted-foreground" aria-label="開啟更多功能"><PanelLeftOpen className="h-5 w-5" /><span>更多</span></button></nav>;
 }
 
 function SystemClock() {

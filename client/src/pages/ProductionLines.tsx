@@ -132,14 +132,14 @@ export default function ProductionLines() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-5 p-4 sm:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">生產線管理</h1>
           <p className="text-muted-foreground text-sm mt-1">管理所有生產線，進行工站配置與效率分析</p>
         </div>
-        <Button onClick={openCreate} className="glow-primary">
+        <Button onClick={openCreate} className="glow-primary min-h-11 w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           新增生產線
         </Button>
@@ -226,7 +226,7 @@ export default function ProductionLines() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="flex flex-col gap-1 h-auto py-2 text-xs hover:bg-cyan-400/10 hover:text-cyan-400"
+                      className="flex min-h-[72px] flex-col gap-1 py-2 text-xs hover:bg-cyan-400/10 hover:text-cyan-400"
                       onClick={() => setLocation(`/lines/${line.id}/workstations`)}
                     >
                       <Settings className="h-4 w-4" />
@@ -235,7 +235,7 @@ export default function ProductionLines() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="flex flex-col gap-1 h-auto py-2 text-xs hover:bg-emerald-400/10 hover:text-emerald-400"
+                      className="flex min-h-[72px] flex-col gap-1 py-2 text-xs hover:bg-emerald-400/10 hover:text-emerald-400"
                       onClick={() => setLocation(`/lines/${line.id}/balance`)}
                     >
                       <BarChart3 className="h-4 w-4" />
@@ -244,7 +244,7 @@ export default function ProductionLines() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="flex flex-col gap-1 h-auto py-2 text-xs hover:bg-amber-400/10 hover:text-amber-400"
+                      className="flex min-h-[72px] flex-col gap-1 py-2 text-xs hover:bg-amber-400/10 hover:text-amber-400"
                       onClick={() => setLocation(`/lines/${line.id}/ai`)}
                     >
                       <Brain className="h-4 w-4" />
