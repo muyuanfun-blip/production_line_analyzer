@@ -28,4 +28,10 @@ describe("淺色主題可讀性覆蓋", () => {
     expect(stylesheet).toContain("html.theme-transitioning");
     expect(stylesheet).toContain("@media (prefers-reduced-motion: reduce)");
   });
+
+  it("為首頁風險、警示與資訊提醒卡片提供淺色模式高對比前景", () => {
+    [".decision-priority-critical", ".decision-priority-high", ".decision-priority-normal"].forEach((selector) => {
+      expect(stylesheet).toContain(`html:not(.dark) ${selector}`);
+    });
+  });
 });

@@ -558,6 +558,13 @@ html.theme-transitioning *::after {
 .decision-metric-card:hover { transform: translateY(-2px); border-color: oklch(0.700 0.145 192 / .45); background: oklch(0.170 0.013 222); }
 .decision-priority-card { display:flex; align-items:center; gap:.75rem; width:100%; padding:1rem; border:1px solid; border-radius:.75rem; transition: transform .18s ease, border-color .18s ease, background-color .18s ease; }
 .decision-priority-card:hover { transform: translateY(-2px); filter: brightness(1.08); }
+.decision-priority-critical { border-color:oklch(0.64 0.18 20 / .42); background:oklch(0.25 0.05 20 / .42); color:oklch(0.90 0.05 20); }
+.decision-priority-high { border-color:oklch(0.74 0.15 75 / .42); background:oklch(0.27 0.05 75 / .42); color:oklch(0.93 0.06 75); }
+.decision-priority-normal { border-color:oklch(0.72 0.13 210 / .36); background:oklch(0.24 0.04 210 / .42); color:oklch(0.90 0.04 210); }
+html:not(.dark) .decision-priority-critical { border-color:oklch(0.82 0.09 20); background:oklch(0.965 0.018 20); color:oklch(0.38 0.14 20); }
+html:not(.dark) .decision-priority-high { border-color:oklch(0.83 0.10 75); background:oklch(0.97 0.022 75); color:oklch(0.40 0.11 75); }
+html:not(.dark) .decision-priority-normal { border-color:oklch(0.82 0.07 210); background:oklch(0.97 0.015 210); color:oklch(0.34 0.10 210); }
+html:not(.dark) .decision-priority-card > span:first-child { background:color-mix(in oklch, currentColor 11%, transparent); }
 .workspace-tabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.5rem; padding:.4rem; border:1px solid oklch(0.230 0.014 222); border-radius:.85rem; background:oklch(0.130 0.011 222 / .78); }
 .workspace-tab { display:flex; align-items:center; gap:.6rem; min-width:0; padding:.7rem .8rem; border-radius:.6rem; color:oklch(0.65 0.010 220); text-align:left; transition: background-color .2s ease, color .2s ease, transform .2s ease; }
 .workspace-tab small { display:block; margin-top:.1rem; font-size:.65rem; color:oklch(0.52 0.010 220); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

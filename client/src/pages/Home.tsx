@@ -19,7 +19,7 @@ const workspaceMeta: Record<Workspace, { label: string; description: string; ico
 function balanceColor(rate: number) { return rate >= 90 ? "#34d399" : rate >= 80 ? "#22d3ee" : rate >= 70 ? "#f59e0b" : "#f87171"; }
 export function getBalanceColor(rate: number) { return rate >= 90 ? { bar: "#34d399", text: "text-emerald-400", badge: "bg-emerald-400/15 text-emerald-400 border-emerald-400/30" } : rate >= 80 ? { bar: "#22d3ee", text: "text-cyan-400", badge: "bg-cyan-400/15 text-cyan-400 border-cyan-400/30" } : rate >= 70 ? { bar: "#f59e0b", text: "text-amber-400", badge: "bg-amber-400/15 text-amber-400 border-amber-400/30" } : { bar: "#f87171", text: "text-red-400", badge: "bg-red-400/15 text-red-400 border-red-400/30" }; }
 export function getBalanceLabel(rate: number) { return rate >= 90 ? "優秀" : rate >= 80 ? "良好" : rate >= 70 ? "普通" : "待改善"; }
-function priorityStyle(priority: "critical" | "high" | "normal") { return priority === "critical" ? "border-red-400/30 bg-red-400/5 text-red-200" : priority === "high" ? "border-amber-400/30 bg-amber-400/5 text-amber-100" : "border-cyan-400/25 bg-cyan-400/5 text-cyan-100"; }
+function priorityStyle(priority: "critical" | "high" | "normal") { return priority === "critical" ? "decision-priority-critical" : priority === "high" ? "decision-priority-high" : "decision-priority-normal"; }
 
 function useAnimatedMetric(value: number, duration = 520) {
   const [display, setDisplay] = useState(value);
