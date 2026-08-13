@@ -22,4 +22,10 @@ describe("淺色主題可讀性覆蓋", () => {
       expect(stylesheet).toContain(`html:not(.dark) ${selector}`);
     });
   });
+
+  it("保護同一元件中 slate 背景與白色文字的表單控制，並提供主題切換過渡與減少動態效果條件", () => {
+    expect(stylesheet).toContain(".bg-slate-700.text-white");
+    expect(stylesheet).toContain("html.theme-transitioning");
+    expect(stylesheet).toContain("@media (prefers-reduced-motion: reduce)");
+  });
 });

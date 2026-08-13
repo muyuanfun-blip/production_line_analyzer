@@ -31,7 +31,14 @@ export function ThemeProvider({
   }, [theme, switchable]);
 
   const toggleTheme = () => {
-    if (switchable) setTheme(previousTheme => getNextTheme(previousTheme));
+    if (!switchable) return;
+
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!reduceMotion) {
+      document.documentElement.classList.add("theme-transitioning");
+      window.setTimeout(() => document.documentElement.classList.remove("theme-transitioning"), 280);
+    }
+    setTheme(previousTheme => getNextTheme(previousTheme));
   };
 
   return <ThemeContext.Provider value={{ theme, toggleTheme, switchable }}>{children}</ThemeContext.Provider>;

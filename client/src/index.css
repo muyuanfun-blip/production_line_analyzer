@@ -184,7 +184,11 @@ html:not(.dark) .text-slate-500 { color: var(--muted-foreground) !important; }
 html:not(.dark) .bg-slate-950 .text-white,
 html:not(.dark) .bg-slate-900 .text-white,
 html:not(.dark) .bg-slate-800 .text-white,
-html:not(.dark) .bg-slate-700 .text-white { color: var(--foreground) !important; }
+html:not(.dark) .bg-slate-700 .text-white,
+html:not(.dark) .bg-slate-950.text-white,
+html:not(.dark) .bg-slate-900.text-white,
+html:not(.dark) .bg-slate-800.text-white,
+html:not(.dark) .bg-slate-700.text-white { color: var(--foreground) !important; }
 html:not(.dark) .text-cyan-300,
 html:not(.dark) .text-cyan-400 { color: oklch(0.470 0.135 212) !important; }
 html:not(.dark) .text-emerald-300,
@@ -192,11 +196,27 @@ html:not(.dark) .text-emerald-400 { color: oklch(0.440 0.130 155) !important; }
 html:not(.dark) .text-amber-300,
 html:not(.dark) .text-amber-400 { color: oklch(0.500 0.135 72) !important; }
 html:not(.dark) .text-violet-300,
+html:not(.dark) .text-violet-400,
+html:not(.dark) .text-purple-300,
 html:not(.dark) .text-purple-400 { color: oklch(0.440 0.125 292) !important; }
+html:not(.dark) .text-blue-300,
 html:not(.dark) .text-blue-400 { color: oklch(0.450 0.135 255) !important; }
 html:not(.dark) .text-red-300,
 html:not(.dark) .text-red-400 { color: oklch(0.490 0.175 27) !important; }
 html:not(.dark) .text-orange-400 { color: oklch(0.520 0.160 52) !important; }
+html:not(.dark) .text-gray-300,
+html:not(.dark) .text-gray-400,
+html:not(.dark) .text-gray-500,
+html:not(.dark) .text-zinc-300,
+html:not(.dark) .text-zinc-400,
+html:not(.dark) .text-zinc-500 { color: var(--muted-foreground) !important; }
+html:not(.dark) .bg-gray-900,
+html:not(.dark) .bg-gray-800,
+html:not(.dark) .bg-zinc-900,
+html:not(.dark) .bg-zinc-800 { background-color: var(--surface-raised) !important; }
+html:not(.dark) .border-red-900,
+html:not(.dark) .border-blue-900,
+html:not(.dark) .border-cyan-900 { border-color: var(--border) !important; }
 
 /* Keep intentional dark decision surfaces legible while the overall app is light. */
 html:not(.dark) .decision-hero { color: oklch(0.980 0.006 220); }
@@ -205,6 +225,23 @@ html:not(.dark) .decision-hero-copy { color: oklch(0.840 0.020 220) !important; 
 html:not(.dark) .decision-hero-eyebrow { color: oklch(0.800 0.125 208) !important; }
 html:not(.dark) .decision-hero-secondary-action { color: oklch(0.940 0.012 220) !important; border-color: oklch(0.720 0.060 205) !important; background-color: transparent !important; }
 html:not(.dark) .decision-hero-secondary-action:hover { background-color: oklch(0.930 0.025 205 / 0.14) !important; color: oklch(0.990 0.003 220) !important; }
+
+/* Applied only to explicit user-driven theme changes, never during first paint. */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow !important;
+  transition-duration: 220ms !important;
+  transition-timing-function: ease-out !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-transitioning,
+  html.theme-transitioning *,
+  html.theme-transitioning *::before,
+  html.theme-transitioning *::after { transition: none !important; }
+}
 
 /* ── Base layer ─────────────────────────────────────────────────────────── */
 @layer base {
