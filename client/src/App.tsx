@@ -26,6 +26,7 @@ import GanttPage from "./pages/GanttPage";
 import ActionReviewDashboard from "./pages/ActionReviewDashboard";
 import AIConsensusGovernanceDashboard from "./pages/AIConsensusGovernanceDashboard";
 import DataCompletionInbox from "./pages/DataCompletionInbox";
+import MobileFieldApp from "./components/MobileFieldApp";
 import { VSMPage } from "./pages/VSMPage";
 import { trpc } from "@/lib/trpc";
 import { useEffect } from "react";
@@ -65,6 +66,12 @@ function Router() {
           <FloorPlanSimulator />
         </AuthGuard>
       </Route>
+      <Route path="/mobile/:rest*">
+        <AuthGuard><MobileFieldApp /></AuthGuard>
+      </Route>
+      <Route path="/mobile">
+        <AuthGuard><MobileFieldApp /></AuthGuard>
+      </Route>
       <Route>
         <AuthGuard>
           <DashboardLayout>
@@ -72,10 +79,10 @@ function Router() {
               <Route path={"/"} component={Home} />
               <Route path={"/lines"} component={ProductionLines} />
               <Route path={"/lines/:id/workstations"} component={WorkstationManager} />
-              <Route path={"/lines/:id/time-study"} component={TimeStudy} />
+              <Route path={"/lines/:id/time-study"}>{() => <TimeStudy />}</Route>
               <Route path={"/lines/:id/balance"} component={BalanceAnalysis} />
               <Route path={"/lines/:id/actions"} component={ActionAnalysis} />
-              <Route path={"/lines/:id/ai"} component={AISuggestions} />
+              <Route path={"/lines/:id/ai"}>{() => <AISuggestions />}</Route>
               <Route path={"/lines/:id/snapshots/compare"} component={SnapshotCompare} />
               <Route path={"/lines/:id/snapshots"} component={SnapshotHistory} />
               <Route path={"/guide"} component={UserGuide} />

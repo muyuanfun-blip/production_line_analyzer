@@ -24,7 +24,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 
-export default function AISuggestions() {
+export default function AISuggestions({ mobileMode = false }: { mobileMode?: boolean }) {
   const params = useParams<{ id: string }>();
   const lineId = parseInt(params.id ?? "0");
   const [, setLocation] = useLocation();
@@ -344,7 +344,7 @@ export default function AISuggestions() {
     <div className="space-y-5 p-4 sm:p-6">
       {/* Header */}
       <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/lines")}>
+        <Button variant="ghost" size="icon" onClick={() => setLocation(mobileMode ? `/mobile/lines/${lineId}` : "/lines")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1 min-w-0">
@@ -418,7 +418,7 @@ export default function AISuggestions() {
         <Card className={readinessPreview.level === "blocked" ? "status-risk" : "status-warning"}>
           <CardContent className="p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="flex items-center gap-2 font-medium"><AlertTriangle className="status-icon h-4 w-4" />AI 分析前的資料缺口</p><p className="status-detail mt-1 text-xs">目前資料就緒度為「{readinessPreview.level === "blocked" ? "不足" : "受限"}」。補充下列資料後，可提高五角色結論與改善方案的準確度。</p></div><span className="rounded-full border border-current/20 px-2 py-1 text-xs opacity-80">{readinessPreview.gaps.length} 項待補充</span></div>
-            <div className="mt-3 grid gap-2 lg:grid-cols-2">{readinessPreview.gaps.map((gap) => <div key={gap.key} className="rounded-lg border border-border/70 bg-background/30 p-3"><div className="flex items-start justify-between gap-3"><p className="text-sm font-medium text-foreground">{gap.title}</p><span className={gap.severity === "critical" ? "text-[10px] text-orange-300" : "text-[10px] text-amber-300"}>{gap.severity === "critical" ? "影響較高" : "建議補充"}</span></div><p className="mt-1 text-xs text-muted-foreground">影響：{gap.impact}</p><p className="mt-1 text-xs text-muted-foreground">請提供：{gap.requestedData}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-[11px] text-muted-foreground">建議提供者：{gap.recommendedProvider}</span><Button variant="outline" size="sm" onClick={() => setLocation(gap.collectionLocation === "production_line" ? "/lines" : gap.collectionLocation === "workstation" ? `/lines/${lineId}/workstations` : `/lines/${lineId}/actions`)}>前往補充</Button></div></div>)}</div>
+            <div className="mt-3 grid gap-2 lg:grid-cols-2">{readinessPreview.gaps.map((gap) => <div key={gap.key} className="rounded-lg border border-border/70 bg-background/30 p-3"><div className="flex items-start justify-between gap-3"><p className="text-sm font-medium text-foreground">{gap.title}</p><span className={gap.severity === "critical" ? "text-[10px] text-orange-300" : "text-[10px] text-amber-300"}>{gap.severity === "critical" ? "影響較高" : "建議補充"}</span></div><p className="mt-1 text-xs text-muted-foreground">影響：{gap.impact}</p><p className="mt-1 text-xs text-muted-foreground">請提供：{gap.requestedData}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-[11px] text-muted-foreground">建議提供者：{gap.recommendedProvider}</span><Button variant="outline" size="sm" onClick={() => setLocation(mobileMode ? `/mobile/lines/${lineId}` : gap.collectionLocation === "production_line" ? "/lines" : gap.collectionLocation === "workstation" ? `/lines/${lineId}/workstations` : `/lines/${lineId}/actions`)}>前往補充</Button></div></div>)}</div>
           </CardContent>
         </Card>
       )}

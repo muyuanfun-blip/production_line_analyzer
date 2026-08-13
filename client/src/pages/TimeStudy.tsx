@@ -45,7 +45,7 @@ function studyStatusMeta(status: string) {
   return { label: "草稿", className: "status-warning" };
 }
 
-export default function TimeStudy() {
+export default function TimeStudy({ mobileMode = false }: { mobileMode?: boolean }) {
   const { id } = useParams<{ id: string }>();
   const lineId = Number(id ?? 0);
   const [, setLocation] = useLocation();
@@ -154,7 +154,7 @@ export default function TimeStudy() {
   return (
     <div className="space-y-5 p-4 sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <Button variant="ghost" size="icon" onClick={() => setLocation(`/lines/${lineId}/workstations`)} aria-label="返回工站管理"><ArrowLeft className="h-4 w-4" /></Button>
+        <Button variant="ghost" size="icon" onClick={() => setLocation(mobileMode ? `/mobile/lines/${lineId}` : `/lines/${lineId}/workstations`)} aria-label="返回工站管理"><ArrowLeft className="h-4 w-4" /></Button>
         <div className="min-w-0 flex-1">
           <p className="text-sm text-muted-foreground">生產線管理／{line?.name ?? "載入中"}</p>
           <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold tracking-tight"><ClipboardCheck className="h-6 w-6 text-cyan-400" />數位工時研究與標準工時</h1>
