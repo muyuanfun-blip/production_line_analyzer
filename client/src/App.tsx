@@ -66,10 +66,28 @@ function Router() {
           <FloorPlanSimulator />
         </AuthGuard>
       </Route>
-      <Route path="/mobile/:rest*">
+      <Route path="/mobile">
         <AuthGuard><MobileFieldApp /></AuthGuard>
       </Route>
-      <Route path="/mobile">
+      <Route path="/mobile/lines">
+        <AuthGuard><MobileFieldApp /></AuthGuard>
+      </Route>
+      <Route path="/mobile/lines/:id/time-study">
+        <AuthGuard><MobileFieldApp /></AuthGuard>
+      </Route>
+      <Route path="/mobile/lines/:id/balance">
+        <AuthGuard><MobileFieldApp /></AuthGuard>
+      </Route>
+      <Route path="/mobile/lines/:id/ai">
+        <AuthGuard><MobileFieldApp /></AuthGuard>
+      </Route>
+      <Route path="/mobile/lines/:id">
+        <AuthGuard><MobileFieldApp /></AuthGuard>
+      </Route>
+      <Route path="/mobile/tasks">
+        <AuthGuard><MobileFieldApp /></AuthGuard>
+      </Route>
+      <Route path="/mobile/more">
         <AuthGuard><MobileFieldApp /></AuthGuard>
       </Route>
       <Route>
