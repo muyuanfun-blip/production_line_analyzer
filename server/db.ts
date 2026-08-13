@@ -29,6 +29,7 @@ import { summarizeActionReviewQuality } from "../shared/actionReviewQuality";
 import { hasMasterDataAuditChangedField } from "../shared/masterDataAudit";
 import { summarizeAIConsensusGovernanceEvents } from "../shared/aiGovernance";
 import { shouldCreateHighFrequencyCompletionTask } from "../shared/governanceCompletionTasks";
+import { getEffectivePermissions, getValidPermissionOverrides, type AccessProfile, type FeaturePermission } from "../shared/featurePermissions";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -213,11 +214,18 @@ export async function getAllUsers() {
     name: users.name,
     email: users.email,
     role: users.role,
+    accessProfile: users.accessProfile,
+    permissionOverrides: users.permissionOverrides,
     isActive: users.isActive,
     createdAt: users.createdAt,
     lastSignedIn: users.lastSignedIn,
   }).from(users).orderBy(desc(users.createdAt));
-  return Promise.all(rows.map(async (user) => ({ ...user, businessRecordSummary: await getUserBusinessRecordSummary(user.id) })));
+  return Promise.all(rows.map(async (user) => ({
+    ...user,
+    permissionOverrides: getValidPermissionOverrides(user.permissionOverrides),
+    effectivePermissions: getEffectivePermissions(user),
+    businessRecordSummary: await getUserBusinessRecordSummary(user.id),
+  })));
 }
 
 export async function createLocalUser(data: {
@@ -225,6 +233,8 @@ export async function createLocalUser(data: {
   passwordHash: string;
   name: string;
   role: 'user' | 'admin';
+  accessProfile?: AccessProfile;
+  permissionOverrides?: FeaturePermission[];
 }) {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
@@ -235,6 +245,8 @@ export async function createLocalUser(data: {
     passwordHash: data.passwordHash,
     name: data.name,
     role: data.role,
+    accessProfile: data.accessProfile ?? "operator",
+    permissionOverrides: getValidPermissionOverrides(data.permissionOverrides),
     loginMethod: 'local',
     isActive: 1,
     lastSignedIn: new Date(),
@@ -258,6 +270,16 @@ export async function updateUserRole(userId: number, role: 'user' | 'admin') {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
   await db.update(users).set({ role, sessionVersion: sql`${users.sessionVersion} + 1` }).where(eq(users.id, userId));
+}
+
+export async function updateUserAccess(userId: number, accessProfile: AccessProfile, permissionOverrides: FeaturePermission[]) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  await db.update(users).set({
+    accessProfile,
+    permissionOverrides: getValidPermissionOverrides(permissionOverrides),
+    sessionVersion: sql`${users.sessionVersion} + 1`,
+  }).where(eq(users.id, userId));
 }
 
 export type UserBusinessRecordSummary = {

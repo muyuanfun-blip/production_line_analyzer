@@ -17,8 +17,9 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Plus, KeyRound, UserCheck, UserX, ShieldCheck, User, Trash2 } from "lucide-react";
+import { Plus, KeyRound, UserCheck, UserX, ShieldCheck, User, Trash2, SlidersHorizontal } from "lucide-react";
 import { getLocalPasswordPolicyIssues } from "../../../shared/accountSecurity";
+import { ACCESS_PROFILES, FEATURE_PERMISSION_CATALOG, getAccessProfileLabel, type AccessProfile, type FeaturePermission } from "../../../shared/featurePermissions";
 
 type UserRow = {
   id: number;
@@ -27,6 +28,9 @@ type UserRow = {
   name: string | null;
   email: string | null;
   role: "user" | "admin";
+  accessProfile: AccessProfile;
+  permissionOverrides: FeaturePermission[];
+  effectivePermissions: FeaturePermission[];
   isActive: number;
   createdAt: Date;
   lastSignedIn: Date;
@@ -61,12 +65,16 @@ export default function AdminUsers() {
   const [newPassword, setNewPassword] = useState("");
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState<"user" | "admin">("user");
+  const [newAccessProfile, setNewAccessProfile] = useState<AccessProfile>("operator");
 
   // Reset password dialog
   const [resetOpen, setResetOpen] = useState(false);
   const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
   const [newPwd, setNewPwd] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
+  const [accessTarget, setAccessTarget] = useState<UserRow | null>(null);
+  const [accessProfile, setAccessProfile] = useState<AccessProfile>("operator");
+  const [permissionOverrides, setPermissionOverrides] = useState<FeaturePermission[]>([]);
   const newPasswordIssues = getLocalPasswordPolicyIssues(newPassword);
   const resetPasswordIssues = getLocalPasswordPolicyIssues(newPwd);
 
@@ -75,7 +83,7 @@ export default function AdminUsers() {
       toast.success("帳號建立成功");
       utils.admin.listUsers.invalidate();
       setCreateOpen(false);
-      setNewUsername(""); setNewPassword(""); setNewName(""); setNewRole("user");
+      setNewUsername(""); setNewPassword(""); setNewName(""); setNewRole("user"); setNewAccessProfile("operator");
     },
     onError: (e) => toast.error("建立失敗：" + friendlyPasswordError(e.message)),
   });
@@ -113,6 +121,25 @@ export default function AdminUsers() {
     },
     onError: (e) => toast.error("無法刪除帳號：" + e.message),
   });
+
+  const accessMutation = trpc.admin.updateAccess.useMutation({
+    onSuccess: () => {
+      toast.success("功能權限已更新，目標帳號的既有登入狀態已撤銷");
+      utils.admin.listUsers.invalidate();
+      setAccessTarget(null);
+    },
+    onError: (e) => toast.error("更新權限失敗：" + e.message),
+  });
+
+  const openAccessDialog = (target: UserRow) => {
+    setAccessTarget(target);
+    setAccessProfile(target.accessProfile ?? "operator");
+    setPermissionOverrides(target.permissionOverrides ?? []);
+  };
+
+  const togglePermissionOverride = (permission: FeaturePermission) => {
+    setPermissionOverrides((current) => current.includes(permission) ? current.filter((item) => item !== permission) : [...current, permission]);
+  };
 
   const activeAdminCount = userList.filter((account) => account.role === "admin" && account.isActive).length;
 
@@ -160,6 +187,7 @@ export default function AdminUsers() {
                     <TableHead>帳號</TableHead>
                     <TableHead>顯示名稱</TableHead>
                     <TableHead>角色</TableHead>
+                    <TableHead>功能角色</TableHead>
                     <TableHead>狀態</TableHead>
                     <TableHead>刪除資格</TableHead>
                     <TableHead>最後登入</TableHead>
@@ -191,6 +219,16 @@ export default function AdminUsers() {
                             <><User className="w-3 h-3 mr-1" />一般使用者</>
                           )}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {u.role === "admin" ? (
+                          <span className="text-xs font-medium text-primary">完整系統權限</span>
+                        ) : (
+                          <div className="space-y-1">
+                            <span className="text-xs font-medium text-foreground">{getAccessProfileLabel(u.accessProfile)}</span>
+                            {u.permissionOverrides.length > 0 && <p className="text-[0.6875rem] text-muted-foreground">+ {u.permissionOverrides.length} 項個別授權</p>}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge className={`border ${u.isActive ? "status-success" : "status-risk"}`} variant="outline">
@@ -229,6 +267,11 @@ export default function AdminUsers() {
                               })}
                             >
                               {u.role === "admin" ? "降為一般" : "升為管理員"}
+                            </Button>
+                          )}
+                          {u.role !== "admin" && (
+                            <Button size="sm" variant="outline" onClick={() => openAccessDialog(u as UserRow)}>
+                              <SlidersHorizontal className="w-3 h-3 mr-1" />權限
                             </Button>
                           )}
                           {/* 啟用/停用 */}
@@ -317,6 +360,17 @@ export default function AdminUsers() {
                 </SelectContent>
               </Select>
             </div>
+            {newRole === "user" && (
+              <div className="space-y-2">
+                <Label>功能角色</Label>
+                <Select value={newAccessProfile} onValueChange={(value) => setNewAccessProfile(value as AccessProfile)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ACCESS_PROFILES.map((profile) => <SelectItem key={profile.key} value={profile.key}>{profile.label}｜{profile.description}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
@@ -326,6 +380,8 @@ export default function AdminUsers() {
                 password: newPassword,
                 name: newName,
                 role: newRole,
+                accessProfile: newAccessProfile,
+                permissionOverrides: [],
               })}
               disabled={createMutation.isPending || newPasswordIssues.length > 0 || !newUsername.trim() || !newName.trim()}
             >
@@ -383,6 +439,47 @@ export default function AdminUsers() {
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>取消</Button>
             <Button variant="destructive" onClick={() => deleteTarget && deleteMutation.mutate({ userId: deleteTarget.id })} disabled={deleteMutation.isPending}>
               {deleteMutation.isPending ? "刪除中..." : "確認永久刪除"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(accessTarget)} onOpenChange={(open) => !open && setAccessTarget(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>設定功能權限 — {accessTarget?.name ?? accessTarget?.username}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>預設功能角色</Label>
+              <Select value={accessProfile} onValueChange={(value) => setAccessProfile(value as AccessProfile)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ACCESS_PROFILES.map((profile) => <SelectItem key={profile.key} value={profile.key}>{profile.label}｜{profile.description}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="status-info rounded-md p-3 text-xs">個別授權只會額外開放功能，不會移除角色原有權限。儲存後會撤銷此帳號的既有登入狀態，請使用者重新登入。</div>
+            <div className="max-h-[330px] space-y-4 overflow-y-auto rounded-md border border-border p-3">
+              {Array.from(new Set(FEATURE_PERMISSION_CATALOG.map((item) => item.group))).map((group) => (
+                <div key={group} className="space-y-2">
+                  <p className="text-xs font-semibold text-foreground">{group}</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {FEATURE_PERMISSION_CATALOG.filter((item) => item.group === group).map((permission) => (
+                      <label key={permission.key} className="flex cursor-pointer items-start gap-2 rounded border border-border/70 p-2 text-xs hover:bg-accent/50">
+                        <input type="checkbox" className="mt-0.5" checked={permissionOverrides.includes(permission.key)} onChange={() => togglePermissionOverride(permission.key)} />
+                        <span><span className="font-medium text-foreground">{permission.label}</span><br /><span className="font-mono text-[0.625rem] text-muted-foreground">{permission.key}</span></span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAccessTarget(null)}>取消</Button>
+            <Button onClick={() => accessTarget && accessMutation.mutate({ userId: accessTarget.id, accessProfile, permissionOverrides })} disabled={accessMutation.isPending}>
+              {accessMutation.isPending ? "儲存中..." : "儲存功能權限"}
             </Button>
           </DialogFooter>
         </DialogContent>

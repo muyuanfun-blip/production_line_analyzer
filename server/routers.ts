@@ -1,7 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, featureProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import {
   getAllProductionLines, getProductionLineById, createProductionLine,
@@ -18,7 +18,7 @@ import {
   getHandActionsByStep, getHandActionsByStepIds,
   upsertHandAction, deleteHandAction, deleteHandActionsByStep,
   getUserByUsername, getAllUsers, createLocalUser, getUserById, countActiveAdministrators, createUserAccountAuditLog, getUserBusinessRecordSummary, deleteUserAccount,
-  updateUserPassword, toggleUserActive, updateUserRole, updateUserLastSignedIn,
+  updateUserPassword, toggleUserActive, updateUserRole, updateUserAccess, updateUserLastSignedIn,
   listSimulations, getSimulationById, createSimulation, updateSimulation, deleteSimulation,
   updateScenarioBackground,
   getProductModelsByLine, getProductModelById, createProductModel,
@@ -50,6 +50,7 @@ import { buildInteractiveAnalysisContext, validateInteractiveQuestion } from "..
 import { assessAnalysisDataReadiness, getReadinessLevel } from "../shared/analysisDataReadiness";
 import { calculateReportCompleteness } from "../shared/reportCompleteness";
 import { canPermanentlyDeleteAccount, canResetLocalPassword, wouldLeaveNoActiveAdministrator } from "../shared/accountSecurity";
+import { ACCESS_PROFILES, FEATURE_PERMISSION_CATALOG, getEffectivePermissions, getValidPermissionOverrides, type FeaturePermission } from "../shared/featurePermissions";
 
 // ─── Zod Schemas ─────────────────────────────────────────────────────────────
 
@@ -83,6 +84,8 @@ const actionStepInput = z.object({
 
 const localPasswordSchema = z.string().min(12, "密碼至少需 12 個字元").max(128).regex(/[a-z]/, "密碼需包含小寫英文字母").regex(/[A-Z]/, "密碼需包含大寫英文字母").regex(/[0-9]/, "密碼需包含數字");
 const localUsernameSchema = z.string().trim().min(2).max(64).regex(/^[A-Za-z0-9._-]+$/, "帳號僅能使用英數字、點、底線或連字號");
+const accessProfileSchema = z.enum(ACCESS_PROFILES.map((profile) => profile.key) as ["viewer" | "operator" | "engineer" | "manager", ...("viewer" | "operator" | "engineer" | "manager")[]]);
+const featurePermissionSchema = z.enum(FEATURE_PERMISSION_CATALOG.map((permission) => permission.key) as [FeaturePermission, ...FeaturePermission[]]);
 
 const roleReviewResponseSchema = z.object({
   findings: z.array(z.string().min(1)),
@@ -152,6 +155,10 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    access: protectedProcedure.query(({ ctx }) => ({
+      accessProfile: ctx.user.accessProfile ?? "operator",
+      permissions: getEffectivePermissions(ctx.user),
+    })),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -195,6 +202,8 @@ export const appRouter = router({
         password: localPasswordSchema,
         name: z.string().min(1),
         role: z.enum(['user', 'admin']).default('user'),
+        accessProfile: accessProfileSchema.default('operator'),
+        permissionOverrides: z.array(featurePermissionSchema).max(FEATURE_PERMISSION_CATALOG.length).default([]),
       }))
       .mutation(async ({ input, ctx }) => {
         const existing = await getUserByUsername(input.username);
@@ -205,8 +214,10 @@ export const appRouter = router({
           passwordHash,
           name: input.name,
           role: input.role,
+          accessProfile: input.accessProfile,
+          permissionOverrides: getValidPermissionOverrides(input.permissionOverrides),
         });
-        if (user) await createUserAccountAuditLog({ targetUserId: user.id, actorUserId: ctx.user.id, action: "create", beforeData: null, afterData: { username: user.username, role: user.role, isActive: user.isActive } });
+        if (user) await createUserAccountAuditLog({ targetUserId: user.id, actorUserId: ctx.user.id, action: "create", beforeData: null, afterData: { username: user.username, role: user.role, accessProfile: user.accessProfile, permissionOverrides: getValidPermissionOverrides(user.permissionOverrides), isActive: user.isActive } });
         return { success: true, userId: user?.id };
       }),
 
@@ -255,6 +266,28 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    updateAccess: adminProcedure
+      .input(z.object({
+        userId: z.number().int().positive(),
+        accessProfile: accessProfileSchema,
+        permissionOverrides: z.array(featurePermissionSchema).max(FEATURE_PERMISSION_CATALOG.length),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const target = await getUserById(input.userId);
+        if (!target) throw new Error('找不到目標帳號');
+        if (target.role === 'admin') throw new Error('系統管理員擁有完整權限，無需個別覆寫');
+        const permissionOverrides = getValidPermissionOverrides(input.permissionOverrides);
+        await updateUserAccess(input.userId, input.accessProfile, permissionOverrides);
+        await createUserAccountAuditLog({
+          targetUserId: target.id,
+          actorUserId: ctx.user.id,
+          action: 'set_permissions',
+          beforeData: { accessProfile: target.accessProfile, permissionOverrides: getValidPermissionOverrides(target.permissionOverrides), sessionVersion: target.sessionVersion },
+          afterData: { accessProfile: input.accessProfile, permissionOverrides, sessionVersion: target.sessionVersion + 1 },
+        });
+        return { success: true };
+      }),
+
     deleteUser: adminProcedure
       .input(z.object({ userId: z.number().int().positive() }))
       .mutation(async ({ input, ctx }) => {
@@ -275,7 +308,7 @@ export const appRouter = router({
   }),
 
   masterDataAudit: router({
-    list: adminProcedure
+    list: featureProcedure("governance.view")
       .input(z.object({
         productionLineId: z.number().int().positive().optional(),
         entityType: z.enum(["production_line", "workstation"]).optional(),
@@ -291,7 +324,7 @@ export const appRouter = router({
   }),
 
   aiGovernance: router({
-    getStats: adminProcedure
+    getStats: featureProcedure("governance.view")
       .input(z.object({
         productionLineId: z.number().int().positive().optional(),
         status: z.enum(["approved", "needs_clarification"]).optional(),
@@ -304,7 +337,7 @@ export const appRouter = router({
         startDate: input?.from,
         endDate: input?.to,
       })),
-    resolveReview: adminProcedure
+    resolveReview: featureProcedure("governance.resolve")
       .input(z.object({
         id: z.number().int().positive(),
         decision: z.enum(["approved", "returned", "closed"]),
@@ -312,10 +345,10 @@ export const appRouter = router({
         roleDisagreements: z.array(z.object({ roleId: z.enum(["lean_ie", "operations", "quality", "process_equipment", "risk_governance"]), note: z.string().min(1).max(1000) })).max(5),
       }))
       .mutation(async ({ input, ctx }) => resolveAIConsensusReviewEvent({ ...input, decidedBy: ctx.user.id })),
-    listDataCompletionTasks: adminProcedure
+    listDataCompletionTasks: featureProcedure("governance.resolve")
       .input(z.object({ productionLineId: z.number().int().positive().optional(), status: z.enum(["open", "in_progress", "completed", "cancelled"]).optional() }).optional())
       .query(async ({ input }) => listGovernanceDataCompletionTasks(input ?? {})),
-    updateDataCompletionTask: adminProcedure
+    updateDataCompletionTask: featureProcedure("governance.resolve")
       .input(z.object({ id: z.number().int().positive(), assigneeId: z.number().int().positive().nullable().optional(), status: z.enum(["open", "in_progress", "completed", "cancelled"]).optional(), dueDate: z.date().nullable().optional() }))
       .mutation(async ({ input, ctx }) => {
         const { id, assigneeId, status, dueDate } = input;
@@ -323,25 +356,25 @@ export const appRouter = router({
         if (task && assigneeId) await createGovernanceTaskNotification({ taskId: task.id, recipientId: assigneeId, title: "已指派資料補件任務", content: `任務：${task.title}。建議提供者：${task.recommendedProvider}。請依期限補充所需資料。` });
         return task;
       }),
-    myTaskNotifications: protectedProcedure
+    myTaskNotifications: featureProcedure("tasks.view")
       .query(async ({ ctx }) => listGovernanceTaskNotifications(ctx.user.id)),
-    myDataCompletionTasks: protectedProcedure
+    myDataCompletionTasks: featureProcedure("tasks.view")
       .query(async ({ ctx }) => listGovernanceDataCompletionTasks({ assigneeId: ctx.user.id })),
   }),
 
   // ─── Production Lines ───────────────────────────────────────────────────
   productionLine: router({
-    list: publicProcedure.query(async () => {
+    list: featureProcedure("production.view").query(async () => {
       return getAllProductionLines();
     }),
 
-    getById: publicProcedure
+    getById: featureProcedure("production.view")
       .input(z.object({ id: z.number().int().positive() }))
       .query(async ({ input }) => {
         return getProductionLineById(input.id);
       }),
 
-    create: adminProcedure
+    create: featureProcedure("master_data.manage")
       .input(productionLineInput)
       .mutation(async ({ input, ctx }) => {
         const result = await createProductionLine({
@@ -365,7 +398,7 @@ export const appRouter = router({
         return { success: true, insertId };
       }),
 
-    update: adminProcedure
+    update: featureProcedure("master_data.manage")
       .input(z.object({ id: z.number().int().positive() }).merge(productionLineInput.partial()))
       .mutation(async ({ input, ctx }) => {
         const { id, ...data } = input;
@@ -392,7 +425,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    delete: adminProcedure
+    delete: featureProcedure("master_data.manage")
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input, ctx }) => {
         const before = await getProductionLineById(input.id);
@@ -423,19 +456,19 @@ export const appRouter = router({
 
   // ─── Workstations ────────────────────────────────────────────────────────
   workstation: router({
-    listByLine: publicProcedure
+    listByLine: featureProcedure("production.view")
       .input(z.object({ productionLineId: z.number().int().positive() }))
       .query(async ({ input }) => {
         return getWorkstationsByLine(input.productionLineId);
       }),
 
-    getById: publicProcedure
+    getById: featureProcedure("production.view")
       .input(z.object({ id: z.number().int().positive() }))
       .query(async ({ input }) => {
         return getWorkstationById(input.id);
       }),
 
-    create: adminProcedure
+    create: featureProcedure("master_data.manage")
       .input(workstationInput)
       .mutation(async ({ input, ctx }) => {
         const normalized = normalizeManpower({ ...input, manpower: input.manpower ?? 1 });
@@ -466,7 +499,7 @@ export const appRouter = router({
         return { success: true, insertId };
       }),
 
-    update: adminProcedure
+    update: featureProcedure("master_data.manage")
       .input(z.object({ id: z.number().int().positive() }).merge(workstationInput.omit({ productionLineId: true }).partial()))
       .mutation(async ({ input, ctx }) => {
         const { id, ...data } = input;
@@ -502,7 +535,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    delete: adminProcedure
+    delete: featureProcedure("master_data.manage")
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input, ctx }) => {
         const before = await getWorkstationById(input.id);
@@ -519,7 +552,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    bulkImport: adminProcedure
+    bulkImport: featureProcedure("master_data.manage")
       .input(z.object({
         productionLineId: z.number().int().positive(),
         workstations: z.array(z.object({
@@ -560,7 +593,7 @@ export const appRouter = router({
         return { success: true, count: data.length };
       }),
 
-    manpowerQuality: protectedProcedure
+    manpowerQuality: featureProcedure("production.view")
       .input(z.object({ productionLineId: z.number().int().positive() }))
       .query(async ({ input }) => {
         const workstations = await getWorkstationsByLine(input.productionLineId);
@@ -578,20 +611,20 @@ export const appRouter = router({
 
   // ─── Action Steps ────────────────────────────────────────────────────────
   actionStep: router({
-    listByWorkstation: publicProcedure
+    listByWorkstation: featureProcedure("actions.view")
       .input(z.object({ workstationId: z.number().int().positive() }))
       .query(async ({ input }) => {
         return getActionStepsByWorkstation(input.workstationId);
       }),
 
-    listByWorkstations: publicProcedure
+    listByWorkstations: featureProcedure("actions.view")
       .input(z.object({ workstationIds: z.array(z.number().int().positive()) }))
       .query(async ({ input }) => {
         if (input.workstationIds.length === 0) return [];
         return getActionStepsByWorkstationIds(input.workstationIds);
       }),
 
-    listReviewQueue: adminProcedure
+    listReviewQueue: featureProcedure("actions.review")
       .input(z.object({
         productionLineId: z.number().int().positive(),
         statuses: z.array(z.enum(["unreviewed", "pending", "approved", "rejected"])).min(1).optional(),
@@ -600,11 +633,11 @@ export const appRouter = router({
         return getActionReviewQueue(input.productionLineId, input.statuses);
       }),
 
-    getReviewQualityStats: adminProcedure
+    getReviewQualityStats: featureProcedure("actions.review")
       .input(z.object({ productionLineId: z.number().int().positive().optional() }).optional())
       .query(async ({ input }) => getActionReviewQualityStats(input?.productionLineId)),
 
-    queueReview: adminProcedure
+    queueReview: featureProcedure("actions.review")
       .input(z.object({
         ids: z.array(z.number().int().positive()).min(1),
         suggestedActionType: z.enum(["value_added", "non_value_added", "necessary_waste"]),
@@ -615,7 +648,7 @@ export const appRouter = router({
         return { success: true, count: input.ids.length };
       }),
 
-    resolveReviews: adminProcedure
+    resolveReviews: featureProcedure("actions.review")
       .input(z.object({
         ids: z.array(z.number().int().positive()).min(1),
         decision: z.enum(["approved", "rejected"]),
@@ -631,7 +664,7 @@ export const appRouter = router({
         return { success: true, count: input.ids.length };
       }),
 
-    create: protectedProcedure
+    create: featureProcedure("actions.manage")
       .input(actionStepInput)
       .mutation(async ({ input }) => {
         const result = await createActionStep({
@@ -645,7 +678,7 @@ export const appRouter = router({
         return { success: true, insertId: (result as any).insertId };
       }),
 
-    update: protectedProcedure
+    update: featureProcedure("actions.manage")
       .input(z.object({ id: z.number().int().positive() }).merge(actionStepInput.omit({ workstationId: true }).partial()))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -659,14 +692,14 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    delete: protectedProcedure
+    delete: featureProcedure("actions.manage")
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input }) => {
         await deleteActionStep(input.id);
         return { success: true };
       }),
 
-    bulkCreate: protectedProcedure
+    bulkCreate: featureProcedure("actions.manage")
       .input(z.object({
         workstationId: z.number().int().positive(),
         steps: z.array(z.object({
@@ -691,7 +724,7 @@ export const appRouter = router({
       }),
 
     // 查詢整條產線所有工站的動作步驟（並附帶手部動作）
-    listByLine: publicProcedure
+    listByLine: featureProcedure("actions.view")
       .input(z.object({ productionLineId: z.number().int().positive() }))
       .query(async ({ input }) => {
         const ws = await getWorkstationsByLine(input.productionLineId);
@@ -732,7 +765,7 @@ export const appRouter = router({
 
   // ─── AI Analysis ─────────────────────────────────────────────────────────
   analysis: router({
-    aiSuggest: protectedProcedure
+    aiSuggest: featureProcedure("ai.analyze")
       .input(z.object({
         productionLineId: z.number().int().positive(),
         productionLineName: z.string(),
@@ -884,7 +917,7 @@ export const appRouter = router({
         return { status: approved ? "approved" as const : "needs_clarification" as const, approvalReason, suggestion, reviews, consensus, dataGaps, readinessLevel, completeness };
       }),
 
-    interactiveAnalyze: protectedProcedure
+    interactiveAnalyze: featureProcedure("ai.analyze")
       .input(z.object({
         productionLineName: z.string().min(1),
         question: z.string().min(1).max(800),
@@ -923,7 +956,7 @@ export const appRouter = router({
         return { answer };
       }),
 
-    compareSnapshots: publicProcedure
+    compareSnapshots: featureProcedure("reports.export")
       .input(z.object({
         productionLineId: z.number().int().positive(),
         productionLineName: z.string(),
@@ -1039,7 +1072,7 @@ export const appRouter = router({
 
   // ─── Snapshot Router ──────────────────────────────────────────────────────
   snapshot: router({
-    listByLine: publicProcedure
+    listByLine: featureProcedure("analysis.view")
       .input(z.object({ productionLineId: z.number().int().positive() }))
       .query(async ({ input }) => {
         const rows = await getSnapshotsByLine(input.productionLineId);
@@ -1057,7 +1090,7 @@ export const appRouter = router({
         }));
       }),
 
-    getById: publicProcedure
+    getById: featureProcedure("analysis.view")
       .input(z.object({ id: z.number().int().positive() }))
       .query(async ({ input }) => {
         const row = await getSnapshotById(input.id);
@@ -1076,7 +1109,7 @@ export const appRouter = router({
         };
       }),
 
-    create: protectedProcedure
+    create: featureProcedure("snapshots.manage")
       .input(z.object({
         productionLineId: z.number().int().positive(),
         name: z.string().min(1).max(255),
@@ -1155,14 +1188,14 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    delete: protectedProcedure
+    delete: featureProcedure("snapshots.manage")
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input }) => {
         await deleteSnapshot(input.id);
         return { success: true };
       }),
 
-    updateData: protectedProcedure
+    updateData: featureProcedure("snapshots.manage")
       .input(z.object({
         id: z.number().int().positive(),
         name: z.string().min(1).max(255).optional(),
@@ -1225,17 +1258,17 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    getAllLinesLatest: publicProcedure
+    getAllLinesLatest: featureProcedure("analysis.view")
       .query(async () => {
         const rows = await getAllLinesLatestSnapshot();
         return rows;
       }),
-    getAllLinesHistory: publicProcedure
+    getAllLinesHistory: featureProcedure("analysis.view")
       .query(async () => {
         const rows = await getAllLinesSnapshotHistory();
         return rows;
       }),
-    getAllLinesLatestByDate: publicProcedure
+    getAllLinesLatestByDate: featureProcedure("analysis.view")
       .query(async () => {
         const rows = await getAllLinesLatestSnapshotByDate();
         return rows;
@@ -1245,21 +1278,21 @@ export const appRouter = router({
   // ─── Hand Actions ────────────────────────────────────────────────────────────────────────────────────
   handAction: router({
     // 取得單一動作步驟的左右手記錄
-    listByStep: publicProcedure
+    listByStep: featureProcedure("actions.view")
       .input(z.object({ actionStepId: z.number().int().positive() }))
       .query(async ({ input }) => {
         return getHandActionsByStep(input.actionStepId);
       }),
 
     // 批次取得多個動作步驟的左右手記錄（用於工站整體載入）
-    listByStepIds: publicProcedure
+    listByStepIds: featureProcedure("actions.view")
       .input(z.object({ actionStepIds: z.array(z.number().int().positive()) }))
       .query(async ({ input }) => {
         return getHandActionsByStepIds(input.actionStepIds);
       }),
 
     // 新增或更新一筆手部動作記錄
-    upsert: protectedProcedure
+    upsert: featureProcedure("actions.manage")
       .input(z.object({
         id: z.number().int().positive().optional(),
         actionStepId: z.number().int().positive(),
@@ -1285,7 +1318,7 @@ export const appRouter = router({
       }),
 
     // 刪除單筆手部動作記錄
-    delete: protectedProcedure
+    delete: featureProcedure("actions.manage")
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input }) => {
         await deleteHandAction(input.id);
@@ -1293,7 +1326,7 @@ export const appRouter = router({
       }),
 
     // 刪除某動作步驟的所有手部記錄（删除步驟時一並清除）
-    deleteByStep: protectedProcedure
+    deleteByStep: featureProcedure("actions.manage")
       .input(z.object({ actionStepId: z.number().int().positive() }))
       .mutation(async ({ input }) => {
         await deleteHandActionsByStep(input.actionStepId);
@@ -1304,7 +1337,7 @@ export const appRouter = router({
   // ─── Simulation Scenarios ────────────────────────────────────────────────────────
   simulation: router({
     // 列出指定產線的所有情境
-    list: publicProcedure
+    list: featureProcedure("analysis.view")
       .input(z.object({ productionLineId: z.number().int().positive() }))
       .query(async ({ input }) => {
         const rows = await listSimulations(input.productionLineId);
@@ -1315,7 +1348,7 @@ export const appRouter = router({
       }),
 
     // 取得單一情境
-    getById: publicProcedure
+    getById: featureProcedure("analysis.view")
       .input(z.object({ id: z.number().int().positive() }))
       .query(async ({ input }) => {
         const row = await getSimulationById(input.id);
@@ -1324,7 +1357,7 @@ export const appRouter = router({
       }),
 
     // 建立新情境（從產線工站或快照載入基準數據）
-    create: protectedProcedure
+    create: featureProcedure("simulation.manage")
       .input(z.object({
         productionLineId: z.number().int().positive(),
         name: z.string().min(1).max(255),
@@ -1353,7 +1386,7 @@ export const appRouter = router({
       }),
 
     // 更新情境（工站數據、名稱、備註）
-    update: protectedProcedure
+    update: featureProcedure("simulation.manage")
       .input(z.object({
         id: z.number().int().positive(),
         name: z.string().min(1).max(255).optional(),
@@ -1378,7 +1411,7 @@ export const appRouter = router({
       }),
 
     // 删除情境
-    delete: protectedProcedure
+    delete: featureProcedure("simulation.manage")
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input }) => {
         await deleteSimulation(input.id);
@@ -1386,7 +1419,7 @@ export const appRouter = router({
       }),
 
     // 複製情境
-    duplicate: protectedProcedure
+    duplicate: featureProcedure("simulation.manage")
       .input(z.object({
         id: z.number().int().positive(),
         newName: z.string().min(1).max(255),
@@ -1406,7 +1439,7 @@ export const appRouter = router({
       }),
 
     // 以情境工站資料執行一批模擬，建立可於產品追蹤檢視的產品實例與流程紀錄。
-    executeProductRun: protectedProcedure
+    executeProductRun: featureProcedure("simulation.manage")
       .input(z.object({
         scenarioId: z.number().int().positive(),
         productModelId: z.number().int().positive().optional(),
@@ -1495,7 +1528,7 @@ export const appRouter = router({
       }),
 
     // 將情境工站數據寫回實際 workstations 表
-    applyToLine: protectedProcedure
+    applyToLine: featureProcedure("master_data.manage")
       .input(z.object({
         scenarioId: z.number().int().positive(),
       }))
@@ -1584,7 +1617,7 @@ export const appRouter = router({
       }),
 
     // 更新 DXF 底圖設定
-    updateBackground: protectedProcedure
+    updateBackground: featureProcedure("simulation.manage")
       .input(z.object({
         id: z.number().int().positive(),
         backgroundSvg: z.string().nullable().optional(),
@@ -1614,15 +1647,15 @@ export const appRouter = router({
 
   // ─── Product Models ────────────────────────────────────────────────────────────────────────────────
   productModel: router({
-    listByLine: protectedProcedure
+    listByLine: featureProcedure("production.view")
       .input(z.object({ productionLineId: z.number() }))
       .query(async ({ input }) => getProductModelsByLine(input.productionLineId)),
 
-    getById: protectedProcedure
+    getById: featureProcedure("production.view")
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => getProductModelById(input.id)),
 
-    create: protectedProcedure
+    create: featureProcedure("production.manage")
       .input(z.object({
         productionLineId: z.number(),
         modelCode: z.string().min(1).max(64),
@@ -1639,7 +1672,7 @@ export const appRouter = router({
         return { success: true, model };
       }),
 
-    update: protectedProcedure
+    update: featureProcedure("production.manage")
       .input(z.object({
         id: z.number(),
         modelCode: z.string().min(1).max(64).optional(),
@@ -1658,7 +1691,7 @@ export const appRouter = router({
         return { success: true, model };
       }),
 
-    delete: protectedProcedure
+    delete: featureProcedure("production.manage")
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteProductModel(input.id);
@@ -1669,15 +1702,15 @@ export const appRouter = router({
   // ─── Product Tracking ───────────────────────────────────────────────────────────────
   productTracking: router({
     // 產品個體管理
-    listInstances: protectedProcedure
+    listInstances: featureProcedure("production.view")
       .input(z.object({ productionLineId: z.number() }))
       .query(async ({ input }) => listProductInstances(input.productionLineId)),
 
-    getInstance: protectedProcedure
+    getInstance: featureProcedure("production.view")
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => getProductInstanceById(input.id)),
 
-    createInstance: protectedProcedure
+    createInstance: featureProcedure("production.manage")
       .input(z.object({
         productionLineId: z.number(),
         productModelId: z.number().optional(),
@@ -1693,7 +1726,7 @@ export const appRouter = router({
         return { success: true, instance };
       }),
 
-    updateInstance: protectedProcedure
+    updateInstance: featureProcedure("production.manage")
       .input(z.object({
         id: z.number(),
         serialNumber: z.string().min(1).optional(),
@@ -1710,7 +1743,7 @@ export const appRouter = router({
         return { success: true, instance };
       }),
 
-    deleteInstance: protectedProcedure
+    deleteInstance: featureProcedure("production.manage")
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteProductInstance(input.id);
@@ -1718,16 +1751,16 @@ export const appRouter = router({
       }),
 
     // 流程記錄管理
-    listFlowRecords: protectedProcedure
+    listFlowRecords: featureProcedure("production.view")
       .input(z.object({ productInstanceId: z.number() }))
       .query(async ({ input }) => listFlowRecordsByInstance(input.productInstanceId)),
 
-    listFlowRecordsBatch: protectedProcedure
+    listFlowRecordsBatch: featureProcedure("production.view")
       .input(z.object({ instanceIds: z.array(z.number()) }))
       .query(async ({ input }) => listFlowRecordsByInstances(input.instanceIds)),
 
     // 依工站與時段彙整流程實績，產生效率熱圖矩陣。
-    getEfficiencyHeatmap: protectedProcedure
+    getEfficiencyHeatmap: featureProcedure("production.view")
       .input(z.object({
         productionLineId: z.number().int().positive(),
         from: z.date(),
@@ -1766,7 +1799,7 @@ export const appRouter = router({
         });
       }),
 
-    createFlowRecord: protectedProcedure
+    createFlowRecord: featureProcedure("production.manage")
       .input(z.object({
         productInstanceId: z.number(),
         workstationId: z.number(),
@@ -1785,7 +1818,7 @@ export const appRouter = router({
         return { success: true, record };
       }),
 
-    updateFlowRecord: protectedProcedure
+    updateFlowRecord: featureProcedure("production.manage")
       .input(z.object({
         id: z.number(),
         entryTime: z.date().optional().nullable(),
@@ -1802,14 +1835,14 @@ export const appRouter = router({
         return { success: true, record };
       }),
 
-    deleteFlowRecord: protectedProcedure
+    deleteFlowRecord: featureProcedure("production.manage")
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteFlowRecord(input.id);
         return { success: true };
       }),
 
-    upsertFlowRecords: protectedProcedure
+    upsertFlowRecords: featureProcedure("production.manage")
       .input(z.object({
         productInstanceId: z.number(),
         records: z.array(z.object({
@@ -1835,15 +1868,15 @@ export const appRouter = router({
   // ─── VSM (Value Stream Mapping) ──────────────────────────────────────────
   vsm: router({
     // VSM 圖表管理
-    listDiagrams: protectedProcedure
+    listDiagrams: featureProcedure("vsm.view")
       .input(z.object({ productionLineId: z.number() }))
       .query(async ({ input }) => listVSMDiagrams(input.productionLineId)),
 
-    getDiagramById: protectedProcedure
+    getDiagramById: featureProcedure("vsm.view")
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => getVSMDiagramById(input.id)),
 
-    createDiagram: protectedProcedure
+    createDiagram: featureProcedure("vsm.manage")
       .input(z.object({
         productionLineId: z.number(),
         name: z.string().min(1),
@@ -1868,7 +1901,7 @@ export const appRouter = router({
         return { success: true, diagram };
       }),
 
-    updateDiagram: protectedProcedure
+    updateDiagram: featureProcedure("vsm.manage")
       .input(z.object({
         id: z.number(),
         name: z.string().min(1).optional(),
@@ -1895,7 +1928,7 @@ export const appRouter = router({
         return { success: true, diagram };
       }),
 
-    deleteDiagram: protectedProcedure
+    deleteDiagram: featureProcedure("vsm.manage")
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteVSMVersionsByDiagram(input.id);
@@ -1907,15 +1940,15 @@ export const appRouter = router({
       }),
 
     // VSM 工序管理
-    listProcesses: protectedProcedure
+    listProcesses: featureProcedure("vsm.view")
       .input(z.object({ vsmDiagramId: z.number() }))
       .query(async ({ input }) => listVSMProcesses(input.vsmDiagramId)),
 
-    getProcessById: protectedProcedure
+    getProcessById: featureProcedure("vsm.view")
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => getVSMProcessById(input.id)),
 
-    createProcess: protectedProcedure
+    createProcess: featureProcedure("vsm.manage")
       .input(z.object({
         vsmDiagramId: z.number(),
         workstationId: z.number().optional().nullable(),
@@ -1954,7 +1987,7 @@ export const appRouter = router({
         return { success: true, process };
       }),
 
-    updateProcess: protectedProcedure
+    updateProcess: featureProcedure("vsm.manage")
       .input(z.object({
         id: z.number(),
         name: z.string().min(1).optional(),
@@ -1991,7 +2024,7 @@ export const appRouter = router({
         return { success: true, process };
       }),
 
-    deleteProcess: protectedProcedure
+    deleteProcess: featureProcedure("vsm.manage")
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteVSMImprovementActionsByProcess(input.id);
@@ -2000,11 +2033,11 @@ export const appRouter = router({
       }),
 
     // VSM 改善行動閉環
-    listImprovementActions: protectedProcedure
+    listImprovementActions: featureProcedure("vsm.view")
       .input(z.object({ vsmDiagramId: z.number().int().positive() }))
       .query(async ({ input }) => listVSMImprovementActions(input.vsmDiagramId)),
 
-    createImprovementAction: protectedProcedure
+    createImprovementAction: featureProcedure("vsm.manage")
       .input(z.object({
         vsmDiagramId: z.number().int().positive(),
         vsmProcessId: z.number().int().positive(),
@@ -2032,7 +2065,7 @@ export const appRouter = router({
         return { success: true, action };
       }),
 
-    updateImprovementAction: protectedProcedure
+    updateImprovementAction: featureProcedure("vsm.manage")
       .input(z.object({
         id: z.number().int().positive(),
         title: z.string().min(1).max(255).optional(),
@@ -2059,7 +2092,7 @@ export const appRouter = router({
         return { success: true, action };
       }),
 
-    deleteImprovementAction: protectedProcedure
+    deleteImprovementAction: featureProcedure("vsm.manage")
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ input }) => {
         await deleteVSMImprovementAction(input.id);
@@ -2067,15 +2100,15 @@ export const appRouter = router({
       }),
 
     // VSM 流線管理
-    listFlows: protectedProcedure
+    listFlows: featureProcedure("vsm.view")
       .input(z.object({ vsmDiagramId: z.number() }))
       .query(async ({ input }) => listVSMFlows(input.vsmDiagramId)),
 
-    getFlowById: protectedProcedure
+    getFlowById: featureProcedure("vsm.view")
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => getVSMFlowById(input.id)),
 
-    createFlow: protectedProcedure
+    createFlow: featureProcedure("vsm.manage")
       .input(z.object({
         vsmDiagramId: z.number(),
         fromProcessId: z.number(),
@@ -2100,7 +2133,7 @@ export const appRouter = router({
         return { success: true, flow };
       }),
 
-    updateFlow: protectedProcedure
+    updateFlow: featureProcedure("vsm.manage")
       .input(z.object({
         id: z.number(),
         flowType: z.enum(['material', 'information', 'kanban']).optional(),
@@ -2121,7 +2154,7 @@ export const appRouter = router({
         return { success: true, flow };
       }),
 
-    deleteFlow: protectedProcedure
+    deleteFlow: featureProcedure("vsm.manage")
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await deleteVSMFlow(input.id);
@@ -2129,15 +2162,15 @@ export const appRouter = router({
       }),
 
     // VSM 版本管理
-    listVersions: protectedProcedure
+    listVersions: featureProcedure("vsm.view")
       .input(z.object({ vsmDiagramId: z.number() }))
       .query(async ({ input }) => listVSMVersions(input.vsmDiagramId)),
 
-    getVersionById: protectedProcedure
+    getVersionById: featureProcedure("vsm.view")
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => getVSMVersionById(input.id)),
 
-    createVersion: protectedProcedure
+    createVersion: featureProcedure("vsm.manage")
       .input(z.object({
         vsmDiagramId: z.number(),
         versionNumber: z.number(),
@@ -2156,14 +2189,14 @@ export const appRouter = router({
         return { success: true, version };
       }),
 
-    restoreVersion: protectedProcedure
+    restoreVersion: featureProcedure("vsm.manage")
       .input(z.object({ versionId: z.number() }))
       .mutation(async ({ input }) => {
         const diagram = await restoreVSMVersion(input.versionId);
         return { success: true, diagram };
       }),
 
-    getAISuggestions: protectedProcedure
+    getAISuggestions: featureProcedure("ai.analyze")
       .input(z.object({
         vsmDiagramId: z.number(),
         processes: z.array(z.object({

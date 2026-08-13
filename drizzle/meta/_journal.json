@@ -176,6 +176,13 @@
       "when": 1786582982691,
       "tag": "0024_misty_blur",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1786585669473,
+      "tag": "0025_illegal_franklin_richards",
+      "breakpoints": true
     }
   ]
 }

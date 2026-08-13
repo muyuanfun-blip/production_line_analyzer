@@ -8,6 +8,7 @@ import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { getSidebarGroups, shouldCloseNavigationAfterSelect } from "../../../shared/sidebarNavigation";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useTheme } from "@/contexts/ThemeContext";
+import { trpc } from "@/lib/trpc";
 
 const navIcons = {
   "/": Home,
@@ -41,11 +42,12 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
   const { theme, toggleTheme } = useTheme();
   const [location, setLocation] = useLocation();
   const { state, setOpen, setOpenMobile, isMobile } = useSidebar();
+  const { data: access } = trpc.auth.access.useQuery(undefined, { enabled: Boolean(user) });
   const [isPinned, setIsPinned] = useState(() => localStorage.getItem(SIDEBAR_PINNED_KEY) === "true");
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isCollapsed = state === "collapsed";
-  const navGroups = getSidebarGroups(user?.role);
+  const navGroups = getSidebarGroups(user?.role, access?.permissions ?? []);
   const allItems = navGroups.flatMap((group) => group.items);
   const activeItem = allItems.find((item) => location === item.path || (item.path !== "/" && location.startsWith(`${item.path}/`)));
 
